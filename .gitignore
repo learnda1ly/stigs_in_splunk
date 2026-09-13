@@ -1,0 +1,8 @@
+tests/fixtures/cache/
+output/
+.venv-ucc/
+
+__pycache__/
+*.py[cod]
+.Python
+*.egg-info/

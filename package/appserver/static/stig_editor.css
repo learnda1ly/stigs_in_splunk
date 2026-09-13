@@ -1,0 +1,697 @@
+/* STIG Editor — STIG Viewer / STIG Manager inspired layout */
+
+html:has(.stig-editor-root),
+body:has(.stig-editor-root) {
+  overflow: hidden !important;
+  overflow-anchor: none;
+  height: 100%;
+}
+
+body:has(.stig-editor-root) .dashboard-header,
+body:has(.stig-editor-root) .dashboard-view-controls {
+  display: none !important;
+}
+
+body:has(.stig-editor-root) .main-section-body.dashboard-body,
+body:has(.stig-editor-root) #dashboard1,
+body:has(.stig-editor-root) #layout1,
+body:has(.stig-editor-root) #row1,
+body:has(.stig-editor-root) #stig_editor_panel,
+body:has(.stig-editor-root) #stig_editor_panel .dashboard-panel,
+body:has(.stig-editor-root) #stig_editor_panel .panel-element-row,
+body:has(.stig-editor-root) #stig_editor_panel #content1,
+body:has(.stig-editor-root) #stig_editor_panel .panel-body.html {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.stig-editor-root {
+  font-family: "Splunk Platform Sans", "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  color: #333;
+  height: calc(100vh - 48px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #eef1f4;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  overflow-anchor: none;
+}
+
+.stig-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, #1e3a5f 0%, #152a45 100%);
+  color: #e8eef4;
+  border-bottom: 2px solid #0f1f33;
+}
+
+.stig-toolbar label {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+  margin-right: 4px;
+}
+
+.stig-toolbar select,
+.stig-toolbar input[type="search"] {
+  min-width: 180px;
+  max-width: 280px;
+  padding: 5px 8px;
+  border: 1px solid #4a6278;
+  border-radius: 3px;
+  background: #fff;
+  color: #222;
+}
+
+.stig-toolbar .stig-search {
+  min-width: 220px;
+  flex: 1;
+}
+
+.stig-status-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.stig-filter-btn {
+  border: 1px solid #5a7088;
+  background: #2a4560;
+  color: #dce4ec;
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.stig-filter-btn.active {
+  background: #3d7a3d;
+  border-color: #5cb85c;
+  color: #fff;
+}
+
+.stig-toolbar-meta {
+  margin-left: auto;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.stig-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  overflow-anchor: none;
+}
+
+.stig-list-pane {
+  width: 48%;
+  min-width: 560px;
+  max-width: 760px;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overflow-anchor: none;
+  border-right: 1px solid #c5cdd6;
+  background: #fff;
+}
+
+ul.stig-rule-list > li.stig-rule-row,
+.stig-list-header {
+  display: grid !important;
+  column-gap: 12px !important;
+  align-items: center !important;
+}
+
+.stig-view-host ul.stig-rule-list > li.stig-rule-row,
+.stig-view-host .stig-list-header {
+  grid-template-columns: 36px 136px 160px minmax(0, 1fr) !important;
+}
+
+.stig-view-all ul.stig-rule-list > li.stig-rule-row,
+.stig-view-all .stig-list-header {
+  grid-template-columns: 36px 136px 120px 150px minmax(0, 1fr) !important;
+}
+
+.stig-view-rule ul.stig-rule-list > li.stig-rule-row,
+.stig-view-rule .stig-list-header {
+  grid-template-columns: 36px 136px 140px minmax(0, 1fr) !important;
+}
+
+.stig-list-header {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  background: #d8dee6;
+  border-bottom: 1px solid #b8c0ca;
+  color: #444;
+}
+
+.stig-rule-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+.stig-rule-row {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e8ecef;
+  cursor: pointer;
+}
+
+.stig-rule-row > span {
+  min-width: 0;
+}
+
+.stig-rule-row:hover {
+  background: #f0f6fc;
+}
+
+.stig-rule-row.selected {
+  background: #d4e8f7;
+  box-shadow: inset 3px 0 0 #006d9c;
+}
+
+.stig-rule-row.dirty .stig-rule-title {
+  font-style: italic;
+}
+
+.stig-dirty-dot {
+  color: #c9302c;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.stig-col-done {
+  text-align: center;
+  font-weight: 700;
+  color: #1b7a3a;
+  font-size: 14px;
+}
+
+.stig-rule-row.is-complete {
+  box-shadow: inset 3px 0 0 #2f9e44;
+}
+
+.stig-col-status,
+.stig-col-id,
+.stig-col-title {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.stig-valid-banner {
+  margin: 0 14px 10px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.stig-valid-banner.is-complete {
+  background: #e5f6ea;
+  color: #155724;
+  border: 1px solid #b7e0c2;
+}
+
+.stig-valid-banner.is-incomplete {
+  background: #fff4e5;
+  color: #7a4b00;
+  border: 1px solid #f0d0a0;
+}
+
+.stig-badge {
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stig-badge-not_reviewed { background: #e2e3e5; color: #383d41; }
+.stig-badge-open { background: #f8d7da; color: #721c24; }
+.stig-badge-not_a_finding { background: #d4edda; color: #155724; }
+.stig-badge-not_applicable { background: #cce5ff; color: #004085; }
+
+.stig-rule-id {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stig-rule-title {
+  font-size: 12px;
+  line-height: 1.35;
+  color: #222;
+  overflow-wrap: anywhere;
+}
+
+.stig-detail-pane {
+  flex: 1;
+  overflow-y: auto;
+  overflow-anchor: none;
+  padding: 14px 18px;
+  background: #f7f9fb;
+}
+
+.stig-detail-empty {
+  color: #666;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.stig-detail-header h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  color: #1e3a5f;
+}
+
+.stig-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: #555;
+}
+
+.stig-detail-meta strong {
+  color: #333;
+}
+
+.stig-field {
+  margin-bottom: 14px;
+}
+
+.stig-field label {
+  display: block;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  color: #444;
+}
+
+.stig-field select,
+.stig-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #b8c0ca;
+  border-radius: 3px;
+  padding: 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.stig-field textarea {
+  min-height: 100px;
+  resize: vertical;
+  font-family: ui-monospace, "Splunk Platform Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.stig-vim-wrap {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  background: #fff;
+}
+
+.stig-vim-wrap textarea {
+  display: block;
+  position: relative;
+  z-index: 1;
+  background-color: transparent !important;
+}
+
+.stig-field textarea.stig-vim-normal {
+  caret-color: transparent;
+  box-shadow: inset 3px 0 0 #c9a227;
+}
+
+.stig-vim-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: hidden;
+}
+
+.stig-vim-line {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  z-index: 0;
+  left: 0;
+  background: #d4e8f7;
+}
+
+.stig-vim-line.is-visible {
+  display: block;
+}
+
+.stig-vim-cursor {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  box-sizing: border-box;
+  background: #2b6cb0;
+  z-index: 0;
+  min-width: 0.7em;
+}
+
+.stig-vim-cursor.is-visible {
+  display: block;
+}
+
+.stig-vim-cursor.on-whitespace {
+  background: #2b6cb0;
+}
+
+.stig-pre-block {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #fff;
+  border: 1px solid #ccd3db;
+  padding: 10px;
+  border-radius: 3px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.stig-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #ccd3db;
+}
+
+.stig-btn {
+  padding: 6px 14px;
+  border-radius: 3px;
+  border: 1px solid #006d9c;
+  background: #008cba;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.stig-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stig-btn-secondary {
+  background: #fff;
+  color: #006d9c;
+}
+
+.stig-toast {
+  position: fixed;
+  bottom: 16px;
+  right: 24px;
+  padding: 10px 16px;
+  background: #333;
+  color: #fff;
+  border-radius: 4px;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.stig-toast.show {
+  opacity: 1;
+}
+
+.stig-toast.error {
+  background: #c9302c;
+}
+
+.stig-help-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stig-help-panel {
+  background: #fff;
+  max-width: 520px;
+  padding: 20px 24px;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+.stig-help-panel h3 {
+  margin-top: 0;
+  color: #1e3a5f;
+}
+
+.stig-help-panel kbd {
+  background: #eee;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-family: monospace;
+}
+
+.stig-help-panel table {
+  width: 100%;
+  font-size: 13px;
+}
+
+.stig-help-panel td {
+  padding: 4px 8px 4px 0;
+  vertical-align: top;
+}
+
+.stig-vim-mode {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: #2a4560;
+  color: #9fd89f;
+  border: 0;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.stig-vim-mode.insert {
+  background: #5a4a20;
+  color: #ffe08a;
+}
+
+.stig-vim-mode.nav {
+  background: #1e3a5f;
+  color: #c5d4e8;
+}
+
+.stig-loading {
+  padding: 24px;
+  text-align: center;
+  color: #666;
+}
+
+.stig-vim-mode.is-off {
+  display: inline-block;
+  background: #5a5a5a;
+  color: #f0f0f0;
+}
+
+.stig-save-toast {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: 240px;
+  padding: 6px 10px;
+  background: #1e3a5f;
+  color: #f4f7fa;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+  z-index: 10001;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+
+.stig-save-toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.stig-save-toast strong {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.stig-save-toast span {
+  font-size: 11px;
+  line-height: 1.3;
+  opacity: 0.8;
+}
+
+.stig-vim-cmd {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: #0f1f33;
+  color: #e8eef4;
+  border-top: 1px solid #4a6278;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+.stig-vim-cmd span {
+  color: #9ad29a;
+  font-weight: 600;
+}
+
+.stig-vim-cmd input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: #e8eef4;
+  font: inherit;
+  outline: none;
+  padding: 2px 0;
+}
+
+.stig-jump-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 10002;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+
+.stig-jump-panel {
+  background: #fff;
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  border-radius: 6px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+.stig-jump-panel h3 {
+  margin: 0;
+  padding: 10px 14px;
+  background: #1e3a5f;
+  color: #fff;
+  font-size: 13px;
+}
+
+.stig-jump-panel input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-bottom: 1px solid #ccd3db;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.stig-jump-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.stig-jump-list li {
+  padding: 8px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.stig-jump-list li.active,
+.stig-jump-list li:hover {
+  background: #d4e8f7;
+}
+
+.stig-jump-list .muted {
+  color: #777;
+  font-size: 11px;
+}
+
+.stig-settings-root {
+  padding: 16px 8px 24px;
+  max-width: 640px;
+}
+
+.stig-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.stig-settings-help {
+  color: #555;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.stig-col-host {
+  font-size: 12px;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -1,0 +1,31 @@
+<dashboard version="1.1" script="stig_settings.js" stylesheet="stig_editor.css" hideEdit="true" hideExport="true">
+  <label>Configuration</label>
+  <description>STIG Editor application settings.</description>
+  <row>
+    <panel>
+      <html>
+        <div class="stig-settings-root">
+          <h2>Editor</h2>
+          <label class="stig-settings-row">
+            <input type="checkbox" id="stig-vim-enabled" />
+            <span>Enable vim-style keyboard shortcuts</span>
+          </label>
+          <p class="stig-settings-help">
+            When enabled there are three layers: <strong>INSERT</strong> (typing),
+            field <strong>NORMAL</strong> (vim in finding details / comments),
+            and <strong>NAV</strong> (move between findings).
+            <kbd>Esc</kbd> leaves INSERT but stays in the field; <kbd>Esc</kbd> again goes to NAV.
+            <kbd>o</kbd> types a letter in INSERT, opens a line in field NORMAL, and sets status Open only in NAV.
+            <kbd>{</kbd>/<kbd>}</kbd> are paragraphs in the field and previous/next finding in NAV.
+            Finding details and comments still require Save / <kbd>Ctrl</kbd>+<kbd>s</kbd> (or <kbd>:w</kbd> when vim is on).
+            You can also click the <strong>VIM OFF</strong> / <strong>NORMAL</strong> badge in the editor toolbar.
+          </p>
+          <p>
+            <button type="button" class="stig-btn" id="stig-settings-save">Save settings</button>
+            <a href="stig_editor">Back to editor</a>
+          </p>
+        </div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

@@ -1,0 +1,11 @@
+[]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+[viewstates]
+access = read : [ * ], write : [ * ]
+export = system
+
+[stig_editor]
+access = read : [ * ], write : [ * ]
+export = system

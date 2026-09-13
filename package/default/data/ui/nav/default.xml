@@ -1,0 +1,5 @@
+<nav search_view="search" color="#2d5016">
+  <view name="stig_editor" default="true" label="STIG Editor"/>
+  <view name="stig_export" label="Export Checklists"/>
+  <view name="stig_settings" label="Configuration"/>
+</nav>

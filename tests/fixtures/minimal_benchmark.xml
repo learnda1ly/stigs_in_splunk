@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.2" id="xccdf_mil.disa.stig_benchmark_Example_STIG">
+  <status date="2026-01-01">accepted</status>
+  <title>Example STIG for PoC</title>
+  <version>1</version>
+  <plain-text id="release-info">Release: 1 Benchmark Date: 01 Jan 2026</plain-text>
+  <Group id="V-000001">
+    <title>Example Group</title>
+    <Rule id="xccdf_mil.disa.stig_rule_SV-000001" severity="high">
+      <version>EX-00-000001</version>
+      <title>Example rule title</title>
+      <description>Discussion text.</description>
+      <ident system="http://cyber.mil/cci">CCI-000366</ident>
+      <ident system="http://iase.disa.mil/stigs">V-000001</ident>
+      <ident system="http://iase.disa.mil/stigs">SV-000001</ident>
+      <fixtext fixref="F-1">Fix text here.</fixtext>
+      <check system="C-000001">
+        <check-content>Run this check.</check-content>
+      </check>
+    </Rule>
+  </Group>
+</Benchmark>

@@ -1,0 +1,8 @@
+meta:
+    name: stigs_in_splunk
+    restRoot: stigs_in_splunk
+    displayName: STIG in Splunk
+    version: 0.1.0
+    schemaVersion: 0.0.9
+    checkForUpdates: false
+    isVisible: true

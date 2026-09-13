@@ -1,0 +1,11 @@
+<dashboard version="1.1" script="stig_editor.js" stylesheet="stig_editor.css" hideEdit="true" hideExport="true" hideTitle="true">
+  <label>STIG Editor</label>
+  <description>Edit checklist reviews (STIG Viewer / STIG Manager style). Press ? for keyboard shortcuts.</description>
+  <row>
+    <panel id="stig_editor_panel">
+      <html>
+        <div id="stig-editor-root" class="stig-editor-root"></div>
+      </html>
+    </panel>
+  </row>
+</dashboard>
