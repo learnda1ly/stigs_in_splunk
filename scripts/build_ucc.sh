@@ -31,3 +31,14 @@ fi
   "$@"
 
 echo "Built app: $OUTPUT/stigs_in_splunk"
+
+APP_MOUNT="${SPLUNK_HOME:-/opt/splunk}/etc/apps/stigs_in_splunk"
+if mountpoint -q "$APP_MOUNT" 2>/dev/null; then
+  src="$(findmnt -n -o SOURCE "$APP_MOUNT" 2>/dev/null || true)"
+  if [[ "$src" == *deleted* ]]; then
+    echo "WARNING: Splunk still bind-mounts a deleted output directory." >&2
+    echo "Remount before using the UI:" >&2
+    echo "  ./scripts/link-splunk-app.sh umount && ./scripts/link-splunk-app.sh" >&2
+    echo "  sudo systemctl restart Splunkd" >&2
+  fi
+fi

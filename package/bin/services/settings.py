@@ -23,16 +23,19 @@ def _text(value: Any, default: str = "") -> str:
     return str(value)
 
 
+def _pick(body: Dict[str, Any], existing: Dict[str, Any], key: str, default: str) -> str:
+    if key in body:
+        return _text(body.get(key), default)
+    return existing.get(key) or default
+
+
 def _public(rec: Dict[str, Any], username: str = "") -> Dict[str, Any]:
-    token = rec.get("hec_token") or ""
     return {
         "_key": rec.get("_key") or "",
         "vim_mode": bool(as_bool(rec.get("vim_mode"))),
         "ingest_index": rec.get("ingest_index") or DEFAULT_INGEST_INDEX,
         "ingest_sourcetype": rec.get("ingest_sourcetype") or DEFAULT_INGEST_SOURCETYPE,
         "hec_url": rec.get("hec_url") or DEFAULT_HEC_URL,
-        "hec_token": token,
-        "hec_token_set": bool(str(token).strip()),
         "reconcile_earliest": rec.get("reconcile_earliest") or DEFAULT_RECONCILE_EARLIEST,
         "updated_at": rec.get("updated_at") or 0,
         "updated_by": rec.get("updated_by") or username or "",
@@ -47,7 +50,8 @@ def get_settings(service) -> Dict[str, Any]:
 
 
 def save_settings(service, body: Dict[str, Any], username: str) -> Dict[str, Any]:
-    body = body or {}
+    body = dict(body or {})
+    body.pop("hec_token", None)
     coll = kv_client.get_collection(service, KV_STIG_EDITOR_SETTINGS)
     rows = kv_client.query_all(coll)
     existing = dict(rows[0]) if rows else {}
@@ -55,29 +59,14 @@ def save_settings(service, body: Dict[str, Any], username: str) -> Dict[str, Any
     record = kv_record(
         {
             "vim_mode": bool(vim) if vim is not None else False,
-            "ingest_index": _text(
-                body.get("ingest_index"), existing.get("ingest_index") or DEFAULT_INGEST_INDEX
-            )
-            if "ingest_index" in body
-            else (existing.get("ingest_index") or DEFAULT_INGEST_INDEX),
-            "ingest_sourcetype": _text(
-                body.get("ingest_sourcetype"),
-                existing.get("ingest_sourcetype") or DEFAULT_INGEST_SOURCETYPE,
-            )
-            if "ingest_sourcetype" in body
-            else (existing.get("ingest_sourcetype") or DEFAULT_INGEST_SOURCETYPE),
-            "hec_url": _text(body.get("hec_url"), existing.get("hec_url") or DEFAULT_HEC_URL)
-            if "hec_url" in body
-            else (existing.get("hec_url") or DEFAULT_HEC_URL),
-            "hec_token": _text(body.get("hec_token"), existing.get("hec_token") or "")
-            if "hec_token" in body
-            else (existing.get("hec_token") or ""),
-            "reconcile_earliest": _text(
-                body.get("reconcile_earliest"),
-                existing.get("reconcile_earliest") or DEFAULT_RECONCILE_EARLIEST,
-            )
-            if "reconcile_earliest" in body
-            else (existing.get("reconcile_earliest") or DEFAULT_RECONCILE_EARLIEST),
+            "ingest_index": _pick(body, existing, "ingest_index", DEFAULT_INGEST_INDEX),
+            "ingest_sourcetype": _pick(
+                body, existing, "ingest_sourcetype", DEFAULT_INGEST_SOURCETYPE
+            ),
+            "hec_url": _pick(body, existing, "hec_url", DEFAULT_HEC_URL),
+            "reconcile_earliest": _pick(
+                body, existing, "reconcile_earliest", DEFAULT_RECONCILE_EARLIEST
+            ),
             "updated_at": now_epoch(),
             "updated_by": username or "",
         }

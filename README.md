@@ -39,7 +39,7 @@ After a build, bind-mount the **built** app (not the repo root):
 sudo systemctl restart Splunkd
 ```
 
-`STIG_APP_SOURCE` defaults to `output/stigs_in_splunk`. Edit Python under `package/bin/` and re-run `./scripts/build_ucc.sh` before restarting Splunk.
+`STIG_APP_SOURCE` defaults to `output/stigs_in_splunk`. After `./scripts/build_ucc.sh`, remount if that directory is bind-mounted (`./scripts/link-splunk-app.sh umount && ./scripts/link-splunk-app.sh`) so Splunk is not left on a deleted folder. Then restart Splunk. Edit Python under `package/bin/` and re-run `./scripts/build_ucc.sh` before restarting Splunk.
 
 ### UCC layout
 
@@ -59,7 +59,7 @@ Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
 - **STIG Editor** — workspace + host filters, finding list, status, details, comments
 - **Import Checklists** — drag-and-drop `.ckl` / `.cklb`; findings go to HEC (`stig:finding`) and KV
 - **Export Checklists** — CKL / CKLB download, including bulk zip
-- **Configuration** — vim shortcuts, HEC index/token, reconcile window
+- **Configuration** — vim shortcuts, HEC index/URL, reconcile window. The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
 
 Classic Simple XML + jQuery views remain under the **Classic** nav menu.
 

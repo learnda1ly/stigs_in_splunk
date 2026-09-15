@@ -26,7 +26,6 @@ const DEFAULTS = {
     ingest_index: "stig",
     ingest_sourcetype: "stig:finding",
     hec_url: "https://localhost:8088/services/collector/event",
-    hec_token: "",
     reconcile_earliest: "-15m",
 };
 
@@ -56,7 +55,6 @@ export default function SettingsApp() {
                     ingest_index: raw.ingest_index || DEFAULTS.ingest_index,
                     ingest_sourcetype: raw.ingest_sourcetype || DEFAULTS.ingest_sourcetype,
                     hec_url: raw.hec_url || DEFAULTS.hec_url,
-                    hec_token: raw.hec_token || "",
                     reconcile_earliest: raw.reconcile_earliest || DEFAULTS.reconcile_earliest,
                 });
             })
@@ -76,7 +74,6 @@ export default function SettingsApp() {
                         ingest_index: ingest.ingest_index,
                         ingest_sourcetype: ingest.ingest_sourcetype,
                         hec_url: ingest.hec_url,
-                        hec_token: ingest.hec_token,
                         reconcile_earliest: ingest.reconcile_earliest,
                     },
                 })
@@ -84,7 +81,7 @@ export default function SettingsApp() {
             .then(() => {
                 setBanner({
                     type: "success",
-                    text: "Saved. HEC token is used by file import; Watcher/Eval-STIG should post to the HEC input.",
+                    text: "Saved. File import posts to HEC from the server; the token is not stored in this page.",
                 });
             })
             .catch((err) => {
@@ -148,14 +145,12 @@ export default function SettingsApp() {
                     <Card.Header title="Finding ingest (HEC)" />
                     <Card.Body>
                         <p style={{ marginTop: 0, lineHeight: 1.5 }}>
-                            Evaluate-STIG and STIGMan Watcher should POST JSON findings to
-                            the HEC input <code>stig_findings</code> (
-                            <code>sourcetype=stig:finding</code>, <code>index=stig</code>
-                            ). Each event must include asset, STIG revision, and rule
-                            content so a checklist can be exported later. A scheduled
-                            search (<code>STIG reconcile findings to KV</code>) maintains
-                            KV current state. Incoming findings overwrite matches unless
-                            the review has <code>ingest_lock</code>.
+                            The <strong>Import Checklists</strong> page uploads files to
+                            the app REST handler, which posts <code>stig:finding</code>{" "}
+                            events to HEC using the server-side <code>stig_findings</code>{" "}
+                            input token. That token is never shown here. Manage it under
+                            Splunk <strong>Settings → Data Inputs → HTTP Event Collector</strong>.
+                            External Evaluate-STIG / Watcher clients use that same input.
                         </p>
                         <ControlGroup label="Index">
                             <Text
@@ -171,14 +166,6 @@ export default function SettingsApp() {
                         </ControlGroup>
                         <ControlGroup label="HEC URL">
                             <Text value={ingest.hec_url} onChange={setField("hec_url")} />
-                        </ControlGroup>
-                        <ControlGroup label="HEC token">
-                            <Text
-                                value={ingest.hec_token}
-                                onChange={setField("hec_token")}
-                                type="password"
-                                placeholder="From Settings → Data Inputs → HTTP Event Collector"
-                            />
                         </ControlGroup>
                         <ControlGroup label="Reconcile window">
                             <Text

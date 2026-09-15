@@ -5,6 +5,7 @@
   <view name="stig_settings_ui" label="Configuration"/>
   <collection label="Classic">
     <view name="stig_editor" label="Editor (classic)"/>
+    <view name="stig_import_ui" label="Import Checklists"/>
     <view name="stig_export" label="Export (classic)"/>
     <view name="stig_settings" label="Configuration (classic)"/>
   </collection>

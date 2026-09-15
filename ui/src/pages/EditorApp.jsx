@@ -753,6 +753,13 @@ export default function EditorApp() {
                         onClick={onValidate}
                         label="Validate"
                     />
+                    <Button
+                        appearance="primary"
+                        onClick={() => {
+                            window.location.assign(viewUrl("stig_import_ui"));
+                        }}
+                        label="Import checklists"
+                    />
                 </Toolbar>
                 <HeaderMeta>
                     <div>

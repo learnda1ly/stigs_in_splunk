@@ -3,6 +3,6 @@ require(["splunkjs/ready!"], function () {
     var locale = (path.match(/^(\/[^/]+)\//) || [])[1] || "/en-US";
     var script = document.createElement("script");
     script.src =
-        locale + "/static/app/stigs_in_splunk/ui/settings.js?b=1789260012";
+        locale + "/static/app/stigs_in_splunk/ui/settings.js?b=1789421001";
     document.head.appendChild(script);
 });
