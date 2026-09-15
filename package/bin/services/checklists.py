@@ -19,11 +19,13 @@ from models import (
     KV_STIG_CHECKLISTS,
     KV_STIG_REVIEWS,
     dumps_json,
+    is_ingest_locked,
     kv_record,
     new_id,
     now_epoch,
     parse_json_field,
 )
+from importers.ingest import match_review_seed
 from services import baselines as baselines_svc
 from services import collections as collections_svc
 from services import hosts as hosts_svc
@@ -61,8 +63,62 @@ def get_checklist(
     return rec
 
 
+def find_checklist(
+    service,
+    session: Dict[str, Any],
+    stig_collection_id: str,
+    host_id: str,
+    baseline_id: str,
+) -> Optional[Dict[str, Any]]:
+    for rec in list_checklists(service, session, stig_collection_id):
+        if rec.get("host_id") == host_id and rec.get("baseline_id") == baseline_id:
+            return rec
+    return None
+
+
+def apply_review_seeds(
+    service,
+    checklist_id: str,
+    seeds: Dict[str, Any],
+    username: str,
+    session: Dict[str, Any],
+) -> Dict[str, int]:
+    get_checklist(service, checklist_id, session, write=True)
+    reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
+    records = kv_client.query_all(reviews_coll, {"checklist_id": checklist_id})
+    updated = 0
+    unmatched = 0
+    locked = 0
+    ts = now_epoch()
+    for rec in records:
+        seed = match_review_seed(rec, seeds)
+        if not seed:
+            unmatched += 1
+            continue
+        if is_ingest_locked(rec):
+            locked += 1
+            continue
+        patch = dict(rec)
+        if "status" in seed:
+            patch["status"] = seed["status"]
+        if "finding_details" in seed:
+            patch["finding_details"] = seed["finding_details"] or ""
+        if "comments" in seed:
+            patch["comments"] = seed["comments"] or ""
+        patch["valid"] = validation.persistable_valid(patch)
+        patch["updated_at"] = ts
+        patch["updated_by"] = username
+        kv_client.update_record(reviews_coll, rec["_key"], kv_record(patch))
+        updated += 1
+    return {"updated": updated, "unmatched": unmatched, "locked": locked}
+
+
 def create_checklist(
-    service, body: Dict[str, Any], username: str, session: Dict[str, Any]
+    service,
+    body: Dict[str, Any],
+    username: str,
+    session: Dict[str, Any],
+    review_seeds: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     collection_id = body.get("stig_collection_id")
     host_id = body.get("host_id")
@@ -131,6 +187,7 @@ def create_checklist(
 
     review_records = []
     for rule in rules:
+        seed = match_review_seed(rule, review_seeds)
         review = {
             "checklist_id": checklist_id,
             "baseline_id": baseline_id,
@@ -138,10 +195,11 @@ def create_checklist(
             "rule_id": rule.get("rule_id"),
             "rule_version": rule.get("rule_version"),
             "check_content_hash": rule.get("check_content_hash"),
-            "status": "not_reviewed",
-            "finding_details": "",
-            "comments": "",
+            "status": seed.get("status") or "not_reviewed",
+            "finding_details": seed.get("finding_details") or "",
+            "comments": seed.get("comments") or "",
             "package_id": "",
+            "ingest_lock": False,
             "updated_at": ts,
             "updated_by": username,
         }
@@ -157,6 +215,49 @@ def create_checklist(
         {"reviews": len(review_records)},
     )
     return stored_checklist
+
+
+def ensure_review(
+    service,
+    checklist: Dict[str, Any],
+    rule: Dict[str, Any],
+    username: str,
+    seed: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, Any], bool]:
+    checklist_id = checklist.get("_key") or ""
+    reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
+    records = kv_client.query_all(reviews_coll, {"checklist_id": checklist_id})
+    want = {
+        str(rule.get("rule_id") or ""),
+        str(rule.get("rule_id_src") or ""),
+        str(rule.get("group_id") or ""),
+    }
+    want.discard("")
+    for rec in records:
+        keys = {str(rec.get("rule_id") or ""), str(rec.get("group_id") or "")}
+        keys.discard("")
+        if keys.intersection(want):
+            return rec, False
+    seed = seed or {}
+    ts = now_epoch()
+    review = {
+        "checklist_id": checklist_id,
+        "baseline_id": checklist.get("baseline_id"),
+        "group_id": rule.get("group_id"),
+        "rule_id": rule.get("rule_id"),
+        "rule_version": rule.get("rule_version"),
+        "check_content_hash": rule.get("check_content_hash"),
+        "status": seed.get("status") or "not_reviewed",
+        "finding_details": seed.get("finding_details") or "",
+        "comments": seed.get("comments") or "",
+        "package_id": "",
+        "ingest_lock": False,
+        "updated_at": ts,
+        "updated_by": username,
+    }
+    review["valid"] = validation.persistable_valid(review)
+    stored = kv_client.insert_record(reviews_coll, kv_record(review))
+    return stored, True
 
 
 def update_checklist(

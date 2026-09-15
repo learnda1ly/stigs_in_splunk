@@ -17,6 +17,7 @@
             <kbd>Esc</kbd> leaves INSERT but stays in the field; <kbd>Esc</kbd> again goes to NAV.
             <kbd>o</kbd> types a letter in INSERT, opens a line in field NORMAL, and sets status Open only in NAV.
             <kbd>{</kbd>/<kbd>}</kbd> are paragraphs in the field and previous/next finding in NAV.
+            <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> (or <kbd>gt</kbd>/<kbd>gT</kbd> in field NORMAL) moves between finding details and comments.
             Finding details and comments still require Save / <kbd>Ctrl</kbd>+<kbd>s</kbd> (or <kbd>:w</kbd> when vim is on).
             You can also click the <strong>VIM OFF</strong> / <strong>NORMAL</strong> badge in the editor toolbar.
           </p>

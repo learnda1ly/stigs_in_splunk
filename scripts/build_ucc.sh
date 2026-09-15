@@ -18,6 +18,10 @@ OUTPUT="${UCC_OUTPUT:-$ROOT/output}"
 mkdir -p "$OUTPUT"
 rm -rf "$OUTPUT/stigs_in_splunk"
 
+if [[ "${SKIP_UI_BUILD:-}" != "1" ]]; then
+  "$ROOT/scripts/build_ui.sh"
+fi
+
 "$UCC_GEN" build \
   --source "$ROOT/package" \
   --config "$ROOT/globalConfig.yaml" \
@@ -27,3 +31,14 @@ rm -rf "$OUTPUT/stigs_in_splunk"
   "$@"
 
 echo "Built app: $OUTPUT/stigs_in_splunk"
+
+APP_MOUNT="${SPLUNK_HOME:-/opt/splunk}/etc/apps/stigs_in_splunk"
+if mountpoint -q "$APP_MOUNT" 2>/dev/null; then
+  src="$(findmnt -n -o SOURCE "$APP_MOUNT" 2>/dev/null || true)"
+  if [[ "$src" == *deleted* ]]; then
+    echo "WARNING: Splunk still bind-mounts a deleted output directory." >&2
+    echo "Remount before using the UI:" >&2
+    echo "  ./scripts/link-splunk-app.sh umount && ./scripts/link-splunk-app.sh" >&2
+    echo "  sudo systemctl restart Splunkd" >&2
+  fi
+fi

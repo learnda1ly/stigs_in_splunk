@@ -1,6 +1,7 @@
 tests/fixtures/cache/
 output/
 .venv-ucc/
+ui/node_modules/
 
 __pycache__/
 *.py[cod]

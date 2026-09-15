@@ -17,6 +17,12 @@ KV_STIG_BASELINES = "stig_baselines"
 KV_STIG_BASELINE_RULES = "stig_baseline_rules"
 KV_STIG_CHECKLISTS = "stig_checklists"
 KV_STIG_REVIEWS = "stig_reviews"
+KV_STIG_EDITOR_SETTINGS = "stig_editor_settings"
+
+DEFAULT_INGEST_INDEX = "stig"
+DEFAULT_INGEST_SOURCETYPE = "stig:finding"
+DEFAULT_HEC_URL = "https://localhost:8088/services/collector/event"
+DEFAULT_RECONCILE_EARLIEST = "-15m"
 
 STATUSES = frozenset(
     {"not_reviewed", "open", "not_a_finding", "not_applicable"}
@@ -38,6 +44,25 @@ STATUS_TO_CKL = {
 
 CKLB_TO_STATUS = {v: k for k, v in STATUS_TO_CKLB.items()}
 CKL_TO_STATUS = {v: k for k, v in STATUS_TO_CKL.items()}
+
+# STIG Manager / Watcher streamed review.result values.
+STATUS_TO_RESULT = {
+    "not_reviewed": "notchecked",
+    "open": "fail",
+    "not_a_finding": "pass",
+    "not_applicable": "notapplicable",
+}
+RESULT_TO_STATUS = {
+    "notchecked": "not_reviewed",
+    "notselected": "not_reviewed",
+    "unknown": "not_reviewed",
+    "error": "not_reviewed",
+    "informational": "not_reviewed",
+    "fail": "open",
+    "fixed": "not_a_finding",
+    "pass": "not_a_finding",
+    "notapplicable": "not_applicable",
+}
 
 
 def new_id() -> str:
@@ -117,8 +142,19 @@ def normalize_status(value: Optional[str], source: str = "internal") -> Optional
         return CKLB_TO_STATUS.get(key, key.lower())
     if source == "ckl":
         return CKL_TO_STATUS.get(key)
+    if source == "result":
+        return RESULT_TO_STATUS.get(key.lower())
     if key in STATUSES:
         return key
+    mapped = RESULT_TO_STATUS.get(key.lower())
+    if mapped:
+        return mapped
+    mapped = CKL_TO_STATUS.get(key)
+    if mapped:
+        return mapped
+    mapped = CKLB_TO_STATUS.get(key)
+    if mapped:
+        return mapped
     return None
 
 
@@ -126,6 +162,27 @@ def strip_ns(tag: str) -> str:
     if "}" in tag:
         return tag.rsplit("}", 1)[-1]
     return tag
+
+
+def as_bool(value: Any) -> Optional[bool]:
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes"}:
+        return True
+    if text in {"0", "false", "no"}:
+        return False
+    return None
+
+
+def is_ingest_locked(record: Optional[Dict[str, Any]]) -> bool:
+    if not record:
+        return False
+    return bool(as_bool(record.get("ingest_lock")))
 
 
 def kv_record(record: Dict[str, Any]) -> Dict[str, Any]:

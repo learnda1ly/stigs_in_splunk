@@ -195,7 +195,7 @@ Map capabilities to HTTP methods in **each** `restmap.conf` stanza (see §7).
 https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 ```
 
-Resources: `stig_collections`, `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`.
+Resources: `stig_collections`, `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`.
 
 Authentication: Splunk session or Basic Auth (`-u user:pass`). TLS verify often disabled in dev (`curl -k`).
 
@@ -373,6 +373,7 @@ Foreign keys are string `_key` values unless noted. Timestamps are **epoch secon
 | `check_content_hash` | string | Snapshot from baseline rule |
 | `status` | string | See §10 |
 | `finding_details`, `comments` | string | |
+| `ingest_lock` | bool | When **true**, HEC/reconcile must **not** overwrite this review. Default false; incoming is authoritative. |
 | `updated_at` | time | |
 | `updated_by` | string | Set on every update |
 
@@ -549,8 +550,24 @@ Import responses:
 | POST | `/stig_checklists` | `{stig_collection_id, host_id, baseline_id, title?, mode?, target_data?}` → spawns reviews |
 | GET/PATCH/DELETE | `/stig_checklists/{id}` | DELETE cascades reviews |
 | GET | `/stig_checklists/{id}/export` | Query `format=cklb|ckl` |
+| POST | `/stig_imports` | Query `format=ckl|cklb`, `source_uri`, `stig_collection_id`; raw CKL/CKLB body |
 
 POST validates: host belongs to workspace; baseline exists; baseline has rules.
+
+### 11.4.1 Checklist file import and HEC ingest
+
+`POST /stig_imports` parses one `.ckl` or `.cklb` the same way [STIG Manager Watcher](https://github.com/NUWCDIVNPT/stigman-watcher) does (`reviewsFromCkl` / `reviewsFromCklb`), then:
+
+1. Emits one **fat** `stig:finding` JSON event per rule to **HEC** (`index=stig`, `sourcetype=stig:finding`). Each event includes Watcher review fields **and** asset `target_data`, STIG metadata, and the rule body (title, check content, fix text, CCIs, hashes) so a CKL/CKLB can be synthesized later from the index + KV.
+2. Applies the same events to KV current state (host, baseline, checklist, reviews).
+
+External Evaluate-STIG / Watcher streams must POST the same event shape to the HEC input `[http://stig_findings]`.
+
+`GET|POST /stig_imports/reconcile` (and scheduled search `| stigkvreconcile`) reads recent index events and applies them to KV.
+
+**Override policy:** a matching review is updated from the incoming event (authoritative) unless `ingest_lock` is true on the KV review. Incoming events never set `ingest_lock`.
+
+Requires **`stig_write`**.
 
 ### 11.5 `stig_reviews`
 
@@ -558,9 +575,9 @@ POST validates: host belongs to workspace; baseline exists; baseline has rules.
 |--------|------|--------|
 | GET | `/stig_reviews` | Query `checklist_id?`, `status?` |
 | GET | `/stig_reviews/{id}` | Single review |
-| PATCH/PUT | `/stig_reviews/{id}` | `{status?, finding_details?, comments?}` |
+| PATCH/PUT | `/stig_reviews/{id}` | `{status?, finding_details?, comments?, ingest_lock?}` |
 
-Updates require workspace **write** access via parent checklist. Validate `status` against allowed set; accept internal or CKLB status strings on input.
+Updates require workspace **write** access via parent checklist. Validate `status` against allowed set; accept internal or CKLB status strings on input. `ingest_lock=true` blocks HEC/reconcile from overwriting that finding.
 
 ---
 

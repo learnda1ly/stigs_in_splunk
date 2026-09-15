@@ -1,0 +1,50 @@
+{
+  "title": "Example STIG for PoC",
+  "id": "cklb-minimal-1",
+  "stigs": [
+    {
+      "stig_name": "Example STIG for PoC",
+      "display_name": "Example STIG",
+      "stig_id": "Example_STIG",
+      "release_info": "Release: 1 Benchmark Date: 01 Jan 2026",
+      "version": "1",
+      "uuid": "11111111-1111-1111-1111-111111111111",
+      "reference_identifier": "",
+      "size": 1,
+      "rules": [
+        {
+          "group_id": "V-000001",
+          "rule_id": "SV-000001r1",
+          "rule_id_src": "SV-000001r1_rule",
+          "rule_version": "EX-00-000001",
+          "severity": "high",
+          "rule_title": "Example rule title",
+          "discussion": "Discussion text.",
+          "check_content": "Run this check.",
+          "fix_text": "Fix text here.",
+          "ccis": ["CCI-000366"],
+          "status": "not_a_finding",
+          "finding_details": "root login is disabled",
+          "comments": "verified in sshd_config"
+        }
+      ]
+    }
+  ],
+  "active": true,
+  "mode": 2,
+  "has_path": false,
+  "target_data": {
+    "target_type": "Computing",
+    "host_name": "db-01",
+    "ip_address": "10.0.0.9",
+    "mac_address": "",
+    "fqdn": "db-01.example.mil",
+    "comments": "",
+    "role": "None",
+    "is_web_database": false,
+    "technology_area": "",
+    "web_db_site": "",
+    "web_db_instance": ""
+  },
+  "cklb_version": "1.0"
+}

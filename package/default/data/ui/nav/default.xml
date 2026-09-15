@@ -1,5 +1,12 @@
 <nav search_view="search" color="#2d5016">
-  <view name="stig_editor" default="true" label="STIG Editor"/>
-  <view name="stig_export" label="Export Checklists"/>
-  <view name="stig_settings" label="Configuration"/>
+  <view name="stig_editor_ui" default="true" label="STIG Editor"/>
+  <view name="stig_import_ui" label="Import Checklists"/>
+  <view name="stig_export_ui" label="Export Checklists"/>
+  <view name="stig_settings_ui" label="Configuration"/>
+  <collection label="Classic">
+    <view name="stig_editor" label="Editor (classic)"/>
+    <view name="stig_import_ui" label="Import Checklists"/>
+    <view name="stig_export" label="Export (classic)"/>
+    <view name="stig_settings" label="Configuration (classic)"/>
+  </collection>
 </nav>

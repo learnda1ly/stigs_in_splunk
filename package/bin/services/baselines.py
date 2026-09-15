@@ -32,6 +32,26 @@ def list_baseline_rules(service, baseline_id: str) -> List[Dict[str, Any]]:
     return kv_client.query_all(coll, {"baseline_id": baseline_id})
 
 
+def find_baseline_by_stig(
+    service, stig_id: str, version: str = ""
+) -> Optional[Dict[str, Any]]:
+    want_id = (stig_id or "").strip().casefold()
+    want_ver = str(version or "").strip()
+    if not want_id:
+        return None
+    matches = []
+    for rec in list_baselines(service):
+        if (rec.get("stig_id") or "").strip().casefold() != want_id:
+            continue
+        if want_ver and str(rec.get("version") or "").strip() != want_ver:
+            continue
+        matches.append(rec)
+    if not matches:
+        return None
+    matches.sort(key=lambda r: float(r.get("imported_at") or 0), reverse=True)
+    return matches[0]
+
+
 def find_baseline_by_fingerprint(
     service, content_fingerprint: str
 ) -> Optional[Dict[str, Any]]:
@@ -57,14 +77,15 @@ def _parse_import(format_name: str, body: bytes, source_uri: str) -> Tuple[Dict[
     raise ValueError(f"unsupported format: {format_name}")
 
 
-def import_baseline(
+def import_parsed_baseline(
     service,
-    body: bytes,
-    format_name: str,
+    meta: Dict[str, Any],
+    rules: List[Dict[str, Any]],
     username: str,
     source_uri: str = "",
+    format_name: str = "",
+    match_stig_id: bool = False,
 ) -> Tuple[Dict[str, Any], bool]:
-    meta, rules = _parse_import(format_name, body, source_uri)
     if not rules:
         raise ValueError("no rules parsed from import")
 
@@ -77,12 +98,30 @@ def import_baseline(
             existing["_key"],
             username,
             {
-                "format": format_name,
+                "format": format_name or meta.get("source_type"),
                 "source_uri": source_uri or meta.get("source_uri"),
                 "content_fingerprint": content_fingerprint,
             },
         )
         return existing, False
+    if match_stig_id:
+        existing = find_baseline_by_stig(
+            service, meta.get("stig_id") or "", meta.get("version") or ""
+        )
+        if existing:
+            audit.log_event(
+                "import_deduplicated",
+                "stig_baseline",
+                existing["_key"],
+                username,
+                {
+                    "format": format_name or meta.get("source_type"),
+                    "source_uri": source_uri or meta.get("source_uri"),
+                    "match": "stig_id_version",
+                    "content_fingerprint": content_fingerprint,
+                },
+            )
+            return existing, False
 
     baseline_coll = kv_client.get_collection(service, KV_STIG_BASELINES)
     rules_coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
@@ -117,46 +156,9 @@ def import_baseline(
     stored_baseline = kv_client.insert_record(baseline_coll, baseline_record)
     baseline_id = stored_baseline["_key"]
 
-    rule_records = []
-    for rule in rules:
-        rule_records.append(
-            kv_record(
-                {
-                    "baseline_id": baseline_id,
-                    "group_id": rule.get("group_id"),
-                    "rule_id": rule.get("rule_id"),
-                    "rule_id_src": rule.get("rule_id_src"),
-                    "rule_version": rule.get("rule_version"),
-                    "severity": rule.get("severity"),
-                    "rule_title": rule.get("rule_title"),
-                    "discussion": rule.get("discussion"),
-                    "check_content": rule.get("check_content"),
-                    "fix_text": rule.get("fix_text"),
-                    "ccis": dumps_json(rule.get("ccis") or []),
-                    "check_content_hash": rule.get("check_content_hash"),
-                    "group_title": rule.get("group_title") or "",
-                    "srg_id": rule.get("srg_id") or "",
-                    "weight": rule.get("weight") or "10.0",
-                    "check_content_ref": rule.get("check_content_ref") or "",
-                    "reference_identifier": rule.get("reference_identifier")
-                    or meta.get("reference_identifier")
-                    or "",
-                    "group_id_src": rule.get("group_id_src") or rule.get("group_id") or "",
-                    "group_description": rule.get("group_description") or "",
-                    "false_positives": rule.get("false_positives") or "",
-                    "false_negatives": rule.get("false_negatives") or "",
-                    "documentable": rule.get("documentable") or "false",
-                    "mitigations": rule.get("mitigations") or "",
-                    "security_override_guidance": rule.get("security_override_guidance")
-                    or "",
-                    "potential_impacts": rule.get("potential_impacts") or "",
-                    "third_party_tools": rule.get("third_party_tools") or "",
-                    "mitigation_control": rule.get("mitigation_control") or "",
-                    "responsibility": rule.get("responsibility") or "",
-                    "ia_controls": rule.get("ia_controls") or "",
-                }
-            )
-        )
+    rule_records = [
+        _rule_record(baseline_id, rule, meta) for rule in rules
+    ]
     kv_client.batch_insert(rules_coll, rule_records)
 
     audit.log_event(
@@ -171,3 +173,96 @@ def import_baseline(
         },
     )
     return stored_baseline, True
+
+
+def _rule_record(baseline_id: str, rule: Dict[str, Any], meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    meta = meta or {}
+    return kv_record(
+        {
+            "baseline_id": baseline_id,
+            "group_id": rule.get("group_id"),
+            "rule_id": rule.get("rule_id"),
+            "rule_id_src": rule.get("rule_id_src"),
+            "rule_version": rule.get("rule_version"),
+            "severity": rule.get("severity"),
+            "rule_title": rule.get("rule_title"),
+            "discussion": rule.get("discussion"),
+            "check_content": rule.get("check_content"),
+            "fix_text": rule.get("fix_text"),
+            "ccis": dumps_json(rule.get("ccis") or []),
+            "check_content_hash": rule.get("check_content_hash"),
+            "group_title": rule.get("group_title") or "",
+            "srg_id": rule.get("srg_id") or "",
+            "weight": rule.get("weight") or "10.0",
+            "check_content_ref": rule.get("check_content_ref") or "",
+            "reference_identifier": rule.get("reference_identifier")
+            or meta.get("reference_identifier")
+            or "",
+            "group_id_src": rule.get("group_id_src") or rule.get("group_id") or "",
+            "group_description": rule.get("group_description") or "",
+            "false_positives": rule.get("false_positives") or "",
+            "false_negatives": rule.get("false_negatives") or "",
+            "documentable": rule.get("documentable") or "false",
+            "mitigations": rule.get("mitigations") or "",
+            "security_override_guidance": rule.get("security_override_guidance")
+            or "",
+            "potential_impacts": rule.get("potential_impacts") or "",
+            "third_party_tools": rule.get("third_party_tools") or "",
+            "mitigation_control": rule.get("mitigation_control") or "",
+            "responsibility": rule.get("responsibility") or "",
+            "ia_controls": rule.get("ia_controls") or "",
+        }
+    )
+
+
+def _rule_matches(existing: Dict[str, Any], rule: Dict[str, Any]) -> bool:
+    pairs = (
+        ("rule_id", "rule_id"),
+        ("rule_id_src", "rule_id_src"),
+        ("rule_id", "rule_id_src"),
+        ("group_id", "group_id"),
+    )
+    for left, right in pairs:
+        a = (existing.get(left) or "").strip()
+        b = (rule.get(right) or "").strip()
+        if a and b and a == b:
+            return True
+    return False
+
+
+def ensure_baseline_rule(
+    service, baseline_id: str, rule: Dict[str, Any], meta: Optional[Dict[str, Any]] = None
+) -> Tuple[Dict[str, Any], bool]:
+    if not rule or not (rule.get("rule_id") or rule.get("rule_id_src") or rule.get("group_id")):
+        return {}, False
+    existing_rules = list_baseline_rules(service, baseline_id)
+    for rec in existing_rules:
+        if _rule_matches(rec, rule):
+            return rec, False
+    coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
+    stored = kv_client.insert_record(coll, _rule_record(baseline_id, rule, meta))
+    baseline = get_baseline(service, baseline_id)
+    if baseline:
+        baseline_coll = kv_client.get_collection(service, KV_STIG_BASELINES)
+        patch = dict(baseline)
+        patch["rule_count"] = len(existing_rules) + 1
+        kv_client.update_record(baseline_coll, baseline_id, kv_record(patch))
+    return stored, True
+
+
+def import_baseline(
+    service,
+    body: bytes,
+    format_name: str,
+    username: str,
+    source_uri: str = "",
+) -> Tuple[Dict[str, Any], bool]:
+    meta, rules = _parse_import(format_name, body, source_uri)
+    return import_parsed_baseline(
+        service,
+        meta,
+        rules,
+        username,
+        source_uri=source_uri,
+        format_name=format_name,
+    )
