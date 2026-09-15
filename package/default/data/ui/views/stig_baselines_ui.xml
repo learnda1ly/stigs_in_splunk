@@ -1,0 +1,11 @@
+<dashboard version="1.1" script="stig_baselines_ui.js" hideEdit="true" hideExport="true" hideTitle="true">
+  <label>Import baselines</label>
+  <description>Import a DISA STIG library zip or Manual-xccdf. Uses persist REST, not UCC.</description>
+  <row>
+    <panel>
+      <html>
+        <div id="stig-ui-root"></div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

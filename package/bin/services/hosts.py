@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 import access
 import audit
 import kv_client
-from models import KV_STIG_HOSTS, dumps_json, kv_record, new_id, now_epoch
+from models import KV_STIG_CHECKLISTS, KV_STIG_HOSTS, dumps_json, kv_record, new_id, now_epoch
 from services import collections as collections_svc
 
 
@@ -101,6 +101,13 @@ def update_host(
     _require_collection_access(service, existing["stig_collection_id"], session, write=True)
 
     patch = dict(existing)
+    dest_collection = body.get("stig_collection_id")
+    moving = bool(
+        dest_collection and dest_collection != existing.get("stig_collection_id")
+    )
+    if moving:
+        _require_collection_access(service, dest_collection, session, write=True)
+        patch["stig_collection_id"] = dest_collection
     for field in (
         "hostname",
         "ip_address",
@@ -119,6 +126,14 @@ def update_host(
     patch["updated_at"] = now_epoch()
     patch["updated_by"] = username
     stored = kv_client.update_record(coll, key, kv_record(patch))
+    if moving:
+        cl_coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
+        for rec in kv_client.query_all(cl_coll, {"host_id": key}):
+            cl_patch = dict(rec)
+            cl_patch["stig_collection_id"] = dest_collection
+            cl_patch["updated_at"] = patch["updated_at"]
+            cl_patch["updated_by"] = username
+            kv_client.update_record(cl_coll, rec["_key"], kv_record(cl_patch))
     audit.log_event("update", "stig_host", key, username, body)
     return stored
 

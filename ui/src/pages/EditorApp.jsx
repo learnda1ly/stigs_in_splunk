@@ -8,7 +8,7 @@ import Search from "@splunk/react-ui/Search";
 import Select from "@splunk/react-ui/Select";
 import Switch from "@splunk/react-ui/Switch";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
-import { apiGet, apiPatch, viewUrl } from "../api";
+import { apiGet, apiPatch, defaultWorkspaceId, viewUrl, workspaceLabel } from "../api";
 import {
     Actions,
     Body,
@@ -52,6 +52,7 @@ export default function EditorApp() {
     const [collectionId, setCollectionId] = useState("");
     const [hosts, setHosts] = useState([]);
     const [hostId, setHostId] = useState("");
+    const [moveTo, setMoveTo] = useState("");
     const [checklists, setChecklists] = useState([]);
     const [rulesByKey, setRulesByKey] = useState({});
     const [items, setItems] = useState([]);
@@ -163,6 +164,7 @@ export default function EditorApp() {
     const onCollection = (id) => {
         setCollectionId(id);
         setHostId("");
+        setMoveTo("");
         setItems([]);
         setSelectedKey("");
         if (!id) {
@@ -194,6 +196,16 @@ export default function EditorApp() {
             )
             .finally(() => setLoading(false));
     };
+
+    useEffect(() => {
+        if (collectionId || !collections.length) {
+            return;
+        }
+        const id = defaultWorkspaceId(collections);
+        if (id) {
+            onCollection(id);
+        }
+    }, [collections, collectionId]);
 
     const onHost = (id) => {
         setHostId(id);
@@ -575,7 +587,7 @@ export default function EditorApp() {
             if (kind === "collection") {
                 return collections.map((c) => ({
                     id: c._key,
-                    label: c.name || c._key,
+                    label: workspaceLabel(c),
                     sub: c.description || "",
                 }));
             }
@@ -714,7 +726,7 @@ export default function EditorApp() {
                             {collections.map((c) => (
                                 <Select.Option
                                     key={c._key}
-                                    label={c.name || c._key}
+                                    label={workspaceLabel(c)}
                                     value={c._key}
                                 />
                             ))}
@@ -738,6 +750,59 @@ export default function EditorApp() {
                             ))}
                         </Select>
                     </ControlGroup>
+                    {hostId ? (
+                        <ControlGroup label="Move host" labelPosition="top">
+                            <Select
+                                value={moveTo}
+                                onChange={(e, { value }) => setMoveTo(value)}
+                                placeholder="Another workspace"
+                                filter
+                                disabled={busy}
+                            >
+                                {collections
+                                    .filter((c) => c._key !== collectionId)
+                                    .map((c) => (
+                                        <Select.Option
+                                            key={c._key}
+                                            label={workspaceLabel(c)}
+                                            value={c._key}
+                                        />
+                                    ))}
+                            </Select>
+                        </ControlGroup>
+                    ) : null}
+                    {hostId ? (
+                        <Button
+                            appearance="secondary"
+                            disabled={busy || !moveTo}
+                            onClick={() => {
+                                setBusy(true);
+                                apiPatch("stig_hosts/" + hostId, {
+                                    stig_collection_id: moveTo,
+                                })
+                                    .then(() => {
+                                        const dest = moveTo;
+                                        setBanner({
+                                            type: "success",
+                                            text: "Moved host to " + workspaceLabel(
+                                                collections.find((c) => c._key === dest) || {
+                                                    name: dest,
+                                                }
+                                            ) + ".",
+                                        });
+                                        onCollection(dest);
+                                    })
+                                    .catch((err) =>
+                                        setBanner({
+                                            type: "error",
+                                            text: "Move failed: " + err.message,
+                                        })
+                                    )
+                                    .finally(() => setBusy(false));
+                            }}
+                            label="Move"
+                        />
+                    ) : null}
                     <ControlGroup label="Filter" labelPosition="top">
                         <div ref={searchWrapRef}>
                             <Search
@@ -756,9 +821,9 @@ export default function EditorApp() {
                     <Button
                         appearance="primary"
                         onClick={() => {
-                            window.location.assign(viewUrl("stig_import_ui"));
+                            window.location.assign(viewUrl("stig_baselines_ui"));
                         }}
-                        label="Import checklists"
+                        label="Import baselines"
                     />
                 </Toolbar>
                 <HeaderMeta>
@@ -794,7 +859,8 @@ export default function EditorApp() {
                                 ? "NORMAL"
                                 : "NAV"}
                     </VimBadge>
-                    <Link to={viewUrl("stig_import_ui")}>Import</Link>
+                    <Link to={viewUrl("stig_baselines_ui")}>Import baselines</Link>
+                    <Link to={viewUrl("stig_import_ui")}>Import checklists</Link>
                     <Link to={viewUrl("configuration")}>Configuration</Link>
                     <Link to={viewUrl("stig_editor")}>Classic</Link>
                 </HeaderMeta>

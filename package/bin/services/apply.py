@@ -13,6 +13,7 @@ from importers.ingest import reviews_to_seeds
 from models import parse_json_field
 from services import baselines as baselines_svc
 from services import checklists as checklists_svc
+from services import collections as collections_svc
 from services import hosts as hosts_svc
 
 
@@ -134,8 +135,9 @@ def apply_finding_events(
         first = batch[0]
         collection_id = first.get("collectionId") or ""
         if not collection_id:
-            errors.append("finding missing collectionId")
-            continue
+            collection_id = collections_svc.ensure_default_collection(
+                service, username
+            )["_key"]
         checklists_svc._require_collection(service, collection_id, session, write=True)
         host, created_host = _upsert_host(
             service, first, collection_id, username, session

@@ -15,6 +15,7 @@ import {
     downloadText,
     unwrap,
     viewUrl,
+    workspaceLabel,
 } from "../api";
 import {
     Actions,
@@ -209,7 +210,7 @@ export default function ExportApp() {
                             {collections.map((c) => (
                                 <Select.Option
                                     key={c._key}
-                                    label={c.name || c._key}
+                                    label={workspaceLabel(c)}
                                     value={c._key}
                                 />
                             ))}
@@ -242,7 +243,8 @@ export default function ExportApp() {
                         {rows.length} checklist{rows.length === 1 ? "" : "s"}
                     </span>
                     <Link to={viewUrl("stig_editor_ui")}>Editor</Link>
-                    <Link to={viewUrl("stig_import_ui")}>Import</Link>
+                    <Link to={viewUrl("stig_baselines_ui")}>Import baselines</Link>
+                    <Link to={viewUrl("stig_import_ui")}>Import checklists</Link>
                     <Link to={viewUrl("configuration")}>Configuration</Link>
                     <Link to={viewUrl("stig_export")}>Classic</Link>
                 </HeaderMeta>

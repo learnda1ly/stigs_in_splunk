@@ -5,6 +5,7 @@ from __future__ import annotations
 from splunktaucclib.rest_handler.admin_external import AdminExternalHandler, build_conf_info
 
 import access
+from importers.stig_zip import looks_like_zip
 from services import baselines as baselines_svc
 from stig_ucc_kv import (
     as_conf_entities,
@@ -59,14 +60,29 @@ class BaselineRestHandler(AdminExternalHandler):
         name = (self.callerArgs.id or "").strip()
         if not name:
             _fail("id is required")
+        payload = self.payload or {}
+        raw = payload.get("content")
+        # Never echo the uploaded file back through EAI XML (a DISA library zip
+        # is ~1GB and Splunk then fails with "Unable to xml-parse").
+        if isinstance(self.payload, dict):
+            self.payload["content"] = ""
+        fmt = (payload.get("format") or "xccdf").strip().lower()
+        body = decode_uploaded_file(raw)
+        if looks_like_zip(body) or fmt == "zip":
+            _fail(
+                "DISA library/product zips cannot be imported on Configuration. "
+                "Splunk wraps the file in XML and rejects multi-hundred-MB zips "
+                "(Unable to xml-parse). Open Import and drop the zip — every "
+                "Manual-xccdf STIG is imported automatically."
+            )
+        if not body:
+            _fail(
+                "Baselines are imported from the Import page. Drop a DISA zip "
+                "or a single XCCDF there; this form cannot carry library zips."
+            )
         if baselines_svc.find_baseline_by_ucc_name(service, name):
             _fail("baseline id already exists")
-        payload = self.payload or {}
-        fmt = (payload.get("format") or "xccdf").strip().lower()
-        body = decode_uploaded_file(payload.get("content"))
-        if not body:
-            _fail("upload an XCCDF, CKL, or CKLB file")
-        rec, _created = baselines_svc.import_baseline(
+        results = baselines_svc.import_baselines_payload(
             service,
             body,
             fmt,
@@ -74,6 +90,9 @@ class BaselineRestHandler(AdminExternalHandler):
             source_uri=name,
             ucc_name=name,
         )
+        if not results:
+            _fail("no baselines imported")
+        rec = results[0]["record"]
         shown = rec.get("ucc_name") or name
         return as_conf_entities(self, [(shown, _baseline_fields(rec))])
 

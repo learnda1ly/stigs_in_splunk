@@ -28,7 +28,9 @@ def import_checklist_file(
     source_uri: str = "",
 ) -> Dict[str, Any]:
     if not stig_collection_id:
-        raise ValueError("stig_collection_id is required")
+        stig_collection_id = collections_svc.ensure_default_collection(
+            service, username
+        )["_key"]
     if not body:
         raise ValueError("empty import body")
 

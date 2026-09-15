@@ -141,7 +141,7 @@ def import_parsed_baseline(
                 "content_fingerprint": content_fingerprint,
             },
         )
-        if ucc_name:
+        if ucc_name and not ucc_name_for(existing):
             updated = set_ucc_name(service, existing["_key"], ucc_name)
             return updated or existing, False
         return existing, False
@@ -168,6 +168,9 @@ def import_parsed_baseline(
     rules_coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
 
     ts = now_epoch()
+    if not (ucc_name or "").strip():
+        used = {ucc_name_for(rec) for rec in list_baselines(service) if ucc_name_for(rec)}
+        ucc_name = suggested_ucc_name(meta, used)
     baseline_record = kv_record(
         {
             "stig_id": meta.get("stig_id"),
@@ -292,6 +295,23 @@ def ensure_baseline_rule(
     return stored, True
 
 
+def suggested_ucc_name(meta: Dict[str, Any], used: Optional[set] = None) -> str:
+    import re
+
+    used = used if used is not None else set()
+    stig = re.sub(r"[^A-Za-z0-9_-]+", "_", (meta.get("stig_id") or "stig").strip())
+    ver = re.sub(r"[^A-Za-z0-9._-]+", "_", str(meta.get("version") or "").strip())
+    base = f"{stig}_{ver}" if ver else stig
+    base = base.strip("_") or "stig"
+    name = base
+    n = 2
+    while name in used:
+        name = f"{base}_{n}"
+        n += 1
+    used.add(name)
+    return name
+
+
 def import_baseline(
     service,
     body: bytes,
@@ -310,3 +330,54 @@ def import_baseline(
         format_name=format_name,
         ucc_name=ucc_name,
     )
+
+
+def import_baselines_payload(
+    service,
+    body: bytes,
+    format_name: str,
+    username: str,
+    source_uri: str = "",
+    ucc_name: str = "",
+) -> List[Dict[str, Any]]:
+    """Import one XCCDF/CKL/CKLB or a DISA zip / zip-of-zips of Manual-xccdf files."""
+    from importers.stig_zip import list_baseline_xccdfs, looks_like_zip
+
+    fmt = (format_name or "").strip().lower()
+    if fmt == "zip" or looks_like_zip(body):
+        used = {ucc_name_for(rec) for rec in list_baselines(service) if ucc_name_for(rec)}
+        results: List[Dict[str, Any]] = []
+        for path, xml_bytes in list_baseline_xccdfs(body):
+            meta, rules = xccdf.parse_xccdf(xml_bytes, source_uri=path)
+            row_name = suggested_ucc_name(meta, used)
+            rec, created = import_parsed_baseline(
+                service,
+                meta,
+                rules,
+                username,
+                source_uri=path,
+                format_name="xccdf",
+                ucc_name=row_name,
+            )
+            shown = ucc_name_for(rec) or row_name
+            used.add(shown)
+            results.append(
+                {
+                    "record": rec,
+                    "created": created,
+                    "source_uri": path,
+                    "ucc_name": shown,
+                }
+            )
+        return results
+    rec, created = import_baseline(
+        service, body, fmt or "xccdf", username, source_uri=source_uri, ucc_name=ucc_name
+    )
+    return [
+        {
+            "record": rec,
+            "created": created,
+            "source_uri": source_uri,
+            "ucc_name": ucc_name_for(rec) or ucc_name,
+        }
+    ]

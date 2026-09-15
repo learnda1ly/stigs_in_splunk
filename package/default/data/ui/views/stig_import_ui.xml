@@ -1,6 +1,6 @@
 <dashboard version="1.1" script="stig_import_ui.js" hideEdit="true" hideExport="true" hideTitle="true">
-  <label>Import Checklists</label>
-  <description>SplunkUI checklist import.</description>
+  <label>Import checklists</label>
+  <description>Import host checklists (.ckl / .cklb). DISA library zips go on Import baselines.</description>
   <row>
     <panel>
       <html>

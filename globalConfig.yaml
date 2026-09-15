@@ -10,8 +10,9 @@ meta:
 pages:
     configuration:
         title: Configuration
-        description: Workspaces, STIG baselines, and ingest settings. The HEC token
-            stays on the Splunk stig_findings input and is never shown here.
+        description: Workspaces, STIG baseline catalog, and ingest settings. Do not
+            upload a DISA .zip here — use Import baselines. The HEC token stays
+            on the Splunk stig_findings input and is never shown here.
         tabs:
         -   name: workspace
             title: Workspaces
@@ -25,6 +26,8 @@ pages:
                 header:
                 -   field: name
                     label: Name
+                -   field: is_default
+                    label: Default
                 -   field: description
                     label: Description
                 -   field: access_principals
@@ -32,6 +35,8 @@ pages:
                 moreInfo:
                 -   field: name
                     label: Name
+                -   field: is_default
+                    label: Default import workspace
                 -   field: description
                     label: Description
                 -   field: access_principals
@@ -55,8 +60,14 @@ pages:
                 help: JSON array of user:<name> or role:<name>. Empty means any user
                     with STIG capabilities can read this workspace.
                 defaultValue: ''
+            -   field: is_default
+                label: Default import workspace
+                type: checkbox
+                defaultValue: false
+                help: Checklist imports with no workspace go here until you move the
+                    host. Only one workspace is default.
         -   name: baseline
-            title: Baselines
+            title: Baselines (catalog)
             formTitle: baseline
             style: page
             restHandlerModule: stig_ucc_baseline_rh
@@ -73,6 +84,8 @@ pages:
                     label: Title
                 -   field: version
                     label: Version
+                -   field: release_info
+                    label: Release
                 -   field: rule_count
                     label: Rules
                 -   field: source_type
@@ -93,45 +106,23 @@ pages:
                 -   field: content_fingerprint
                     label: Fingerprint
             entity:
+            -   field: library_zip
+                label: Import a DISA library
+                type: helpLink
+                help: This page lists and deletes catalog rows only. It cannot
+                    accept a .zip. Open Import baselines and drop the
+                    quarterly/product zip; every Manual-xccdf STIG is imported
+                    automatically (SRGs/SCAP skipped).
+                options:
+                    text: Open Import baselines
+                    link: /app/stigs_in_splunk/stig_baselines_ui
             -   field: name
                 label: Id
                 type: text
                 required: true
-                help: Unique row id (letters, numbers, underscore, hyphen). Used only
-                    in this table.
+                help: Row id for a leftover create only. Library zips belong on Import baselines.
                 options:
                     disableonEdit: true
-            -   field: format
-                label: Format
-                type: singleSelect
-                required: true
-                defaultValue: xccdf
-                help: XCCDF is the usual DISA manual benchmark. CKL/CKLB import the
-                    STIG revision from a checklist file.
-                options:
-                    disableSearch: true
-                    autoCompleteFields:
-                    -   value: xccdf
-                        label: XCCDF
-                    -   value: cklb
-                        label: CKLB
-                    -   value: ckl
-                        label: CKL
-            -   field: content
-                label: Benchmark or checklist
-                type: file
-                required: true
-                help: Upload a DISA XCCDF, CKLB, or CKL. Identical revisions are deduplicated.
-                options:
-                    maxFileSize: 20480
-                    useBase64Encoding: true
-                    supportedFileTypes:
-                    - xml
-                    - json
-                    - ckl
-                    - cklb
-                    - xccdf
-                    fileSupportMessage: XCCDF (.xml), CKLB (.cklb/.json), or CKL (.ckl)
         -   name: general
             title: Editor & ingest
             entity:

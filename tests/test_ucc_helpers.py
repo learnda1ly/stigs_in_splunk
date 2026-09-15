@@ -15,9 +15,19 @@ class TestUccHelpers(unittest.TestCase):
         body = decode_uploaded_file("  <CHECKLIST></CHECKLIST>  ")
         self.assertEqual(body, b"<CHECKLIST></CHECKLIST>")
 
-    def test_decode_base64(self):
-        raw = "PHh4PjwveHg+"
-        self.assertEqual(decode_uploaded_file(raw), b"<xx></xx>")
+    def test_decode_zip_bytes_and_base64(self):
+        import base64
+        import io
+        import zipfile
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as archive:
+            archive.writestr("U_Example_STIG_V1R1_Manual-xccdf.xml", b"<Benchmark/>")
+        raw = buf.getvalue()
+        self.assertTrue(raw.startswith(b"PK"))
+        self.assertEqual(decode_uploaded_file(raw), raw)
+        encoded = base64.b64encode(raw).decode("ascii")
+        self.assertEqual(decode_uploaded_file(encoded), raw)
 
     def test_principals_roundtrip(self):
         self.assertEqual(parse_principals('["user:alice","role:stig_admin"]'), ["user:alice", "role:stig_admin"])

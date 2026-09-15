@@ -199,6 +199,28 @@ export function viewUrl(name) {
     return localePrefix() + "/app/stigs_in_splunk/" + name;
 }
 
+export function isDefaultWorkspace(rec) {
+    const value = rec && rec.is_default;
+    return value === true || value === 1 || value === "1" || value === "true";
+}
+
+export function workspaceLabel(rec) {
+    const name = (rec && (rec.name || rec._key)) || "";
+    return isDefaultWorkspace(rec) ? name + " (default)" : name;
+}
+
+export function defaultWorkspaceId(list) {
+    const rows = Array.isArray(list) ? list : [];
+    const flagged = rows.find(isDefaultWorkspace);
+    if (flagged && flagged._key) {
+        return flagged._key;
+    }
+    const named = rows.find(
+        (row) => String(row.name || "").toLowerCase() === "default"
+    );
+    return (named && named._key) || (rows[0] && rows[0]._key) || "";
+}
+
 export function downloadBlob(filename, blob) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");

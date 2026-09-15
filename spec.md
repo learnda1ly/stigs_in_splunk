@@ -146,7 +146,7 @@ spec.md
 
 - **`globalConfig.yaml`** defines `meta` and **`pages.configuration`** (no `pages.inputs`). This is a REST + KV app with a UCC Configuration UI, not a modular-input TA.
 - UCC **generates** `default/app.conf`, `app.manifest` version fields, `VERSION`, the **Configuration** view (`configuration.xml`), REST handlers for configuration tabs, and copies `package/**` into `output/<app>/`.
-- Hand-written `restmap.conf` / `web.conf` in `package/default/` stay for persist-conn `/stig_*` APIs. UCC **merges** additional restmap/web stanzas for Configuration endpoints.
+- Hand-written `restmap.conf` / `web.conf` in `package/default/` stay for persist-conn `/stig_*` APIs. UCC **merges** additional restmap/web stanzas for Configuration endpoints (`[admin:stigs_in_splunk]` / `admin_external`). Never replace the built `restmap.conf` with the persist-only package file; `additional_packaging.py` restores the UCC stanzas if they are missing. Without them the Configuration page 404s.
 - **`package/lib/requirements.txt`** must list `splunktaucclib>=6.6.0,<8` and `solnlib>=5.5.0,<8`. UCC pip-installs them into `output/<app>/lib`. Without `splunktaucclib`, Configuration REST handlers crash and Splunk Web shows `Unable to xml-parse the following data: %s`. Do not use solnlib 8.x (grpcio/OpenTelemetry wheels do not match Splunk's Python).
 - **`additional_packaging.py`:** append `[triggers] reload.collections = simple` (and `reload.nav`); **keep** UCC `configuration.xml`; delete unused `inputs.xml` / `dashboard.xml` / `_redirect.xml`; restore `package/default/data/ui/nav/default.xml` so Editor / Import / Export remain the default views and **Configuration** is the UCC page.
 
@@ -156,8 +156,8 @@ The Splunk Web **Configuration** view is the UCC-generated page (`/app/stigs_in_
 
 | Tab | UCC type | Storage | Handler |
 |-----|----------|---------|---------|
-| **Workspaces** | table + entity (`name`, `description`, `access_principals`) | KV `stig_collections` | `stig_ucc_workspace_rh.WorkspaceRestHandler` (lists **all** KV workspaces; do not persist them in conf). Persist `/stig_collections` still filters by `access_principals` for the editor. |
-| **Baselines** | table + create form (unique id, format, file upload) | KV `stig_baselines` + `stig_baseline_rules` | `stig_ucc_baseline_rh.BaselineRestHandler`; create runs the same import/dedup path as `POST /stig_baselines/import`. Baselines are immutable (delete + re-import). |
+| **Workspaces** | table + entity (`name`, `description`, `access_principals`, `is_default`) | KV `stig_collections` | `stig_ucc_workspace_rh.WorkspaceRestHandler` (lists **all** KV workspaces). A **Default** workspace is created if missing. Checklist imports with no workspace go there until the host is moved. Persist `/stig_collections` still filters by `access_principals` for the editor. |
+| **Baselines** | table + delete (no file upload) | KV `stig_baselines` + `stig_baseline_rules` | `stig_ucc_baseline_rh.BaselineRestHandler`. **Do not** put a UCC file widget here — EAI XML cannot carry a library zip. Drop the DISA zip on **Import**; persist `/stig_baselines/jobs` chunks it and imports every `*Manual-xccdf.xml`. SRGs/SCAP skipped. Dedup by fingerprint; delete from this table. |
 | **Editor & ingest** | settings form (no table) | `stigs_in_splunk_settings.conf` stanza `[general]` | UCC-generated MultipleModel handler |
 
 **HEC token:** never an entity on Configuration. Token is read server-side from the `stig_findings` HTTP Event Collector input (`services/hec.py`).
@@ -166,7 +166,7 @@ The Splunk Web **Configuration** view is the UCC-generated page (`/app/stigs_in_
 
 **Workspace names** are unique (case-insensitive). The UCC table row id is the workspace `name`. Baseline table row id is `ucc_name` (set on import; falls back to `_key` for legacy rows).
 
-File upload max size for baselines must be large enough for DISA XCCDF (configure `maxFileSize` in KB, e.g. 20480).
+Do not upload a DISA library zip through the UCC file widget. Splunk wraps that file in EAI XML **before** the Python handler runs, so a 360MB–1GB zip fails with `Unable to xml-parse` (row id such as `July_2026`). Configuration Baselines is list/delete only. The Import page chunk-uploads the zip to persist `/stig_baselines/jobs` (4MB JSON chunks, staged under `$SPLUNK_HOME/var/run/stigs_in_splunk/baseline_jobs/`, max 2GB) and **imports every Manual-xccdf automatically**. Never send the zip through an EAI/`admin_external` handler.
 
 ### 4.2 Build commands
 
@@ -324,6 +324,7 @@ Foreign keys are string `_key` values unless noted. Timestamps are **epoch secon
 | `name` | string | Required on create |
 | `description` | string | Optional |
 | `access_principals` | string | JSON array string, e.g. `["user:alice","role:stig_admin"]`. Empty/missing ⇒ readable by all authenticated users with caps. |
+| `is_default` | bool | Exactly one workspace is the import default. Checklist ingest with no `stig_collection_id` / `collectionId` uses it. |
 | `created_at`, `updated_at` | time | |
 | `created_by`, `updated_by` | string | Splunk username |
 
@@ -434,16 +435,18 @@ Requires **`stig_admin`** (or admin role) for: `stig_collection`, `stig_host`, `
 
 ### 9.1 Import endpoint
 
-`POST /stig_baselines/import` (persist REST) **or** the UCC Configuration **Baselines** tab (file upload). Both call `services.baselines.import_baseline`.
+`POST /stig_baselines/import` (persist REST) **or** the UCC Configuration **Baselines** tab (file upload). Both call `services.baselines.import_baselines_payload`.
 
 Query parameters (must support Splunk persist **query as list of pairs** — normalize to dict in handler):
 
 | Param | Default | Meaning |
 |-------|---------|---------|
-| `format` | `xccdf` | `xccdf` \| `cklb` \| `ckl` |
+| `format` | `xccdf` | `xccdf` \| `cklb` \| `ckl` \| `zip` (`zip` or a body starting `PK` walks nested DISA zips) |
 | `source_uri` | `""` | Stored on baseline; not used for dedup |
 
-Body: raw document bytes (XML or JSON). Content-Type: `application/xml` or `application/json`.
+Body: raw document bytes (XML, JSON, or zip). Zip-of-zips: import every `*Manual-xccdf.xml` that is not an SRG or SCAP/OCIL file. CKL/CKLB inside the zip are ignored (those are checklists, not baselines).
+
+A zip import returns `{imported, created, deduplicated, baselines:[...]}`. A single-file import still returns the baseline record (plus `deduplicated` when it was a no-op).
 
 ### 9.2 Deduplication policy
 
@@ -531,13 +534,15 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 
 | Method | Path | Body | Response |
 |--------|------|------|----------|
-| GET | `/stig_collections` | — | Array of workspaces user can read |
-| POST | `/stig_collections` | JSON `{name, description?, access_principals?}` | **201** created record |
+| GET | `/stig_collections` | — | Array of workspaces user can read. Ensures a Default workspace exists. |
+| POST | `/stig_collections` | JSON `{name, description?, access_principals?, is_default?}` | **201** created record |
 | GET | `/stig_collections/{id}` | — | Record or **404** |
-| PATCH/PUT | `/stig_collections/{id}` | Partial JSON | Updated record |
-| DELETE | `/stig_collections/{id}` | — | `{deleted: id}`; requires **stig_admin** |
+| PATCH/PUT | `/stig_collections/{id}` | Partial JSON | Updated record. Setting `is_default` true unsets the previous default. |
+| DELETE | `/stig_collections/{id}` | — | `{deleted: id}`; requires **stig_admin**. Cannot delete the default workspace. |
 
-Default `access_principals` on create: `["user:<creator>"]` if omitted.
+Default `access_principals` on create: `["user:<creator>"]` if omitted. The Default holding workspace uses `[]` (any user with STIG caps).
+
+`POST /stig_imports` may omit `stig_collection_id`; the Default workspace is used. Move a host with `POST /stig_hosts/{id}` `{stig_collection_id}` (checklists follow the host).
 
 ### 11.2 `stig_hosts`
 
@@ -554,15 +559,16 @@ DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 | Method | Path | Notes |
 |--------|------|--------|
 | GET | `/stig_baselines` | List all baseline headers |
-| POST | `/stig_baselines/import` | Query `format`, `source_uri`; raw body |
+| POST | `/stig_baselines/import` | Query `format` (`xccdf` \| `cklb` \| `ckl` \| `zip`), `source_uri`; raw body. Zip walks nested archives and imports only `*Manual-xccdf.xml` STIG baselines. |
 | GET | `/stig_baselines/{id}/rules` | All rules for baseline |
+| DELETE | `/stig_baselines/{id}` | Remove baseline + rules (UCC Configuration table or persist REST). |
 
-No PATCH/DELETE in PoC.
+UCC Configuration **Baselines** tab is the management UI: list, import (including zip-of-zips), delete.
 
 Import responses:
 
-- **201** new baseline document (KV fields).
-- **200** existing baseline + `"deduplicated": true`.
+- **201** new baseline document (KV fields), or zip batch `{imported, created, deduplicated, baselines}`.
+- **200** existing baseline + `"deduplicated": true` (single-file no-op).
 
 ### 11.4 `stig_checklists`
 
