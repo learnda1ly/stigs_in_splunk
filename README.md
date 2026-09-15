@@ -15,6 +15,8 @@ python3 -m venv .venv-ucc
 .venv-ucc/bin/pip install 'splunk-add-on-ucc-framework>=5.68'
 ```
 
+Install from PyPI, not GitHub. The git checkout does not ship `entry_page.js`, so the Configuration page is a blank white screen.
+
 Optional (integration tests / scripts only — not shipped in the built app):
 
 ```bash
@@ -45,10 +47,11 @@ sudo systemctl restart Splunkd
 
 | Path | Role |
 |------|------|
-| `globalConfig.yaml` | UCC meta (name, version, visibility); no Configuration/Inputs UI pages |
+| `globalConfig.yaml` | UCC meta plus Configuration tabs (workspaces, baselines, editor/ingest) |
 | `package/` | App source copied into the build (`bin/`, `default/*.conf`, `metadata/`, `app.manifest`) |
-| `additional_packaging.py` | Post-build: `reload.collections` trigger, prune unused UCC UI stubs |
-| `output/stigs_in_splunk/` | Generated `app.conf`, built artifact for Splunk |
+| `package/lib/requirements.txt` | `splunktaucclib` for UCC Configuration REST (pip-installed into `output/.../lib`) |
+| `additional_packaging.py` | Post-build: KV reload trigger, keep UCC Configuration view, restore custom nav |
+| `output/stigs_in_splunk/` | Generated `app.conf`, Configuration REST handlers, built artifact |
 
 Custom REST uses a **persist** handler (`package/bin/stig_rest_handler.py`) and hand-written `restmap.conf` / `web.conf` (UCC does not generate these for conf-only apps).
 
@@ -59,7 +62,7 @@ Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
 - **STIG Editor** — workspace + host filters, finding list, status, details, comments
 - **Import Checklists** — drag-and-drop `.ckl` / `.cklb`; findings go to HEC (`stig:finding`) and KV
 - **Export Checklists** — CKL / CKLB download, including bulk zip
-- **Configuration** — vim shortcuts, HEC index/URL, reconcile window. The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
+- **Configuration** — UCC-generated page for workspaces, baseline import, and editor/HEC settings. The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
 
 Classic Simple XML + jQuery views remain under the **Classic** nav menu.
 
@@ -71,7 +74,7 @@ Rebuild UI bundles after changing `ui/src`:
 
 `./scripts/build_ucc.sh` runs that step unless `SKIP_UI_BUILD=1`.
 
-After install, open the app → **STIG Editor**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**. Vim keys live in the classic editor (`?` for help).
+After install, open the app → **STIG Editor**. Manage workspaces and STIG baselines under **Configuration**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**.
 
 ## Splunk roles
 

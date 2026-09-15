@@ -6,3 +6,173 @@ meta:
     schemaVersion: 0.0.9
     checkForUpdates: false
     isVisible: true
+    hideUCCVersion: true
+pages:
+    configuration:
+        title: Configuration
+        description: Workspaces, STIG baselines, and ingest settings. The HEC token
+            stays on the Splunk stig_findings input and is never shown here.
+        tabs:
+        -   name: workspace
+            title: Workspaces
+            formTitle: workspace
+            restHandlerModule: stig_ucc_workspace_rh
+            restHandlerClass: WorkspaceRestHandler
+            table:
+                actions:
+                - edit
+                - delete
+                header:
+                -   field: name
+                    label: Name
+                -   field: description
+                    label: Description
+                -   field: access_principals
+                    label: Access principals
+                moreInfo:
+                -   field: name
+                    label: Name
+                -   field: description
+                    label: Description
+                -   field: access_principals
+                    label: Access principals
+            entity:
+            -   field: name
+                label: Name
+                type: text
+                required: true
+                help: Unique workspace name. Hosts and checklists belong to one workspace.
+                options:
+                    disableonEdit: true
+            -   field: description
+                label: Description
+                type: textarea
+                required: false
+            -   field: access_principals
+                label: Access principals
+                type: textarea
+                required: false
+                help: JSON array of user:<name> or role:<name>. Empty means any user
+                    with STIG capabilities can read this workspace.
+                defaultValue: ''
+        -   name: baseline
+            title: Baselines
+            formTitle: baseline
+            style: page
+            restHandlerModule: stig_ucc_baseline_rh
+            restHandlerClass: BaselineRestHandler
+            table:
+                actions:
+                - delete
+                header:
+                -   field: name
+                    label: Id
+                -   field: stig_id
+                    label: STIG id
+                -   field: title
+                    label: Title
+                -   field: version
+                    label: Version
+                -   field: rule_count
+                    label: Rules
+                -   field: source_type
+                    label: Source
+                moreInfo:
+                -   field: stig_id
+                    label: STIG id
+                -   field: title
+                    label: Title
+                -   field: version
+                    label: Version
+                -   field: release_info
+                    label: Release
+                -   field: rule_count
+                    label: Rules
+                -   field: source_uri
+                    label: Source
+                -   field: content_fingerprint
+                    label: Fingerprint
+            entity:
+            -   field: name
+                label: Id
+                type: text
+                required: true
+                help: Unique row id (letters, numbers, underscore, hyphen). Used only
+                    in this table.
+                options:
+                    disableonEdit: true
+            -   field: format
+                label: Format
+                type: singleSelect
+                required: true
+                defaultValue: xccdf
+                help: XCCDF is the usual DISA manual benchmark. CKL/CKLB import the
+                    STIG revision from a checklist file.
+                options:
+                    disableSearch: true
+                    autoCompleteFields:
+                    -   value: xccdf
+                        label: XCCDF
+                    -   value: cklb
+                        label: CKLB
+                    -   value: ckl
+                        label: CKL
+            -   field: content
+                label: Benchmark or checklist
+                type: file
+                required: true
+                help: Upload a DISA XCCDF, CKLB, or CKL. Identical revisions are deduplicated.
+                options:
+                    maxFileSize: 20480
+                    useBase64Encoding: true
+                    supportedFileTypes:
+                    - xml
+                    - json
+                    - ckl
+                    - cklb
+                    - xccdf
+                    fileSupportMessage: XCCDF (.xml), CKLB (.cklb/.json), or CKL (.ckl)
+        -   name: general
+            title: Editor & ingest
+            entity:
+            -   field: vim_mode
+                label: Enable vim-style keyboard shortcuts
+                type: checkbox
+                defaultValue: false
+                help: "Three layers in the editor \u2014 INSERT, field NORMAL, and\
+                    \ NAV. The editor badge can also toggle this per browser."
+            -   field: ingest_index
+                label: Index
+                type: text
+                required: true
+                defaultValue: stig
+                help: Index for stig:finding events posted to HEC.
+            -   field: ingest_sourcetype
+                label: Sourcetype
+                type: text
+                required: true
+                defaultValue: stig:finding
+            -   field: hec_url
+                label: HEC URL
+                type: text
+                required: true
+                defaultValue: https://localhost:8088/services/collector/event
+                help: Server-side HEC endpoint. The token is read from the stig_findings
+                    HTTP Event Collector input and is never stored or returned to
+                    the browser.
+            -   field: reconcile_earliest
+                label: Reconcile window
+                type: text
+                required: true
+                defaultValue: -15m
+                help: Earliest time for the scheduled index-to-KV reconcile search.
+            groups:
+            -   label: Editor
+                fields:
+                - vim_mode
+            -   label: Finding ingest (HEC)
+                fields:
+                - ingest_index
+                - ingest_sourcetype
+                - hec_url
+                - reconcile_earliest

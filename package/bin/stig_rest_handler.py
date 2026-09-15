@@ -256,6 +256,17 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _json_response(baselines_svc.list_baselines(service))
             return _error("method not allowed", status=405)
 
+        key = parts[0]
+        if method == "GET":
+            rec = baselines_svc.get_baseline(service, key)
+            if not rec:
+                return _error("not found", status=404)
+            return _json_response(rec)
+        if method == "DELETE":
+            if not access.user_has_stig_admin(session):
+                return _error("stig_admin required", status=403)
+            baselines_svc.delete_baseline(service, key, username)
+            return _json_response({"deleted": key})
         return _error("not found", status=404)
 
     def _checklists(

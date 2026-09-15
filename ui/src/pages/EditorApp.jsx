@@ -795,7 +795,7 @@ export default function EditorApp() {
                                 : "NAV"}
                     </VimBadge>
                     <Link to={viewUrl("stig_import_ui")}>Import</Link>
-                    <Link to={viewUrl("stig_settings_ui")}>Settings</Link>
+                    <Link to={viewUrl("configuration")}>Configuration</Link>
                     <Link to={viewUrl("stig_editor")}>Classic</Link>
                 </HeaderMeta>
             </Header>

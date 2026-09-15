@@ -11,6 +11,7 @@ TA_VERSION="${TA_VERSION:-0.1.0}"
 if [[ ! -x "$UCC_GEN" ]]; then
   echo "ucc-gen not found. Create venv and install:" >&2
   echo "  python3 -m venv .venv-ucc && .venv-ucc/bin/pip install 'splunk-add-on-ucc-framework>=5.68'" >&2
+  echo "Install from PyPI (not GitHub). The git checkout does not ship the prebuilt UCC UI." >&2
   exit 1
 fi
 
@@ -31,6 +32,28 @@ fi
   "$@"
 
 echo "Built app: $OUTPUT/stigs_in_splunk"
+
+ENTRY_JS="$OUTPUT/stigs_in_splunk/appserver/static/js/build/entry_page.js"
+GLOBAL_JSON="$OUTPUT/stigs_in_splunk/appserver/static/js/build/globalConfig.json"
+if [[ ! -f "$ENTRY_JS" ]]; then
+  echo "ERROR: missing $ENTRY_JS" >&2
+  echo "Install UCC from PyPI so the prebuilt configuration UI is included:" >&2
+  echo "  .venv-ucc/bin/pip install --force-reinstall 'splunk-add-on-ucc-framework>=5.68'" >&2
+  exit 1
+fi
+if [[ ! -f "$GLOBAL_JSON" ]]; then
+  echo "ERROR: missing $GLOBAL_JSON (UCC Configuration page will be blank)" >&2
+  exit 1
+fi
+python3 -c "import json,sys; json.load(open(sys.argv[1])); print('globalConfig.json ok')" "$GLOBAL_JSON"
+
+UCC_LIB="$OUTPUT/stigs_in_splunk/lib"
+if [[ ! -d "$UCC_LIB/splunktaucclib" ]]; then
+  echo "ERROR: splunktaucclib missing from $UCC_LIB" >&2
+  echo "Add splunktaucclib>=6.6.0,<8 and solnlib>=5.5.0,<8 to package/lib/requirements.txt and rebuild." >&2
+  exit 1
+fi
+PYTHONPATH="$UCC_LIB" "$UCC_PYTHON" -c "from splunktaucclib.rest_handler.admin_external import AdminExternalHandler; print('splunktaucclib ok')"
 
 APP_MOUNT="${SPLUNK_HOME:-/opt/splunk}/etc/apps/stigs_in_splunk"
 if mountpoint -q "$APP_MOUNT" 2>/dev/null; then

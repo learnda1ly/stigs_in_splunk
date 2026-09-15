@@ -21,6 +21,11 @@
             Finding details and comments still require Save / <kbd>Ctrl</kbd>+<kbd>s</kbd> (or <kbd>:w</kbd> when vim is on).
             You can also click the <strong>VIM OFF</strong> / <strong>NORMAL</strong> badge in the editor toolbar.
           </p>
+          <p class="stig-settings-help">
+            Workspaces, STIG baselines, and HEC ingest settings are on the
+            UCC <a href="configuration">Configuration</a> page. This classic
+            view only toggles vim shortcuts for the classic editor.
+          </p>
           <p>
             <button type="button" class="stig-btn" id="stig-settings-save">Save settings</button>
             <a href="stig_editor">Back to editor</a>
