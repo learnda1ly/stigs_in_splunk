@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from os.path import dirname, join
+
+import yaml
 
 _LAST_OUTPUT_PATH = "output"
 
@@ -15,7 +18,6 @@ def cleanup_output_files(output_path, ta_name):
     _LAST_OUTPUT_PATH = output_path
     app_root = join(output_path, ta_name)
     to_remove = [
-        join(app_root, "default", "data", "ui", "views", "configuration.xml"),
         join(app_root, "default", "data", "ui", "views", "inputs.xml"),
         join(app_root, "default", "data", "ui", "views", "dashboard.xml"),
         join(app_root, "default", "data", "ui", "views", "_redirect.xml"),
@@ -26,6 +28,7 @@ def cleanup_output_files(output_path, ta_name):
         except FileNotFoundError:
             pass
     _restore_nav_and_views(app_root)
+    _write_ucc_global_config_json(app_root)
 
 
 def _restore_nav_and_views(app_root: str) -> None:
@@ -45,12 +48,32 @@ def _restore_nav_and_views(app_root: str) -> None:
                 shutil.copy2(join(src_views, name), join(dst_views, name))
 
 
+def _write_ucc_global_config_json(app_root: str) -> None:
+    """UCC UI fetches js/build/globalConfig.json; ucc-gen dumps YAML with Python tags."""
+    repo = dirname(os.path.abspath(__file__))
+    src = join(repo, "globalConfig.yaml")
+    if not os.path.isfile(src):
+        return
+    with open(src, encoding="utf-8") as handle:
+        data = yaml.safe_load(handle)
+    build_dir = join(app_root, "appserver", "static", "js", "build")
+    os.makedirs(build_dir, exist_ok=True)
+    dst_json = join(build_dir, "globalConfig.json")
+    with open(dst_json, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=4, ensure_ascii=False)
+        handle.write("\n")
+    dst_yaml = join(build_dir, "globalConfig.yaml")
+    with open(dst_yaml, "w", encoding="utf-8") as handle:
+        yaml.safe_dump(data, handle, sort_keys=False)
+
+
 def additional_packaging(ta_name=None):
     """Append KV reload triggers to generated app.conf; restore custom nav/views."""
     if not ta_name:
         return
     app_root = join(_LAST_OUTPUT_PATH, ta_name)
     _restore_nav_and_views(app_root)
+    _write_ucc_global_config_json(app_root)
     app_conf = join(app_root, "default", "app.conf")
     if not os.path.isfile(app_conf):
         return

@@ -23,6 +23,17 @@ def list_collections(service, session: Dict[str, Any]) -> List[Dict[str, Any]]:
     return access.filter_collections_for_user(records, session)
 
 
+def find_collection_by_name(service, name: str) -> Optional[Dict[str, Any]]:
+    want = (name or "").strip().casefold()
+    if not want:
+        return None
+    coll = kv_client.get_collection(service, KV_STIG_COLLECTIONS)
+    for rec in kv_client.query_all(coll):
+        if (rec.get("name") or "").strip().casefold() == want:
+            return rec
+    return None
+
+
 def get_collection(service, key: str) -> Optional[Dict[str, Any]]:
     coll = kv_client.get_collection(service, KV_STIG_COLLECTIONS)
     return kv_client.get_by_key(coll, key)
@@ -31,6 +42,9 @@ def get_collection(service, key: str) -> Optional[Dict[str, Any]]:
 def create_collection(
     service, body: Dict[str, Any], username: str
 ) -> Dict[str, Any]:
+    name = (body.get("name") or "Untitled").strip() or "Untitled"
+    if find_collection_by_name(service, name):
+        raise ValueError("workspace name already exists")
     coll = kv_client.get_collection(service, KV_STIG_COLLECTIONS)
     key = new_id()
     ts = now_epoch()
@@ -42,7 +56,7 @@ def create_collection(
     record = kv_record(
         {
             "_key": key,
-            "name": body.get("name") or "Untitled",
+            "name": name,
             "description": body.get("description") or "",
             "access_principals": principals_str,
             "created_at": ts,
@@ -65,7 +79,11 @@ def update_collection(
         raise KeyError(key)
     patch = dict(existing)
     if "name" in body:
-        patch["name"] = body["name"]
+        new_name = (body.get("name") or "").strip()
+        other = find_collection_by_name(service, new_name)
+        if other and other.get("_key") != key:
+            raise ValueError("workspace name already exists")
+        patch["name"] = new_name or existing.get("name")
     if "description" in body:
         patch["description"] = body["description"]
     if "access_principals" in body:

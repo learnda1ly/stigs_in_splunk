@@ -22,13 +22,15 @@ This document is the **authoritative requirements spec** for the Splunk app **`s
 | ACL | Workspace-scoped access via **`stig_collection.access_principals`** plus Splunk capabilities **`stig_read`**, **`stig_write`**, **`stig_admin`**. |
 | Audit | Structured app logging for mutations (username + action + entity id). |
 | Packaging | Reproducible builds with [Splunk UCC](https://splunk.github.io/addonfactory-ucc-generator/) (`ucc-gen build` / `package`). |
+| Configuration UI | UCC-generated **Configuration** page: workspaces, baseline import/delete, editor/ingest settings. |
+| Editor UX | SplunkUI React pages for checklist **edit**, **import** (CKL/CKLB), and **export**. |
 | Dev UX | Bind-mount **built** app; vendored **Splunk Python SDK** at repo `lib/` for external tests/scripts only. |
 | Tests | Offline unit tests (parsers, fingerprint); optional Splunk integration tests (REST + KV). |
 | Search | KV lookups in `package/default/transforms.conf` so **`inputlookup`** works in Splunk Search (not raw KV REST in SPL). |
 
 ### 1.2 Out of scope (Phase 2 — do not build in PoC)
 
-- [SplunkUI](https://splunkui.splunk.com/) React dashboards.
+- Custom SplunkUI **settings** page (use the UCC Configuration page).
 - Search macros, CIM Vulnerability datamodel, eventtypes for ingested STIG events.
 - Full audit **dashboard** (logs only in PoC).
 - XCCDF **results** import mapping to review status (pass/fail → open/not_a_finding).
@@ -106,8 +108,8 @@ Client (curl / SDK / Splunk Web)
 **Source of truth** is `package/` plus repo-root UCC files. **Installable artifact** is `output/stigs_in_splunk/` (or `output/stigs_in_splunk-<version>.tar.gz`).
 
 ```text
-globalConfig.yaml          # UCC meta only (conf-only app: no Configuration/Inputs UI)
-additional_packaging.py    # post-build hooks (KV reload trigger, UI stub cleanup)
+globalConfig.yaml          # UCC meta + pages.configuration (workspaces, baselines, settings)
+additional_packaging.py    # post-build hooks (KV reload trigger, prune unused UCC stubs)
 package/
   app.manifest
   README.txt
@@ -121,7 +123,7 @@ package/
     web.conf
     transforms.conf
   bin/                     # persist REST + business logic (same module tree as before)
-  lib/                     # optional requirements.txt for ucc-gen pip (usually empty)
+  lib/                     # requirements.txt: splunktaucclib (>=6.6.0,<8) + solnlib (<8) for UCC Configuration REST
 output/                    # gitignored; ucc-gen build output
 .venv-ucc/                 # local ucc-gen venv (gitignored)
 lib/                       # repo-root vendored splunk-sdk for tests only (not shipped)
@@ -140,12 +142,31 @@ spec.md
 
 **App identity:** `package.id = stigs_in_splunk`, label “STIG in Splunk”, version from `globalConfig.yaml` / `--ta-version` (default `0.1.0`).
 
-### 4.1 UCC conf-only pattern
+### 4.1 UCC packaging pattern
 
-- **`globalConfig.yaml`** defines `meta` only (`isVisible: true`, `checkForUpdates: false`). No `pages.configuration` or `pages.inputs` — this is a **REST + KV app**, not a modular-input TA.
-- UCC **generates** `default/app.conf`, `app.manifest` version fields, `VERSION`, and copies `package/**` into `output/<app>/`.
-- UCC **does not** generate `restmap.conf` / `web.conf` without UI pages; those stay in `package/default/` and are copied verbatim.
-- **`additional_packaging.py`:** append `[triggers] reload.collections = simple` to generated `app.conf`; delete unused UCC UI XML stubs if present.
+- **`globalConfig.yaml`** defines `meta` and **`pages.configuration`** (no `pages.inputs`). This is a REST + KV app with a UCC Configuration UI, not a modular-input TA.
+- UCC **generates** `default/app.conf`, `app.manifest` version fields, `VERSION`, the **Configuration** view (`configuration.xml`), REST handlers for configuration tabs, and copies `package/**` into `output/<app>/`.
+- Hand-written `restmap.conf` / `web.conf` in `package/default/` stay for persist-conn `/stig_*` APIs. UCC **merges** additional restmap/web stanzas for Configuration endpoints.
+- **`package/lib/requirements.txt`** must list `splunktaucclib>=6.6.0,<8` and `solnlib>=5.5.0,<8`. UCC pip-installs them into `output/<app>/lib`. Without `splunktaucclib`, Configuration REST handlers crash and Splunk Web shows `Unable to xml-parse the following data: %s`. Do not use solnlib 8.x (grpcio/OpenTelemetry wheels do not match Splunk's Python).
+- **`additional_packaging.py`:** append `[triggers] reload.collections = simple` (and `reload.nav`); **keep** UCC `configuration.xml`; delete unused `inputs.xml` / `dashboard.xml` / `_redirect.xml`; restore `package/default/data/ui/nav/default.xml` so Editor / Import / Export remain the default views and **Configuration** is the UCC page.
+
+### 4.3 Configuration page (required)
+
+The Splunk Web **Configuration** view is the UCC-generated page (`/app/stigs_in_splunk/configuration`). Do **not** ship a parallel SplunkUI settings dashboard.
+
+| Tab | UCC type | Storage | Handler |
+|-----|----------|---------|---------|
+| **Workspaces** | table + entity (`name`, `description`, `access_principals`) | KV `stig_collections` | `stig_ucc_workspace_rh.WorkspaceRestHandler` (lists **all** KV workspaces; do not persist them in conf). Persist `/stig_collections` still filters by `access_principals` for the editor. |
+| **Baselines** | table + create form (unique id, format, file upload) | KV `stig_baselines` + `stig_baseline_rules` | `stig_ucc_baseline_rh.BaselineRestHandler`; create runs the same import/dedup path as `POST /stig_baselines/import`. Baselines are immutable (delete + re-import). |
+| **Editor & ingest** | settings form (no table) | `stigs_in_splunk_settings.conf` stanza `[general]` | UCC-generated MultipleModel handler |
+
+**HEC token:** never an entity on Configuration. Token is read server-side from the `stig_findings` HTTP Event Collector input (`services/hec.py`).
+
+**Editor vim toggle:** the React editor may still `GET`/`POST` `/stig_settings` as a JSON adapter over `[general]`. That adapter must not accept or return `hec_token`.
+
+**Workspace names** are unique (case-insensitive). The UCC table row id is the workspace `name`. Baseline table row id is `ucc_name` (set on import; falls back to `_key` for legacy rows).
+
+File upload max size for baselines must be large enough for DISA XCCDF (configure `maxFileSize` in KB, e.g. 20480).
 
 ### 4.2 Build commands
 
@@ -330,6 +351,7 @@ Foreign keys are string `_key` values unless noted. Timestamps are **epoch secon
 | `rule_count` | number | Count at import |
 | `source_type` | string | `xccdf` \| `cklb` \| `ckl` |
 | `source_uri` | string | Filename/URL hint from client |
+| `ucc_name` | string | Unique id for the UCC Configuration table row |
 | `content_fingerprint` | string | SHA-256 hex; dedup key (§9) |
 | `imported_at` | time | |
 | `imported_by` | string | |
@@ -412,7 +434,7 @@ Requires **`stig_admin`** (or admin role) for: `stig_collection`, `stig_host`, `
 
 ### 9.1 Import endpoint
 
-`POST /stig_baselines/import`
+`POST /stig_baselines/import` (persist REST) **or** the UCC Configuration **Baselines** tab (file upload). Both call `services.baselines.import_baseline`.
 
 Query parameters (must support Splunk persist **query as list of pairs** — normalize to dict in handler):
 
@@ -732,12 +754,12 @@ curl $AUTH "$BASE/stig_checklists/CHECKLIST_ID/export?format=cklb"
 6. ACL: user not in `access_principals` cannot read workspace hosts/checklists/reviews.
 7. `| inputlookup stig_reviews` returns rows in Search with app context.
 8. Offline unit tests pass; integration tests pass when Splunk available.
+9. App nav **Configuration** opens the UCC page. Workspaces can be created/edited/deleted there (KV `stig_collections`). Baselines can be imported from XCCDF/CKL/CKLB and deleted there. Editor & ingest settings save to `stigs_in_splunk_settings.conf` with **no HEC token field**.
 
 ---
 
 ## 19. Phase 2 backlog (preserve intent)
 
-- UCC packaging, SplunkUI management app.
 - Ingested findings → CIM / macros / dashboards.
 - XCCDF results import; cross-revision review merge using `check_content_hash`.
 - Workspace-scoped baselines or sharing model.

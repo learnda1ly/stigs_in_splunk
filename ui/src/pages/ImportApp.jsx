@@ -303,16 +303,17 @@ export default function ImportApp() {
                     </ProgressTrack>
                     <Link to={viewUrl("stig_editor_ui")}>Editor</Link>
                     <Link to={viewUrl("stig_export_ui")}>Export</Link>
+                    <Link to={viewUrl("configuration")}>Configuration</Link>
                 </HeaderMeta>
             </Header>
             <PagePad>
                 <p style={{ maxWidth: 760, marginTop: 0 }}>
                     Drop STIG Viewer <code>.ckl</code> or <code>.cklb</code> files. Each
-                    finding is indexed through HEC as <code>stig:finding</code> (Watcher
-                    review plus asset, STIG, and rule body so a checklist can be
-                    exported). KV current state is updated immediately and kept in sync
-                    by the scheduled reconcile search. Incoming results overwrite
-                    matching checks unless the finding is locked in the editor.
+                    finding is indexed through HEC as <code>stig:finding</code>. Create
+                    workspaces and import XCCDF baselines under{" "}
+                    <Link to={viewUrl("configuration")}>Configuration</Link>
+                    . Incoming results overwrite matching checks unless the finding is
+                    locked in the editor.
                 </p>
                 {banner ? (
                     <Message

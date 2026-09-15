@@ -1282,7 +1282,7 @@ require([
             '<div class="stig-status-filters" id="stig-validity-filters"></div>' +
             '<button type="button" class="stig-btn stig-btn-secondary" id="stig-validate">Validate</button>' +
             '<button type="button" class="stig-vim-mode is-off" id="stig-vim-mode" title="Toggle vim-style keys">VIM OFF</button>' +
-            '<a class="stig-toolbar-meta" href="stig_settings">Configuration</a>' +
+            '<a class="stig-toolbar-meta" href="configuration">Configuration</a>' +
             '<span class="stig-toolbar-meta" id="stig-meta"></span>' +
             "</div>" +
             '<div class="stig-main">' +

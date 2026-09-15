@@ -22,6 +22,43 @@ def list_baselines(service) -> List[Dict[str, Any]]:
     return kv_client.query_all(coll)
 
 
+def ucc_name_for(rec: Dict[str, Any]) -> str:
+    return (rec.get("ucc_name") or rec.get("_key") or "").strip()
+
+
+def find_baseline_by_ucc_name(service, name: str) -> Optional[Dict[str, Any]]:
+    want = (name or "").strip()
+    if not want:
+        return None
+    for rec in list_baselines(service):
+        if ucc_name_for(rec) == want or rec.get("_key") == want:
+            return rec
+    return None
+
+
+def set_ucc_name(service, key: str, ucc_name: str) -> Optional[Dict[str, Any]]:
+    rec = get_baseline(service, key)
+    if not rec:
+        return None
+    patch = dict(rec)
+    patch["ucc_name"] = (ucc_name or "").strip()
+    coll = kv_client.get_collection(service, KV_STIG_BASELINES)
+    return kv_client.update_record(coll, key, kv_record(patch))
+
+
+def delete_baseline(service, key: str, username: str) -> None:
+    rec = get_baseline(service, key)
+    if not rec:
+        raise KeyError(key)
+    rules_coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
+    for rule in list_baseline_rules(service, key):
+        if rule.get("_key"):
+            kv_client.delete_record(rules_coll, rule["_key"])
+    coll = kv_client.get_collection(service, KV_STIG_BASELINES)
+    kv_client.delete_record(coll, key)
+    audit.log_event("delete", "stig_baseline", key, username)
+
+
 def get_baseline(service, key: str) -> Optional[Dict[str, Any]]:
     coll = kv_client.get_collection(service, KV_STIG_BASELINES)
     return kv_client.get_by_key(coll, key)
@@ -85,6 +122,7 @@ def import_parsed_baseline(
     source_uri: str = "",
     format_name: str = "",
     match_stig_id: bool = False,
+    ucc_name: str = "",
 ) -> Tuple[Dict[str, Any], bool]:
     if not rules:
         raise ValueError("no rules parsed from import")
@@ -103,6 +141,9 @@ def import_parsed_baseline(
                 "content_fingerprint": content_fingerprint,
             },
         )
+        if ucc_name:
+            updated = set_ucc_name(service, existing["_key"], ucc_name)
+            return updated or existing, False
         return existing, False
     if match_stig_id:
         existing = find_baseline_by_stig(
@@ -149,6 +190,7 @@ def import_parsed_baseline(
             "source_type": meta.get("source_type"),
             "source_uri": source_uri or meta.get("source_uri"),
             "content_fingerprint": content_fingerprint,
+            "ucc_name": (ucc_name or "").strip(),
             "imported_at": ts,
             "imported_by": username,
         }
@@ -256,6 +298,7 @@ def import_baseline(
     format_name: str,
     username: str,
     source_uri: str = "",
+    ucc_name: str = "",
 ) -> Tuple[Dict[str, Any], bool]:
     meta, rules = _parse_import(format_name, body, source_uri)
     return import_parsed_baseline(
@@ -265,4 +308,5 @@ def import_baseline(
         username,
         source_uri=source_uri,
         format_name=format_name,
+        ucc_name=ucc_name,
     )

@@ -1,0 +1,9 @@
+# Installed into output/<app>/lib by ucc-gen. Required by UCC Configuration REST
+# handlers (AdminExternalHandler). Without this, Splunk Web shows
+# "Unable to xml-parse the following data: %s" because the handler traceback is
+# not Atom XML.
+#
+# Pin solnlib below 8: 8.x pulls grpcio/OpenTelemetry wheels that do not match
+# Splunk's Python.
+splunktaucclib>=6.6.0,<8
+solnlib>=5.5.0,<8
