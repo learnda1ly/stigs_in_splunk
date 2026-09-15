@@ -34,6 +34,21 @@ def list_hosts(
     return [r for r in records if r.get("stig_collection_id") in collection_ids]
 
 
+def find_host_by_hostname(
+    service,
+    session: Dict[str, Any],
+    stig_collection_id: str,
+    hostname: str,
+) -> Optional[Dict[str, Any]]:
+    want = (hostname or "").strip().casefold()
+    if not want:
+        return None
+    for rec in list_hosts(service, session, stig_collection_id):
+        if (rec.get("hostname") or "").strip().casefold() == want:
+            return rec
+    return None
+
+
 def get_host(service, key: str, session: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     coll = kv_client.get_collection(service, KV_STIG_HOSTS)
     rec = kv_client.get_by_key(coll, key)

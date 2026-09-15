@@ -453,6 +453,17 @@ require([
         };
     }
 
+    var VIM_FIELD_IDS = ["stig-finding", "stig-comments"];
+
+    function vimPeerFieldId(id, dir) {
+        var idx = VIM_FIELD_IDS.indexOf(id);
+        if (idx < 0) {
+            return null;
+        }
+        var step = dir < 0 ? VIM_FIELD_IDS.length - 1 : 1;
+        return VIM_FIELD_IDS[(idx + step) % VIM_FIELD_IDS.length];
+    }
+
     function attachVimField(el, hooks) {
         if (!el) {
             return null;
@@ -813,6 +824,11 @@ require([
                     state.count = 0;
                     return true;
                 }
+                if (key === "t" || key === "T") {
+                    switchPeer(key === "T" ? -1 : 1);
+                    state.count = 0;
+                    return true;
+                }
             }
 
             if (key === "g") {
@@ -977,8 +993,28 @@ require([
             return true;
         }
 
+        function switchPeer(dir) {
+            if (!hooks.onSwitchField) {
+                return false;
+            }
+            var next = vimPeerFieldId(el.id, dir);
+            if (!next) {
+                return false;
+            }
+            hooks.onSwitchField(next, state.mode);
+            return true;
+        }
+
+        var blurTimer = 0;
+
         function onKeydown(e) {
             if (!enabled() || e.ctrlKey || e.metaKey || e.altKey) {
+                return;
+            }
+            if (e.key === "Tab") {
+                e.preventDefault();
+                e.stopPropagation();
+                switchPeer(e.shiftKey ? -1 : 1);
                 return;
             }
             if (state.mode === "insert") {
@@ -987,9 +1023,6 @@ require([
                     e.stopPropagation();
                     setMode("normal", caret());
                 }
-                return;
-            }
-            if (e.key === "Tab") {
                 return;
             }
             e.preventDefault();
@@ -1011,11 +1044,14 @@ require([
 
         function onBlur() {
             hideCursor();
-            var next = document.activeElement;
-            if (next && (next.id === "stig-vim-cmd-input" || next._stigVim)) {
-                return;
-            }
-            hooks.onLeave();
+            window.clearTimeout(blurTimer);
+            blurTimer = window.setTimeout(function () {
+                var next = document.activeElement;
+                if (next && (next.id === "stig-vim-cmd-input" || next._stigVim)) {
+                    return;
+                }
+                hooks.onLeave();
+            }, 0);
         }
 
         function onMouseup() {
@@ -1055,7 +1091,6 @@ require([
     }
 
     var VIM_STORAGE_KEY = "stigs_in_splunk.vim_mode";
-    var userService = mvc.createService({ app: "stigs_in_splunk" });
 
     function parseBool(raw) {
         raw = String(raw == null ? "" : raw).trim().toLowerCase();
@@ -1087,6 +1122,9 @@ require([
         }
         if (typeof raw !== "object") {
             return null;
+        }
+        if (Object.prototype.hasOwnProperty.call(raw, "vim_mode")) {
+            return extractVimEnabled(raw.vim_mode);
         }
         if (raw.value != null && typeof raw.value !== "object") {
             return extractVimEnabled(raw.value);
@@ -1127,35 +1165,18 @@ require([
     }
 
     function loadRemoteVimSetting() {
-        return new Promise(function (resolve) {
-            userService.get(
-                "configs/conf-stig_editor/settings",
-                {},
-                function (err, res) {
-                    if (err) {
-                        resolve(null);
-                        return;
-                    }
-                    resolve(extractVimEnabled(res && res.data));
-                }
-            );
-        });
+        return apiGet("stig_settings")
+            .then(function (raw) {
+                return extractVimEnabled(raw);
+            })
+            .catch(function () {
+                return null;
+            });
     }
 
     function persistVimSetting(enabled) {
-        return new Promise(function (resolve, reject) {
-            userService.post(
-                "configs/conf-stig_editor/settings",
-                { vim_mode: enabled ? "true" : "false" },
-                function (err) {
-                    if (err) {
-                        reject(err);
-                        return;
-                    }
-                    resolve();
-                }
-            );
-        });
+        writeLocalVim(enabled);
+        return apiPatch("stig_settings", { vim_mode: !!enabled });
     }
 
     function loadVimSetting() {
@@ -2018,6 +2039,17 @@ require([
                 onLeave: function () {
                     self.enterNav();
                 },
+                onSwitchField: function (id, mode) {
+                    var next = document.getElementById(id);
+                    if (!next) {
+                        return;
+                    }
+                    next.focus();
+                    if (next._stigVim) {
+                        next._stigVim.setMode(mode === "normal" ? "normal" : "insert");
+                    }
+                    self.setVimLayer(mode === "insert" ? "insert" : "text");
+                },
             });
         });
 
@@ -2497,7 +2529,9 @@ require([
               "<tr><td><kbd>g</kbd><kbd>r</kbd></td><td>Go to rule across all hosts</td></tr>" +
               "<tr><td><kbd>1</kbd>–<kbd>4</kbd> <kbd>n</kbd><kbd>f</kbd><kbd>a</kbd></td><td>Status in NAV (saves immediately)</td></tr>" +
               "<tr><td><kbd>:</kbd><kbd>w</kbd></td><td>Write finding details / comments</td></tr>" +
-              "<tr><td><kbd>h</kbd><kbd>j</kbd><kbd>k</kbd><kbd>l</kbd> <kbd>w</kbd><kbd>b</kbd></td><td>Motions in field NORMAL</td></tr>"
+              "<tr><td><kbd>h</kbd><kbd>j</kbd><kbd>k</kbd><kbd>l</kbd> <kbd>w</kbd><kbd>b</kbd></td><td>Motions in field NORMAL</td></tr>" +
+              "<tr><td><kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd></td><td>Finding details ↔ comments (stays in the field layer)</td></tr>" +
+              "<tr><td><kbd>g</kbd><kbd>t</kbd> / <kbd>g</kbd><kbd>T</kbd></td><td>Same switch in field NORMAL</td></tr>"
             : "<tr><td colspan=\"2\">Vim keys are off. Click the <strong>VIM OFF</strong> badge or enable them under Configuration.</td></tr>";
         var html =
             '<div class="stig-help-overlay" id="stig-help">' +

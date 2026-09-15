@@ -18,6 +18,10 @@ OUTPUT="${UCC_OUTPUT:-$ROOT/output}"
 mkdir -p "$OUTPUT"
 rm -rf "$OUTPUT/stigs_in_splunk"
 
+if [[ "${SKIP_UI_BUILD:-}" != "1" ]]; then
+  "$ROOT/scripts/build_ui.sh"
+fi
+
 "$UCC_GEN" build \
   --source "$ROOT/package" \
   --config "$ROOT/globalConfig.yaml" \

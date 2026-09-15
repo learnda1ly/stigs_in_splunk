@@ -1,0 +1,50 @@
+const path = require("path");
+const webpack = require("webpack");
+
+const outDir = path.resolve(
+    __dirname,
+    "../package/appserver/static/ui"
+);
+
+module.exports = {
+    entry: {
+        editor: path.join(__dirname, "src/editor.jsx"),
+        export: path.join(__dirname, "src/export.jsx"),
+        import: path.join(__dirname, "src/import.jsx"),
+        settings: path.join(__dirname, "src/settings.jsx"),
+    },
+    output: {
+        path: outDir,
+        filename: "[name].js",
+        clean: true,
+    },
+    resolve: {
+        extensions: [".js", ".jsx"],
+        alias: {
+            react: path.resolve(__dirname, "node_modules/react"),
+            "react-dom": path.resolve(__dirname, "node_modules/react-dom"),
+            "styled-components": path.resolve(
+                __dirname,
+                "node_modules/styled-components"
+            ),
+        },
+    },
+    module: {
+        rules: [
+            {
+                test: /\.jsx?$/,
+                exclude: /node_modules/,
+                use: "babel-loader",
+            },
+        ],
+    },
+    plugins: [
+        new webpack.DefinePlugin({
+            "process.env.NODE_ENV": JSON.stringify(
+                process.env.NODE_ENV || "production"
+            ),
+            "process.env.SC_ATTR": JSON.stringify("data-stigs-styled"),
+        }),
+    ],
+    performance: { hints: false },
+};

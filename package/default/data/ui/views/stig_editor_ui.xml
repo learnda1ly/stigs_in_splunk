@@ -1,0 +1,11 @@
+<dashboard version="1.1" script="stig_editor_ui.js" hideEdit="true" hideExport="true" hideTitle="true">
+  <label>STIG Editor</label>
+  <description>SplunkUI checklist editor.</description>
+  <row>
+    <panel>
+      <html>
+        <div id="stig-ui-root"></div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

@@ -1,0 +1,11 @@
+<dashboard version="1.1" script="stig_settings_ui.js" hideEdit="true" hideExport="true" hideTitle="true">
+  <label>Configuration</label>
+  <description>SplunkUI application settings.</description>
+  <row>
+    <panel>
+      <html>
+        <div id="stig-ui-root"></div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

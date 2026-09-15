@@ -18,11 +18,15 @@ from splunk.persistconn.application import PersistentServerConnectionApplication
 
 import access
 import kv_client
+from importers.ingest import detect_format
 from services import baselines as baselines_svc
 from services import checklists as checklists_svc
 from services import collections as collections_svc
 from services import hosts as hosts_svc
+from services import imports as imports_svc
+from services import reconcile as reconcile_svc
 from services import reviews as reviews_svc
+from services import settings as settings_svc
 
 logger = logging.getLogger("stigs_in_splunk.rest")
 
@@ -122,6 +126,10 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return self._checklists(method, parts, query, payload, service, session, username)
             if resource == "stig_reviews":
                 return self._reviews(method, parts, query, payload, service, session, username)
+            if resource == "stig_settings":
+                return self._settings(method, parts, payload, service, username)
+            if resource == "stig_imports":
+                return self._imports(method, parts, query, payload, service, session, username)
             return _error(f"unknown resource: {resource}", status=404)
         except PermissionError as exc:
             return _error(str(exc), status=403)
@@ -129,6 +137,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return _error("not found", status=404)
         except ValueError as exc:
             return _error(str(exc), status=400)
+        except kv_client.KvError as exc:
+            return _error(str(exc), status=int(exc.status or 500))
 
     def _collections(
         self,
@@ -382,4 +392,68 @@ class StigRestHandler(PersistentServerConnectionApplication):
             body = _body_json(payload)
             updated = reviews_svc.update_review(service, key, body, username, session)
             return _json_response(updated)
+        return _error("method not allowed", status=405)
+
+    def _imports(
+        self,
+        method: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        if parts == ["reconcile"]:
+            if method not in ("GET", "POST"):
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            earliest = query.get("earliest") or body.get("earliest") or None
+            rec = reconcile_svc.reconcile_from_index(
+                service, session, username, earliest=earliest
+            )
+            return _json_response(rec)
+        if parts:
+            return _error("not found", status=404)
+        if method != "POST":
+            return _error("method not allowed", status=405)
+        collection_id = query.get("stig_collection_id") or ""
+        if not collection_id:
+            return _error("stig_collection_id is required")
+        source_uri = query.get("source_uri") or ""
+        body = _body_bytes(payload)
+        if not body:
+            return _error("empty import body")
+        fmt = (query.get("format") or detect_format(source_uri, body)).lower()
+        if fmt not in {"ckl", "cklb"}:
+            return _error("format must be ckl or cklb")
+        rec = imports_svc.import_checklist_file(
+            service,
+            body,
+            fmt,
+            username,
+            session,
+            collection_id,
+            source_uri,
+        )
+        created = rec.get("host", {}).get("created") or any(
+            item.get("created") for item in rec.get("checklists") or []
+        )
+        return _json_response(rec, status=201 if created else 200)
+
+    def _settings(
+        self,
+        method: str,
+        parts: List[str],
+        payload: Dict[str, Any],
+        service,
+        username: str,
+    ) -> Dict[str, Any]:
+        if parts:
+            return _error("not found", status=404)
+        if method == "GET":
+            return _json_response(settings_svc.get_settings(service))
+        if method in ("PATCH", "POST", "PUT"):
+            body = _body_json(payload)
+            return _json_response(settings_svc.save_settings(service, body, username))
         return _error("method not allowed", status=405)

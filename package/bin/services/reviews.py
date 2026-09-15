@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 import audit
 import kv_client
 import validation
-from models import KV_STIG_REVIEWS, STATUSES, kv_record, now_epoch, normalize_status
+from models import KV_STIG_REVIEWS, STATUSES, as_bool, kv_record, now_epoch, normalize_status
 from models import KV_STIG_CHECKLISTS
 from services import checklists as checklists_svc
 from services import collections as collections_svc
@@ -119,6 +119,11 @@ def update_review(
         patch["comments"] = body["comments"]
     if "package_id" in body:
         patch["package_id"] = "" if body["package_id"] is None else str(body["package_id"])
+    if "ingest_lock" in body:
+        locked = as_bool(body["ingest_lock"])
+        if locked is None:
+            raise ValueError("ingest_lock must be a boolean")
+        patch["ingest_lock"] = bool(locked)
     patch["valid"] = validation.persistable_valid(patch)
     patch["updated_at"] = now_epoch()
     patch["updated_by"] = username

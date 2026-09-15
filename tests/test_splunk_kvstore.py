@@ -31,6 +31,7 @@ COLLECTIONS = (
     "stig_baseline_rules",
     "stig_checklists",
     "stig_reviews",
+    "stig_editor_settings",
 )
 
 

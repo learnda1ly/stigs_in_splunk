@@ -6,6 +6,14 @@ export = system
 access = read : [ * ], write : [ * ]
 export = system
 
+[savedsearches]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+[commands]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
 [stig_editor]
 access = read : [ * ], write : [ * ]
 export = system

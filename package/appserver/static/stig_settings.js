@@ -1,12 +1,76 @@
 require([
     "jquery",
-    "splunkjs/mvc",
     "splunkjs/ready!",
-], function ($, mvc) {
+], function ($) {
     "use strict";
 
     var VIM_STORAGE_KEY = "stigs_in_splunk.vim_mode";
-    var userService = mvc.createService({ app: "stigs_in_splunk" });
+
+    function localePrefix() {
+        var path = window.location.pathname || "";
+        var match = path.match(/^(\/[^/]+)\//);
+        return match ? match[1] : "/en-US";
+    }
+
+    function csrfToken() {
+        var token = "";
+        String(document.cookie || "")
+            .split(";")
+            .forEach(function (part) {
+                var cookie = part.trim();
+                if (cookie.indexOf("splunkweb_csrf_token_") === 0) {
+                    token = decodeURIComponent(cookie.substring(cookie.indexOf("=") + 1));
+                }
+            });
+        return token;
+    }
+
+    function unwrap(data) {
+        if (data && typeof data.payload === "string") {
+            try {
+                return JSON.parse(data.payload);
+            } catch (e) {
+                return data.payload;
+            }
+        }
+        if (data && data.entry && data.entry[0] && data.entry[0].content) {
+            return unwrap(data.entry[0].content);
+        }
+        return data;
+    }
+
+    function apiFetch(path, opts) {
+        opts = opts || {};
+        var url =
+            localePrefix() +
+            "/splunkd/__raw/servicesNS/nobody/stigs_in_splunk/" +
+            String(path).replace(/^\//, "");
+        return fetch(url, {
+            method: opts.method || "GET",
+            credentials: "same-origin",
+            headers: {
+                "Content-Type": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+                "X-Splunk-Form-Key": csrfToken(),
+            },
+            body: opts.body ? JSON.stringify(opts.body) : undefined,
+        }).then(function (res) {
+            return res.text().then(function (text) {
+                var parsed = text;
+                if (text && (text.charAt(0) === "{" || text.charAt(0) === "[")) {
+                    try {
+                        parsed = JSON.parse(text);
+                    } catch (e) {
+                        parsed = text;
+                    }
+                }
+                if (!res.ok) {
+                    throw new Error(formatErr(parsed) || "HTTP " + res.status);
+                }
+                return unwrap(parsed);
+            });
+        });
+    }
 
     function parseBool(raw) {
         raw = String(raw == null ? "" : raw).trim().toLowerCase();
@@ -39,6 +103,9 @@ require([
         if (typeof raw !== "object") {
             return null;
         }
+        if (Object.prototype.hasOwnProperty.call(raw, "vim_mode")) {
+            return extractVimEnabled(raw.vim_mode);
+        }
         if (raw.value != null && typeof raw.value !== "object") {
             return extractVimEnabled(raw.value);
         }
@@ -57,14 +124,35 @@ require([
         return null;
     }
 
+    function xmlMessages(text) {
+        var src = String(text || "");
+        var matches = src.match(/<msg\b[^>]*>([\s\S]*?)<\/msg>/gi) || [];
+        return matches
+            .map(function (tag) {
+                return tag
+                    .replace(/<msg\b[^>]*>/i, "")
+                    .replace(/<\/msg>/i, "")
+                    .trim();
+            })
+            .filter(Boolean);
+    }
+
     function formatErr(err) {
         if (err == null) {
             return "unknown error";
         }
         if (typeof err === "string") {
+            var fromXml = xmlMessages(err);
+            if (fromXml.length) {
+                return fromXml.join("; ");
+            }
             return err;
         }
         if (err.message) {
+            var fromMsg = xmlMessages(err.message);
+            if (fromMsg.length) {
+                return fromMsg.join("; ");
+            }
             return err.message;
         }
         if (err.error) {
@@ -77,6 +165,12 @@ require([
                     return m.text || m.message || String(m);
                 })
                 .join("; ");
+        }
+        if (typeof data === "string") {
+            var fromData = xmlMessages(data);
+            if (fromData.length) {
+                return fromData.join("; ");
+            }
         }
         try {
             return JSON.stringify(err);
@@ -107,34 +201,19 @@ require([
     }
 
     function readRemoteVim() {
-        return new Promise(function (resolve) {
-            userService.get(
-                "configs/conf-stig_editor/settings",
-                {},
-                function (err, res) {
-                    if (err) {
-                        resolve(null);
-                        return;
-                    }
-                    resolve(extractVimEnabled(res && res.data));
-                }
-            );
-        });
+        return apiFetch("stig_settings")
+            .then(function (raw) {
+                return extractVimEnabled(raw);
+            })
+            .catch(function () {
+                return null;
+            });
     }
 
     function writeRemoteVim(enabled) {
-        return new Promise(function (resolve, reject) {
-            userService.post(
-                "configs/conf-stig_editor/settings",
-                { vim_mode: enabled ? "true" : "false" },
-                function (err) {
-                    if (err) {
-                        reject(err);
-                        return;
-                    }
-                    resolve();
-                }
-            );
+        return apiFetch("stig_settings", {
+            method: "POST",
+            body: { vim_mode: !!enabled },
         });
     }
 

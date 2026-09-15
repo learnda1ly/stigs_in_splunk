@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CHECKLIST>
+  <ASSET>
+    <ROLE>None</ROLE>
+    <ASSET_TYPE>Computing</ASSET_TYPE>
+    <MARKING>CUI</MARKING>
+    <HOST_NAME>web-01</HOST_NAME>
+    <HOST_IP>10.0.0.8</HOST_IP>
+    <HOST_MAC>00:11:22:33:44:55</HOST_MAC>
+    <HOST_FQDN>web-01.example.mil</HOST_FQDN>
+    <TARGET_COMMENT></TARGET_COMMENT>
+    <TECH_AREA></TECH_AREA>
+    <TARGET_KEY>0000</TARGET_KEY>
+    <WEB_OR_DATABASE>false</WEB_OR_DATABASE>
+    <WEB_DB_SITE></WEB_DB_SITE>
+    <WEB_DB_INSTANCE></WEB_DB_INSTANCE>
+  </ASSET>
+  <STIGS>
+    <iSTIG>
+      <STIG_INFO>
+        <SI_DATA>
+          <SID_NAME>version</SID_NAME>
+          <SID_DATA>1</SID_DATA>
+        </SI_DATA>
+        <SI_DATA>
+          <SID_NAME>stigid</SID_NAME>
+          <SID_DATA>Example_STIG</SID_DATA>
+        </SI_DATA>
+        <SI_DATA>
+          <SID_NAME>releaseinfo</SID_NAME>
+          <SID_DATA>Release: 1 Benchmark Date: 01 Jan 2026</SID_DATA>
+        </SI_DATA>
+        <SI_DATA>
+          <SID_NAME>title</SID_NAME>
+          <SID_DATA>Example STIG for PoC</SID_DATA>
+        </SI_DATA>
+      </STIG_INFO>
+      <VULN>
+        <STIG_DATA>
+          <VULN_ATTRIBUTE>Vuln_Num</VULN_ATTRIBUTE>
+          <ATTRIBUTE_DATA>V-000001</ATTRIBUTE_DATA>
+        </STIG_DATA>
+        <STIG_DATA>
+          <VULN_ATTRIBUTE>Severity</VULN_ATTRIBUTE>
+          <ATTRIBUTE_DATA>high</ATTRIBUTE_DATA>
+        </STIG_DATA>
+        <STIG_DATA>
+          <VULN_ATTRIBUTE>Rule_ID</VULN_ATTRIBUTE>
+          <ATTRIBUTE_DATA>SV-000001r1_rule</ATTRIBUTE_DATA>
+        </STIG_DATA>
+        <STIG_DATA>
+          <VULN_ATTRIBUTE>Rule_Ver</VULN_ATTRIBUTE>
+          <ATTRIBUTE_DATA>EX-00-000001</ATTRIBUTE_DATA>
+        </STIG_DATA>
+        <STIG_DATA>
+          <VULN_ATTRIBUTE>Rule_Title</VULN_ATTRIBUTE>
+          <ATTRIBUTE_DATA>Example rule title</ATTRIBUTE_DATA>
+        </STIG_DATA>
+        <STIG_DATA>
+          <VULN_ATTRIBUTE>Check_Content</VULN_ATTRIBUTE>
+          <ATTRIBUTE_DATA>Run this check.</ATTRIBUTE_DATA>
+        </STIG_DATA>
+        <STATUS>Open</STATUS>
+        <FINDING_DETAILS>sshd permits root login</FINDING_DETAILS>
+        <COMMENTS>remediate next change window</COMMENTS>
+        <SEVERITY_OVERRIDE></SEVERITY_OVERRIDE>
+        <SEVERITY_JUSTIFICATION></SEVERITY_JUSTIFICATION>
+      </VULN>
+    </iSTIG>
+  </STIGS>
+</CHECKLIST>

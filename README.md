@@ -54,7 +54,24 @@ Custom REST uses a **persist** handler (`package/bin/stig_rest_handler.py`) and 
 
 ### STIG Editor (Splunk Web UI)
 
-After install, open the app → **STIG Editor** (default view). Choose a **collection** and **checklist**, then edit reviews in a STIG Viewer–style split pane. Press **?** for vim-style keys (`j`/`k`, `1`–`4` status, `:w` or Ctrl+s save).
+Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
+
+- **STIG Editor** — workspace + host filters, finding list, status, details, comments
+- **Import Checklists** — drag-and-drop `.ckl` / `.cklb`; findings go to HEC (`stig:finding`) and KV
+- **Export Checklists** — CKL / CKLB download, including bulk zip
+- **Configuration** — vim shortcuts, HEC index/token, reconcile window
+
+Classic Simple XML + jQuery views remain under the **Classic** nav menu.
+
+Rebuild UI bundles after changing `ui/src`:
+
+```bash
+./scripts/build_ui.sh
+```
+
+`./scripts/build_ucc.sh` runs that step unless `SKIP_UI_BUILD=1`.
+
+After install, open the app → **STIG Editor**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**. Vim keys live in the classic editor (`?` for help).
 
 ## Splunk roles
 
@@ -66,7 +83,7 @@ Assign `stig_user` or `stig_admin`, or grant capabilities `stig_read`, `stig_wri
 https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 ```
 
-Resources: `stig_collections`, `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`.
+Resources: `stig_collections`, `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`.
 
 ## Example flow (curl)
 
@@ -76,6 +93,21 @@ See [spec.md](spec.md) §16 for the full curl workflow. Quick baseline import:
 curl -k -u admin:changeme -X POST \
   "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_baselines/import?format=xccdf&source_uri=minimal_benchmark.xml" \
   --data-binary @tests/fixtures/minimal_benchmark.xml
+```
+
+Checklist file ingest (indexes `stig:finding` via HEC, then updates KV):
+
+```bash
+curl -k -u admin:changeme -X POST \
+  "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_imports?format=cklb&stig_collection_id=COLLECTION_ID&source_uri=host.cklb" \
+  --data-binary @path/to/host.cklb
+```
+
+Reconcile indexed findings into KV (same job as the 5-minute saved search):
+
+```bash
+curl -k -u admin:changeme -X POST \
+  "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_imports/reconcile?earliest=-15m"
 ```
 
 End-to-end RHEL 8 demo: `scripts/demo_rhel8_web01.py` (requires `SPLUNK_PASSWORD`).
