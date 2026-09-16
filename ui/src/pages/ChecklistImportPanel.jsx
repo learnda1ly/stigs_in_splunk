@@ -309,13 +309,15 @@ export default function ChecklistImportPanel() {
                     </ProgressTrack>
                 </div>
             </div>
-            <PagePad style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            <PagePad>
                 <p style={{ maxWidth: 760, marginTop: 0 }}>
                     Drop STIG Viewer <code>.ckl</code> or <code>.cklb</code> files into a
                     workspace. Each finding is indexed through HEC as{" "}
-                    <code>stig:finding</code>. Import DISA XCCDF benchmarks on the{" "}
-                    <Link to={viewUrl("stig_import_ui") + "#baselines"}>Baselines</Link>{" "}
-                    tab. Create workspaces under{" "}
+                    <code>stig:finding</code>. DISA XCCDF benchmarks are imported in the{" "}
+                    <Link onClick={() => document.getElementById("baselines")?.scrollIntoView()}>
+                        Baselines
+                    </Link>{" "}
+                    section below. Create workspaces under{" "}
                     <Link to={viewUrl("configuration")}>Configuration</Link>. Incoming
                     results overwrite matching checks unless the finding is locked in the
                     editor.

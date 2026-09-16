@@ -6,7 +6,7 @@ import Message from "@splunk/react-ui/Message";
 import Select from "@splunk/react-ui/Select";
 import Table from "@splunk/react-ui/Table";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
-import { apiFetch, apiGet, apiUpload, viewUrl } from "../api";
+import { apiFetch, apiGet, apiUpload } from "../api";
 import { DropHint, DropTitle, DropZone, PagePad } from "../layout";
 
 const ACCEPT =
@@ -137,13 +137,16 @@ export default function BaselineImportPanel() {
     const dropDisabled = busy;
 
     return (
-        <PagePad style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+        <PagePad style={{ paddingTop: 0 }}>
             <p style={{ maxWidth: 760, marginTop: 0 }}>
                 Upload DISA XCCDF benchmarks or extract a STIG revision from a{" "}
                 <code>.ckl</code> / <code>.cklb</code> file. Identical content is
                 deduplicated. Baselines are immutable; delete and re-import to replace.
-                Checklist imports live on the{" "}
-                <Link to={viewUrl("stig_import_ui") + "#checklists"}>Checklists</Link> tab.
+                Workspace checklist imports are in the{" "}
+                <Link onClick={() => document.getElementById("checklists")?.scrollIntoView()}>
+                    Checklists
+                </Link>{" "}
+                section above.
             </p>
             {banner ? (
                 <Message appearance={banner.type} onRequestRemove={() => setBanner(null)}>
