@@ -11,6 +11,48 @@ import yaml
 
 _LAST_OUTPUT_PATH = "output"
 
+# UCC generates these, then copies package/default/restmap.conf with a merge.
+# A raw copy of the persist restmap wipes them and the Configuration page 404s.
+_UCC_RESTMAP = """
+[admin:stigs_in_splunk]
+match = /
+members = stigs_in_splunk_settings, stigs_in_splunk_workspace
+
+[admin_external:stigs_in_splunk_workspace]
+handlertype = python
+python.version = python3
+handlerfile = stigs_in_splunk_rh_workspace.py
+handleractions = edit, list, remove, create
+handlerpersistentmode = true
+
+[admin_external:stigs_in_splunk_settings]
+handlertype = python
+python.version = python3
+handlerfile = stigs_in_splunk_rh_settings.py
+handleractions = edit, list
+handlerpersistentmode = true
+"""
+
+# Splunk Web only proxies endpoints listed in web.conf. Without these, the
+# Configuration page 404s even though management port 8089 works.
+_UCC_WEB = """
+[expose:stigs_in_splunk_workspace]
+pattern = stigs_in_splunk_workspace
+methods = GET, POST
+
+[expose:stigs_in_splunk_workspace_specified]
+pattern = stigs_in_splunk_workspace/*
+methods = GET, POST, DELETE
+
+[expose:stigs_in_splunk_settings]
+pattern = stigs_in_splunk_settings
+methods = GET, POST
+
+[expose:stigs_in_splunk_settings_specified]
+pattern = stigs_in_splunk_settings/*
+methods = GET, POST, DELETE
+"""
+
 
 def cleanup_output_files(output_path, ta_name):
     """Remove UCC scaffold artifacts not used by this conf-only REST app."""
@@ -29,6 +71,8 @@ def cleanup_output_files(output_path, ta_name):
             pass
     _restore_nav_and_views(app_root)
     _write_ucc_global_config_json(app_root)
+    _ensure_ucc_restmap(app_root)
+    _ensure_ucc_web(app_root)
 
 
 def _restore_nav_and_views(app_root: str) -> None:
@@ -67,6 +111,40 @@ def _write_ucc_global_config_json(app_root: str) -> None:
         yaml.safe_dump(data, handle, sort_keys=False)
 
 
+def _ensure_ucc_restmap(app_root: str) -> None:
+    """Keep UCC Configuration REST endpoints if persist restmap overwrote them."""
+    path = join(app_root, "default", "restmap.conf")
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8") as handle:
+        content = handle.read()
+    if "[admin:stigs_in_splunk]" in content and "admin_external:stigs_in_splunk_workspace" in content:
+        return
+    with open(path, "a", encoding="utf-8") as handle:
+        if not content.endswith("\n"):
+            handle.write("\n")
+        handle.write(_UCC_RESTMAP)
+        if not _UCC_RESTMAP.endswith("\n"):
+            handle.write("\n")
+
+
+def _ensure_ucc_web(app_root: str) -> None:
+    """Keep UCC Configuration exposes if persist web.conf overwrote them."""
+    path = join(app_root, "default", "web.conf")
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8") as handle:
+        content = handle.read()
+    if "pattern = stigs_in_splunk_workspace" in content and "pattern = stigs_in_splunk_settings" in content:
+        return
+    with open(path, "a", encoding="utf-8") as handle:
+        if not content.endswith("\n"):
+            handle.write("\n")
+        handle.write(_UCC_WEB)
+        if not _UCC_WEB.endswith("\n"):
+            handle.write("\n")
+
+
 def additional_packaging(ta_name=None):
     """Append KV reload triggers to generated app.conf; restore custom nav/views."""
     if not ta_name:
@@ -74,6 +152,8 @@ def additional_packaging(ta_name=None):
     app_root = join(_LAST_OUTPUT_PATH, ta_name)
     _restore_nav_and_views(app_root)
     _write_ucc_global_config_json(app_root)
+    _ensure_ucc_restmap(app_root)
+    _ensure_ucc_web(app_root)
     app_conf = join(app_root, "default", "app.conf")
     if not os.path.isfile(app_conf):
         return
