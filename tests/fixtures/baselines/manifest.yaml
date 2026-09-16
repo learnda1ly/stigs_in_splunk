@@ -1,0 +1,60 @@
+# DISA STIG baseline fixtures for HEC simulator / integration tests.
+# Run scripts/download_baseline_fixtures.sh to fetch zip archives and extract *Manual-xccdf.xml.
+# Smoke fixtures under smoke/ are committed for STIGs without reliable public individual zip URLs.
+
+baselines:
+  minimal:
+    title: Example STIG for PoC
+    stig_id: Example_STIG
+    benchmark_id: xccdf_mil.disa.stig_benchmark_Example_STIG
+    local_file: ../minimal_benchmark.xml
+    bundled: true
+
+  rhel8:
+    title: Red Hat Enterprise Linux 8 STIG
+    stig_id: RHEL_8_STIG
+    zip_url: https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/U_RHEL_8_V2R6_STIG.zip
+    local_file: U_RHEL_8_V2R6_Manual-xccdf.xml
+
+  rhel9:
+    title: Red Hat Enterprise Linux 9 STIG
+    stig_id: RHEL_9_STIG
+    zip_url: https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/U_RHEL_9_V1R3_STIG.zip
+    local_file: U_RHEL_9_V1R3_Manual-xccdf.xml
+
+  splunk_enterprise:
+    title: Splunk Enterprise STIG (smoke fixture)
+    stig_id: Splunk_Enterprise_STIG
+    local_file: smoke/splunk_enterprise_smoke.xml
+    bundled: true
+    zip_url: https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/U_Splunk_Enterprise_V3R1_STIG.zip
+    notes: Public zip URL often 404; replace local_file after manual download if needed.
+
+  active_directory:
+    title: Active Directory Domain STIG
+    stig_id: Active_Directory_Domain_STIG
+    zip_url: https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/U_Active_Directory_Domain_V3R5_STIG.zip
+    local_file: U_Active_Directory_Domain_V3R5_Manual-xccdf.xml
+
+  windows_11:
+    title: Microsoft Windows 11 STIG (smoke fixture)
+    stig_id: MS_Windows_11_STIG
+    local_file: smoke/windows_11_smoke.xml
+    bundled: true
+    zip_url: https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/U_MS_Windows_11_V2R4_STIG.zip
+    notes: Individual Win11 zip frequently unavailable; use smoke fixture or STIG Library zip.
+
+  windows_server_2022:
+    title: Microsoft Windows Server 2019 STIG
+    stig_id: MS_Windows_Server_2019_STIG
+    zip_url: https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/U_MS_Windows_Server_2019_V3R5_STIG.zip
+    local_file: U_MS_Windows_Server_2019_V3R5_Manual-xccdf.xml
+    notes: Hosts key keeps windows_server_2022; manifest uses Server 2019 zip (verified public URL).
+
+  ubuntu_2204:
+    title: Canonical Ubuntu 22.04 LTS STIG (smoke fixture)
+    stig_id: CAN_Ubuntu_22.04_LTS_STIG
+    local_file: smoke/ubuntu_2204_smoke.xml
+    bundled: true
+    zip_url: https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/U_CAN_Ubuntu_22.04_LTS_V1R4_STIG.zip
+    notes: Public Ubuntu 22.04 zip often 404; replace after manual download if needed.
