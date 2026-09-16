@@ -10,8 +10,9 @@ meta:
 pages:
     configuration:
         title: Configuration
-        description: Workspaces, STIG baselines, and ingest settings. The HEC token
-            stays on the Splunk stig_findings input and is never shown here.
+        description: Workspaces and editor/ingest settings. Import STIG baselines and
+            checklists from the Import page. The HEC token stays on the Splunk
+            stig_findings input and is never shown here.
         tabs:
         -   name: workspace
             title: Workspaces
@@ -55,83 +56,6 @@ pages:
                 help: JSON array of user:<name> or role:<name>. Empty means any user
                     with STIG capabilities can read this workspace.
                 defaultValue: ''
-        -   name: baseline
-            title: Baselines
-            formTitle: baseline
-            style: page
-            restHandlerModule: stig_ucc_baseline_rh
-            restHandlerClass: BaselineRestHandler
-            table:
-                actions:
-                - delete
-                header:
-                -   field: name
-                    label: Id
-                -   field: stig_id
-                    label: STIG id
-                -   field: title
-                    label: Title
-                -   field: version
-                    label: Version
-                -   field: rule_count
-                    label: Rules
-                -   field: source_type
-                    label: Source
-                moreInfo:
-                -   field: stig_id
-                    label: STIG id
-                -   field: title
-                    label: Title
-                -   field: version
-                    label: Version
-                -   field: release_info
-                    label: Release
-                -   field: rule_count
-                    label: Rules
-                -   field: source_uri
-                    label: Source
-                -   field: content_fingerprint
-                    label: Fingerprint
-            entity:
-            -   field: name
-                label: Id
-                type: text
-                required: true
-                help: Unique row id (letters, numbers, underscore, hyphen). Used only
-                    in this table.
-                options:
-                    disableonEdit: true
-            -   field: format
-                label: Format
-                type: singleSelect
-                required: true
-                defaultValue: xccdf
-                help: XCCDF is the usual DISA manual benchmark. CKL/CKLB import the
-                    STIG revision from a checklist file.
-                options:
-                    disableSearch: true
-                    autoCompleteFields:
-                    -   value: xccdf
-                        label: XCCDF
-                    -   value: cklb
-                        label: CKLB
-                    -   value: ckl
-                        label: CKL
-            -   field: content
-                label: Benchmark or checklist
-                type: file
-                required: true
-                help: Upload a DISA XCCDF, CKLB, or CKL. Identical revisions are deduplicated.
-                options:
-                    maxFileSize: 20480
-                    useBase64Encoding: true
-                    supportedFileTypes:
-                    - xml
-                    - json
-                    - ckl
-                    - cklb
-                    - xccdf
-                    fileSupportMessage: XCCDF (.xml), CKLB (.cklb/.json), or CKL (.ckl)
         -   name: general
             title: Editor & ingest
             entity:

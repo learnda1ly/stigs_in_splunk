@@ -60,9 +60,9 @@ Custom REST uses a **persist** handler (`package/bin/stig_rest_handler.py`) and 
 Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
 
 - **STIG Editor** — workspace + host filters, finding list, status, details, comments
-- **Import Checklists** — drag-and-drop `.ckl` / `.cklb`; findings go to HEC (`stig:finding`) and KV
-- **Export Checklists** — CKL / CKLB download, including bulk zip
-- **Configuration** — UCC-generated page for workspaces, baseline import, and editor/HEC settings. The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
+- **Import** — checklists (`.ckl` / `.cklb` to HEC and KV) and STIG baselines (XCCDF / CKL / CKLB) on one page with tabs
+- **Export** — CKL / CKLB download, including bulk zip
+- **Configuration** — UCC-generated page for workspaces and editor/HEC settings. The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
 
 Classic Simple XML + jQuery views remain under the **Classic** nav menu.
 
@@ -74,7 +74,7 @@ Rebuild UI bundles after changing `ui/src`:
 
 `./scripts/build_ucc.sh` runs that step unless `SKIP_UI_BUILD=1`.
 
-After install, open the app → **STIG Editor**. Manage workspaces and STIG baselines under **Configuration**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**.
+After install, open the app → **STIG Editor**. Manage workspaces under **Configuration**; import baselines and checklists under **Import**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**.
 
 ## Splunk roles
 

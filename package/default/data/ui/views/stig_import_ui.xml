@@ -1,6 +1,6 @@
 <dashboard version="1.1" script="stig_import_ui.js" hideEdit="true" hideExport="true" hideTitle="true">
-  <label>Import Checklists</label>
-  <description>SplunkUI checklist import.</description>
+  <label>Import</label>
+  <description>Import STIG checklists and baselines.</description>
   <row>
     <panel>
       <html>

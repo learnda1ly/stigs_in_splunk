@@ -1,250 +1,36 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import Button from "@splunk/react-ui/Button";
-import ControlGroup from "@splunk/react-ui/ControlGroup";
+import React, { useEffect, useState } from "react";
 import Heading from "@splunk/react-ui/Heading";
 import Link from "@splunk/react-ui/Link";
-import Message from "@splunk/react-ui/Message";
-import Select from "@splunk/react-ui/Select";
-import Table from "@splunk/react-ui/Table";
-import Text from "@splunk/react-ui/Text";
-import WaitSpinner from "@splunk/react-ui/WaitSpinner";
-import { apiFetch, apiGet, apiUpload, viewUrl } from "../api";
+import TabBar from "@splunk/react-ui/TabBar";
+import { viewUrl } from "../api";
 import {
-    Actions,
     Brand,
     BrandKicker,
-    DropHint,
-    DropTitle,
-    DropZone,
     Header,
     HeaderMeta,
-    PagePad,
-    ProgressFill,
-    ProgressTrack,
     Shell,
-    Toolbar,
 } from "../layout";
+import BaselineImportPanel from "./BaselineImportPanel";
+import ChecklistImportPanel from "./ChecklistImportPanel";
 
-const ACCEPT = ".ckl,.cklb,application/json,text/xml,application/xml";
-
-function detectFormat(name) {
-    const lower = String(name || "").toLowerCase();
-    if (lower.endsWith(".cklb")) {
-        return "cklb";
-    }
-    if (lower.endsWith(".ckl")) {
-        return "ckl";
-    }
-    return "";
-}
-
-function fileKey(file) {
-    return [file.name, file.size, file.lastModified].join(":");
-}
-
-function contentTypeFor(fmt) {
-    return fmt === "cklb" ? "application/json" : "application/xml";
-}
-
-function statsLine(stats) {
-    if (!stats) {
-        return "—";
-    }
-    const parts = [
-        ["fail", "Open"],
-        ["pass", "NF"],
-        ["notapplicable", "NA"],
-        ["notchecked", "NR"],
-    ]
-        .map(([key, label]) => {
-            const n = stats[key] || 0;
-            return n ? n + " " + label : "";
-        })
-        .filter(Boolean);
-    return parts.join(" · ") || "—";
-}
-
-function readFile(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(reader.error || new Error("read failed"));
-        reader.readAsText(file);
-    });
+function tabFromHash() {
+    const id = (window.location.hash || "").replace(/^#/, "");
+    return id === "baselines" ? "baselines" : "checklists";
 }
 
 export default function ImportApp() {
-    const inputRef = useRef(null);
-    const [collections, setCollections] = useState([]);
-    const [collectionId, setCollectionId] = useState("");
-    const [newName, setNewName] = useState("");
-    const [rows, setRows] = useState([]);
-    const [busy, setBusy] = useState(false);
-    const [over, setOver] = useState(false);
-    const [banner, setBanner] = useState(null);
-
-    const loadCollections = () =>
-        apiGet("stig_collections")
-            .then((colls) => {
-                const list = Array.isArray(colls) ? colls : [];
-                setCollections(list);
-                setCollectionId((prev) => {
-                    if (prev && list.some((c) => c._key === prev)) {
-                        return prev;
-                    }
-                    return list[0] ? list[0]._key : "";
-                });
-            })
-            .catch((err) =>
-                setBanner({
-                    type: "error",
-                    text: "Failed to load workspaces: " + err.message,
-                })
-            );
+    const [tab, setTab] = useState(tabFromHash);
 
     useEffect(() => {
-        loadCollections();
+        const onHash = () => setTab(tabFromHash());
+        window.addEventListener("hashchange", onHash);
+        return () => window.removeEventListener("hashchange", onHash);
     }, []);
 
-    const addFiles = (fileList) => {
-        const incoming = Array.from(fileList || []);
-        const next = [];
-        incoming.forEach((file) => {
-            const fmt = detectFormat(file.name);
-            next.push({
-                key: fileKey(file),
-                file,
-                name: file.name,
-                format: fmt,
-                status: fmt ? "queued" : "error",
-                error: fmt ? "" : "Only .ckl and .cklb files are supported.",
-                host: "",
-                checklists: 0,
-                reviews: 0,
-                stats: null,
-                created: false,
-            });
-        });
-        if (!next.length) {
-            return;
-        }
-        setRows((prev) => {
-            const seen = {};
-            prev.forEach((row) => {
-                seen[row.key] = true;
-            });
-            return prev.concat(next.filter((row) => !seen[row.key]));
-        });
-        setBanner(null);
+    const onTabChange = (e, { selectedTabId }) => {
+        setTab(selectedTabId);
+        window.location.hash = selectedTabId;
     };
-
-    const queued = useMemo(
-        () => rows.filter((row) => row.status === "queued" && row.format),
-        [rows]
-    );
-    const done = rows.filter((row) => row.status === "done").length;
-    const failed = rows.filter((row) => row.status === "error" && row.format).length;
-    const pct = rows.length ? Math.round((done / rows.length) * 100) : 0;
-
-    const createWorkspace = () => {
-        const name = newName.trim();
-        if (!name) {
-            setBanner({ type: "warning", text: "Enter a workspace name." });
-            return;
-        }
-        setBusy(true);
-        apiFetch("stig_collections", { method: "POST", body: { name } })
-            .then((rec) => {
-                setNewName("");
-                setBanner({ type: "success", text: "Created workspace " + name + "." });
-                return loadCollections().then(() => {
-                    if (rec && rec._key) {
-                        setCollectionId(rec._key);
-                    }
-                });
-            })
-            .catch((err) =>
-                setBanner({ type: "error", text: "Create workspace failed: " + err.message })
-            )
-            .finally(() => setBusy(false));
-    };
-
-    const importOne = (row) => {
-        setRows((prev) =>
-            prev.map((item) =>
-                item.key === row.key ? { ...item, status: "uploading", error: "" } : item
-            )
-        );
-        return readFile(row.file)
-            .then((text) =>
-                apiUpload("stig_imports", {
-                    query: {
-                        stig_collection_id: collectionId,
-                        format: row.format,
-                        source_uri: row.name,
-                    },
-                    contentType: contentTypeFor(row.format),
-                    body: text,
-                })
-            )
-            .then((doc) => {
-                const checklists = (doc && doc.checklists) || [];
-                setRows((prev) =>
-                    prev.map((item) =>
-                        item.key === row.key
-                            ? {
-                                  ...item,
-                                  status: "done",
-                                  host: (doc.host && doc.host.hostname) || "",
-                                  checklists: checklists.length,
-                                  reviews: doc.finding_count || 0,
-                                  stats: doc.stats || null,
-                                  created: !!(doc.host && doc.host.created) ||
-                                      checklists.some((cl) => cl.created),
-                                  error: "",
-                              }
-                            : item
-                    )
-                );
-            })
-            .catch((err) => {
-                setRows((prev) =>
-                    prev.map((item) =>
-                        item.key === row.key
-                            ? { ...item, status: "error", error: err.message }
-                            : item
-                    )
-                );
-            });
-    };
-
-    const startImport = () => {
-        if (!collectionId) {
-            setBanner({ type: "warning", text: "Select a workspace first." });
-            return;
-        }
-        const pending = rows.filter((row) => row.status === "queued" && row.format);
-        if (!pending.length) {
-            setBanner({ type: "warning", text: "Add at least one .ckl or .cklb file." });
-            return;
-        }
-        setBusy(true);
-        setBanner({
-            type: "info",
-            text: "Importing " + pending.length + " file" + (pending.length === 1 ? "" : "s") + "…",
-        });
-        pending
-            .reduce((chain, row) => chain.then(() => importOne(row)), Promise.resolve())
-            .then(() =>
-                setBanner({
-                    type: "success",
-                    text: "Import finished. Open the editor to review findings.",
-                })
-            )
-            .finally(() => setBusy(false));
-    };
-
-    const dropDisabled = busy;
 
     return (
         <Shell>
@@ -252,187 +38,26 @@ export default function ImportApp() {
                 <Brand>
                     <BrandKicker>STIG in Splunk</BrandKicker>
                     <Heading level={2} style={{ margin: 0 }}>
-                        Import checklists
+                        Import
                     </Heading>
                 </Brand>
-                <Toolbar>
-                    <ControlGroup label="Workspace" labelPosition="top">
-                        <Select
-                            value={collectionId}
-                            onChange={(e, { value }) => setCollectionId(value)}
-                            placeholder="Select collection"
-                            filter
-                            disabled={busy}
-                        >
-                            {collections.map((c) => (
-                                <Select.Option
-                                    key={c._key}
-                                    label={c.name || c._key}
-                                    value={c._key}
-                                />
-                            ))}
-                        </Select>
-                    </ControlGroup>
-                    <ControlGroup label="New workspace" labelPosition="top">
-                        <Text
-                            value={newName}
-                            onChange={(e, { value }) => setNewName(value)}
-                            placeholder="Name"
-                            disabled={busy}
-                        />
-                    </ControlGroup>
-                    <Button
-                        appearance="secondary"
-                        disabled={busy}
-                        onClick={createWorkspace}
-                        label="Create"
-                    />
-                    <Button
-                        appearance="primary"
-                        disabled={busy || !collectionId || !queued.length}
-                        onClick={startImport}
-                        label={busy ? "Importing…" : "Import queued files"}
-                    />
-                </Toolbar>
                 <HeaderMeta>
-                    <span>
-                        {rows.length} file{rows.length === 1 ? "" : "s"}
-                    </span>
-                    <ProgressTrack title={pct + "% imported"}>
-                        <ProgressFill $pct={pct} />
-                    </ProgressTrack>
                     <Link to={viewUrl("stig_editor_ui")}>Editor</Link>
                     <Link to={viewUrl("stig_export_ui")}>Export</Link>
                     <Link to={viewUrl("configuration")}>Configuration</Link>
                 </HeaderMeta>
             </Header>
-            <PagePad>
-                <p style={{ maxWidth: 760, marginTop: 0 }}>
-                    Drop STIG Viewer <code>.ckl</code> or <code>.cklb</code> files. Each
-                    finding is indexed through HEC as <code>stig:finding</code>. Create
-                    workspaces and import XCCDF baselines under{" "}
-                    <Link to={viewUrl("configuration")}>Configuration</Link>
-                    . Incoming results overwrite matching checks unless the finding is
-                    locked in the editor.
-                </p>
-                {banner ? (
-                    <Message
-                        appearance={banner.type}
-                        onRequestRemove={() => setBanner(null)}
-                    >
-                        {banner.text}
-                    </Message>
-                ) : null}
-                <input
-                    ref={inputRef}
-                    type="file"
-                    accept={ACCEPT}
-                    multiple
-                    style={{ display: "none" }}
-                    onChange={(e) => {
-                        addFiles(e.target.files);
-                        e.target.value = "";
-                    }}
-                />
-                <DropZone
-                    className={(over ? "is-over" : "") + (dropDisabled ? " is-disabled" : "")}
-                    onClick={() => {
-                        if (!dropDisabled && inputRef.current) {
-                            inputRef.current.click();
-                        }
-                    }}
-                    onDragEnter={(e) => {
-                        e.preventDefault();
-                        if (!dropDisabled) {
-                            setOver(true);
-                        }
-                    }}
-                    onDragOver={(e) => {
-                        e.preventDefault();
-                    }}
-                    onDragLeave={() => setOver(false)}
-                    onDrop={(e) => {
-                        e.preventDefault();
-                        setOver(false);
-                        if (!dropDisabled) {
-                            addFiles(e.dataTransfer.files);
-                        }
-                    }}
-                >
-                    <DropTitle>Drop .ckl and .cklb files here</DropTitle>
-                    <DropHint>
-                        {collectionId
-                            ? "Or click to browse. Existing hosts and checklists in this workspace are updated."
-                            : "Create or select a workspace before uploading."}
-                    </DropHint>
-                </DropZone>
-                <div style={{ marginTop: 20 }}>
-                    {busy && !rows.length ? (
-                        <WaitSpinner size="medium" />
-                    ) : (
-                        <Table stripeRows>
-                            <Table.Head>
-                                <Table.HeadCell>File</Table.HeadCell>
-                                <Table.HeadCell>Format</Table.HeadCell>
-                                <Table.HeadCell>Host</Table.HeadCell>
-                                <Table.HeadCell>Checklists</Table.HeadCell>
-                                <Table.HeadCell>Findings</Table.HeadCell>
-                                <Table.HeadCell>Results</Table.HeadCell>
-                                <Table.HeadCell>Status</Table.HeadCell>
-                            </Table.Head>
-                            <Table.Body>
-                                {rows.length ? (
-                                    rows.map((row) => (
-                                        <Table.Row key={row.key}>
-                                            <Table.Cell>{row.name}</Table.Cell>
-                                            <Table.Cell>
-                                                {row.format ? row.format.toUpperCase() : "—"}
-                                            </Table.Cell>
-                                            <Table.Cell>{row.host || "—"}</Table.Cell>
-                                            <Table.Cell>
-                                                {row.status === "done" ? row.checklists : "—"}
-                                            </Table.Cell>
-                                            <Table.Cell>
-                                                {row.status === "done" ? row.reviews : "—"}
-                                            </Table.Cell>
-                                            <Table.Cell>{statsLine(row.stats)}</Table.Cell>
-                                            <Table.Cell>
-                                                {row.status === "uploading"
-                                                    ? "Uploading…"
-                                                    : row.status === "done"
-                                                      ? row.created
-                                                          ? "Created"
-                                                          : "Updated"
-                                                      : row.status === "error"
-                                                        ? row.error
-                                                        : "Queued"}
-                                            </Table.Cell>
-                                        </Table.Row>
-                                    ))
-                                ) : (
-                                    <Table.Row>
-                                        <Table.Cell align="center" colSpan={7}>
-                                            No files queued.
-                                        </Table.Cell>
-                                    </Table.Row>
-                                )}
-                            </Table.Body>
-                        </Table>
-                    )}
-                </div>
-                <Actions>
-                    <span>
-                        {done} imported
-                        {failed ? " · " + failed + " failed" : ""}
-                    </span>
-                    <Button
-                        appearance="secondary"
-                        disabled={busy || !rows.length}
-                        onClick={() => setRows([])}
-                        label="Clear list"
-                    />
-                </Actions>
-            </PagePad>
+            <div style={{ flex: "0 0 auto", padding: "0 20px" }}>
+                <TabBar activeTabId={tab} onChange={onTabChange}>
+                    <TabBar.Tab tabId="checklists" label="Checklists" />
+                    <TabBar.Tab tabId="baselines" label="Baselines" />
+                </TabBar>
+            </div>
+            {tab === "baselines" ? (
+                <BaselineImportPanel />
+            ) : (
+                <ChecklistImportPanel />
+            )}
         </Shell>
     );
 }
