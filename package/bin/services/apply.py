@@ -13,6 +13,7 @@ from importers.ingest import reviews_to_seeds
 from models import parse_json_field
 from services import baselines as baselines_svc
 from services import checklists as checklists_svc
+from services import assignment as assignment_svc
 from services import collections as collections_svc
 from services import hosts as hosts_svc
 
@@ -102,6 +103,7 @@ def apply_finding_events(
     events: List[Dict[str, Any]],
     username: str,
     session: Dict[str, Any],
+    forced_collection_id: str = "",
 ) -> Dict[str, Any]:
     normalized: List[Dict[str, Any]] = []
     errors: List[str] = []
@@ -115,7 +117,6 @@ def apply_finding_events(
     for event in normalized:
         gkey = "|".join(
             [
-                event.get("collectionId") or "",
                 (event.get("assetName") or "").casefold(),
                 (event.get("benchmarkId") or "").casefold(),
             ]
@@ -128,16 +129,36 @@ def apply_finding_events(
     applied = 0
     locked = 0
     unmatched = 0
+    assigned_by_rule = 0
+    assigned_by_override = 0
+    assigned_by_default = 0
+    assigned_by_event = 0
+    assigned_by_forced = 0
     checklists: List[Dict[str, Any]] = []
 
     for batch_map in groups.values():
         batch = list(batch_map.values())
         first = batch[0]
-        collection_id = first.get("collectionId") or ""
-        if not collection_id:
-            collection_id = collections_svc.ensure_default_collection(
-                service, username
-            )["_key"]
+        resolved = assignment_svc.resolve_collection_id(
+            first,
+            service,
+            session,
+            forced_collection_id=forced_collection_id,
+            username=username,
+            audit_resolve=not forced_collection_id,
+        )
+        collection_id = resolved.get("stig_collection_id") or ""
+        reason = resolved.get("reason") or ""
+        if reason == assignment_svc.REASON_RULE:
+            assigned_by_rule += 1
+        elif reason == assignment_svc.REASON_OVERRIDE:
+            assigned_by_override += 1
+        elif reason == assignment_svc.REASON_DEFAULT:
+            assigned_by_default += 1
+        elif reason == assignment_svc.REASON_EVENT_COLLECTION:
+            assigned_by_event += 1
+        elif reason == assignment_svc.REASON_FORCED:
+            assigned_by_forced += 1
         checklists_svc._require_collection(service, collection_id, session, write=True)
         host, created_host = _upsert_host(
             service, first, collection_id, username, session
@@ -227,6 +248,9 @@ def apply_finding_events(
                 "host_id": host["_key"],
                 "hostname": host.get("hostname"),
                 "benchmark_id": first.get("benchmarkId"),
+                "stig_collection_id": collection_id,
+                "assignment_reason": reason,
+                "assignment_rule_key": resolved.get("rule_key"),
                 "review_count": len(batch),
                 "reviews_applied": result.get("updated", 0),
                 "reviews_locked": result.get("locked", 0),
@@ -248,6 +272,11 @@ def apply_finding_events(
         "applied": applied,
         "locked": locked,
         "unmatched": unmatched,
+        "assigned_by_rule": assigned_by_rule,
+        "assigned_by_override": assigned_by_override,
+        "assigned_by_default": assigned_by_default,
+        "assigned_by_event_collection": assigned_by_event,
+        "assigned_by_forced_import": assigned_by_forced,
         "errors": errors,
         "finding_count": len(normalized),
     }

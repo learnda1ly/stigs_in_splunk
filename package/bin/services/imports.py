@@ -26,11 +26,13 @@ def import_checklist_file(
     session: Dict[str, Any],
     stig_collection_id: str,
     source_uri: str = "",
+    operator_collection_id: str = "",
 ) -> Dict[str, Any]:
-    if not stig_collection_id:
-        stig_collection_id = collections_svc.ensure_default_collection(
-            service, username
-        )["_key"]
+    forced_collection_id = (operator_collection_id or stig_collection_id or "").strip()
+    if not forced_collection_id:
+        stig_collection_id = ""
+    else:
+        stig_collection_id = forced_collection_id
     if not body:
         raise ValueError("empty import body")
 
@@ -49,12 +51,15 @@ def import_checklist_file(
     elif (format_name or "").lower() in {"ckl", "cklb"}:
         source_product = "stigman-watcher"
 
+    collection_name = (
+        _collection_name(service, session, stig_collection_id) if stig_collection_id else ""
+    )
     findings = events_from_parsed(
         parsed,
         stig_collection_id,
         source_uri=source_uri,
         source_product=source_product,
-        collection_name=_collection_name(service, session, stig_collection_id),
+        collection_name=collection_name,
     )
     settings = settings_svc.get_settings(service)
     indexed = hec_svc.emit_findings(
@@ -63,7 +68,13 @@ def import_checklist_file(
         session_key=(session or {}).get("authtoken") or "",
         source=source_uri or "stigs_in_splunk",
     )
-    applied = apply_svc.apply_finding_events(service, findings, username, session)
+    applied = apply_svc.apply_finding_events(
+        service,
+        findings,
+        username,
+        session,
+        forced_collection_id=forced_collection_id,
+    )
 
     totals = {"pass": 0, "fail": 0, "notapplicable": 0, "notchecked": 0}
     for checklist in parsed.get("checklists") or []:

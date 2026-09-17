@@ -18,6 +18,8 @@ KV_STIG_BASELINE_RULES = "stig_baseline_rules"
 KV_STIG_CHECKLISTS = "stig_checklists"
 KV_STIG_REVIEWS = "stig_reviews"
 KV_STIG_EDITOR_SETTINGS = "stig_editor_settings"
+KV_STIG_ASSIGNMENT_RULES = "stig_assignment_rules"
+KV_STIG_HOST_BASELINE_ASSIGNMENTS = "stig_host_baseline_assignments"
 
 DEFAULT_INGEST_INDEX = "stig"
 DEFAULT_INGEST_SOURCETYPE = "stig:finding"

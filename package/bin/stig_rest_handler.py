@@ -24,6 +24,7 @@ from services import baseline_jobs as baseline_jobs_svc
 from services import checklists as checklists_svc
 from services import collections as collections_svc
 from services import hosts as hosts_svc
+from services import assignment as assignment_svc
 from services import imports as imports_svc
 from services import reconcile as reconcile_svc
 from services import reviews as reviews_svc
@@ -137,6 +138,18 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return self._settings(method, parts, payload, service, username)
             if resource == "stig_imports":
                 return self._imports(method, parts, query, payload, service, session, username)
+            if resource == "stig_assignment_rules":
+                return self._assignment_rules(
+                    method, parts, query, payload, service, session, username
+                )
+            if resource == "stig_host_baseline_assignments":
+                return self._host_baseline_assignments(
+                    method, parts, query, payload, service, session, username
+                )
+            if resource == "stig_assignment":
+                return self._assignment_preview(
+                    method, parts, query, payload, service, session, username
+                )
             if resource == "stigs_in_splunk_baseline":
                 return self._ucc_baselines(
                     method, parts, query, payload, service, session, username
@@ -604,11 +617,127 @@ class StigRestHandler(PersistentServerConnectionApplication):
             session,
             collection_id,
             source_uri,
+            operator_collection_id=collection_id,
         )
         created = rec.get("host", {}).get("created") or any(
             item.get("created") for item in rec.get("checklists") or []
         )
         return _json_response(rec, status=201 if created else 200)
+
+    def _assignment_rules(
+        self,
+        method: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        if not parts:
+            if method == "GET":
+                return _json_response(assignment_svc.list_rules(service))
+            if method == "POST":
+                body = _body_json(payload)
+                rec = assignment_svc.create_rule(service, body, username)
+                return _json_response(rec, status=201)
+            return _error("method not allowed", status=405)
+        key = parts[0]
+        if method == "GET":
+            rec = assignment_svc.get_rule(service, key)
+            if not rec:
+                return _error("not found", status=404)
+            return _json_response(rec)
+        if method in ("PATCH", "POST", "PUT"):
+            body = _body_json(payload)
+            updated = assignment_svc.update_rule(service, key, body, username)
+            return _json_response(updated)
+        if method == "DELETE":
+            if not access.user_has_stig_admin(session):
+                return _error("stig_admin required", status=403)
+            assignment_svc.delete_rule(service, key, username)
+            return _json_response({"deleted": key})
+        return _error("method not allowed", status=405)
+
+    def _host_baseline_assignments(
+        self,
+        method: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        if not parts:
+            if method == "GET":
+                return _json_response(assignment_svc.list_overrides(service))
+            if method == "POST":
+                body = _body_json(payload)
+                rec = assignment_svc.create_override(service, body, username)
+                return _json_response(rec, status=201)
+            return _error("method not allowed", status=405)
+        key = parts[0]
+        if method == "GET":
+            rec = assignment_svc.get_override(service, key)
+            if not rec:
+                return _error("not found", status=404)
+            return _json_response(rec)
+        if method in ("PATCH", "POST", "PUT"):
+            body = _body_json(payload)
+            updated = assignment_svc.update_override(service, key, body, username)
+            return _json_response(updated)
+        if method == "DELETE":
+            if not access.user_has_stig_admin(session):
+                return _error("stig_admin required", status=403)
+            assignment_svc.delete_override(service, key, username)
+            return _json_response({"deleted": key})
+        return _error("method not allowed", status=405)
+
+    def _assignment_preview(
+        self,
+        method: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        if parts != ["preview"]:
+            return _error("not found", status=404)
+        if method not in ("GET", "POST"):
+            return _error("method not allowed", status=405)
+        body = _body_json(payload)
+        event = body.get("event") if body else {}
+        if not event and query.get("event"):
+            try:
+                event = json.loads(query.get("event") or "{}")
+            except (TypeError, ValueError):
+                event = {}
+        if not event:
+            return _error("event body required")
+        from importers.events import normalize_finding_event
+
+        try:
+            normalized = normalize_finding_event(event)
+        except ValueError as exc:
+            return _error(str(exc))
+        forced = (body.get("forced_collection_id") or query.get("forced_collection_id") or "").strip()
+        if forced:
+            result = assignment_svc.resolve_collection_id(
+                normalized,
+                service,
+                session,
+                forced_collection_id=forced,
+                username=username,
+                audit_resolve=False,
+            )
+        else:
+            result = assignment_svc.preview_resolution(
+                service, normalized, session, username=username
+            )
+        return _json_response(result)
 
     def _settings(
         self,
