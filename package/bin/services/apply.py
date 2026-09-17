@@ -9,11 +9,39 @@ from typing import Any, Dict, List, Tuple
 
 import audit
 from importers.events import finding_key, normalize_finding_event
-from importers.ingest import reviews_to_seeds
-from models import parse_json_field
+from importers.ingest import review_seed_payload, reviews_to_seeds
+from models import dumps_json, parse_json_field
 from services import baselines as baselines_svc
 from services import checklists as checklists_svc
 from services import hosts as hosts_svc
+
+
+def _ingest_metadata_block(event: Dict[str, Any]) -> Dict[str, Any]:
+    """Splunk-app ingest context stored on stig_hosts.metadata (JSON)."""
+    block: Dict[str, Any] = {}
+    for key in ("source_product", "sourceRef", "collectionName"):
+        val = event.get(key)
+        if val is not None and str(val).strip():
+            block[key] = val
+    engine = event.get("resultEngine")
+    if engine is not None:
+        block["resultEngine"] = engine
+    return block
+
+
+def _merge_host_metadata(existing_meta: Any, event: Dict[str, Any], asset_meta: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(asset_meta or {})
+    if isinstance(existing_meta, str):
+        existing_meta = parse_json_field(existing_meta, default={}) or {}
+    if isinstance(existing_meta, dict):
+        for key, val in existing_meta.items():
+            if key not in merged:
+                merged[key] = val
+    ingest = _ingest_metadata_block(event)
+    if ingest:
+        prior = merged.get("ingest") if isinstance(merged.get("ingest"), dict) else {}
+        merged["ingest"] = {**prior, **ingest}
+    return merged
 
 
 def _upsert_host(
@@ -28,7 +56,12 @@ def _upsert_host(
     existing = hosts_svc.find_host_by_hostname(
         service, session, collection_id, hostname
     )
-    metadata = asset.get("metadata") if isinstance(asset.get("metadata"), dict) else {}
+    asset_meta = asset.get("metadata") if isinstance(asset.get("metadata"), dict) else {}
+    metadata = _merge_host_metadata(
+        existing.get("metadata") if existing else {},
+        event,
+        asset_meta,
+    )
     body = {
         "stig_collection_id": collection_id,
         "hostname": hostname,
@@ -50,6 +83,10 @@ def _upsert_host(
             patch[dest] = val
     if metadata.get("cklRole") and metadata["cklRole"] != existing.get("role"):
         patch["role"] = metadata["cklRole"]
+    new_meta = _merge_host_metadata(existing.get("metadata"), event, asset_meta)
+    old_meta = parse_json_field(existing.get("metadata"), default={}) or {}
+    if new_meta != old_meta:
+        patch["metadata"] = dumps_json(new_meta)
     if patch:
         existing = hosts_svc.update_host(
             service, existing["_key"], patch, username, session
@@ -155,18 +192,7 @@ def apply_finding_events(
             baseline["_key"],
         )
         target_data = (first.get("asset") or {}).get("target_data") or {}
-        seeds = reviews_to_seeds(
-            [
-                {
-                    "ruleId": event.get("ruleId"),
-                    "groupId": event.get("groupId"),
-                    "result": event.get("result"),
-                    "detail": event.get("detail"),
-                    "comment": event.get("comment"),
-                }
-                for event in batch
-            ]
-        )
+        seeds = reviews_to_seeds(batch)
         if existing:
             if target_data:
                 current = parse_json_field(existing.get("target_data"), default={}) or {}

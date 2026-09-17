@@ -148,14 +148,26 @@ def streamed_finding(
     return finding
 
 
-def reviews_to_seeds(reviews: List[Dict[str, Any]]) -> Dict[str, Dict[str, str]]:
-    seeds: Dict[str, Dict[str, str]] = {}
+def review_seed_payload(review: Dict[str, Any]) -> Dict[str, Any]:
+    """KV review patch from a streamed review or normalized finding event."""
+    status = review.get("_status")
+    if not status:
+        status = status_from_result(review.get("result"))
+    payload: Dict[str, Any] = {
+        "status": status or "not_reviewed",
+        "finding_details": review.get("detail") or review.get("finding_details") or "",
+        "comments": review.get("comment") or review.get("comments") or "",
+    }
+    package_id = review.get("package_id") or review.get("packageId")
+    if package_id is not None and str(package_id).strip():
+        payload["package_id"] = str(package_id).strip()
+    return payload
+
+
+def reviews_to_seeds(reviews: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    seeds: Dict[str, Dict[str, Any]] = {}
     for review in reviews or []:
-        payload = {
-            "status": status_from_result(review.get("result")),
-            "finding_details": review.get("detail") or "",
-            "comments": review.get("comment") or "",
-        }
+        payload = review_seed_payload(review)
         keys = [review.get("ruleId"), review.get("groupId")]
         extra: List[str] = []
         for key in keys:

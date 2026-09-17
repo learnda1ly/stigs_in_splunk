@@ -105,6 +105,8 @@ def apply_review_seeds(
             patch["finding_details"] = seed["finding_details"] or ""
         if "comments" in seed:
             patch["comments"] = seed["comments"] or ""
+        if "package_id" in seed:
+            patch["package_id"] = seed["package_id"] or ""
         patch["valid"] = validation.persistable_valid(patch)
         patch["updated_at"] = ts
         patch["updated_by"] = username
@@ -198,7 +200,7 @@ def create_checklist(
             "status": seed.get("status") or "not_reviewed",
             "finding_details": seed.get("finding_details") or "",
             "comments": seed.get("comments") or "",
-            "package_id": "",
+            "package_id": str(seed.get("package_id") or ""),
             "ingest_lock": False,
             "updated_at": ts,
             "updated_by": username,
@@ -250,7 +252,7 @@ def ensure_review(
         "status": seed.get("status") or "not_reviewed",
         "finding_details": seed.get("finding_details") or "",
         "comments": seed.get("comments") or "",
-        "package_id": "",
+        "package_id": str(seed.get("package_id") or ""),
         "ingest_lock": False,
         "updated_at": ts,
         "updated_by": username,
