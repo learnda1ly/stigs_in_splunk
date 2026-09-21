@@ -200,6 +200,7 @@ def create_checklist(
             "comments": seed.get("comments") or "",
             "package_id": "",
             "ingest_lock": False,
+            "workflow_state": "draft",
             "updated_at": ts,
             "updated_by": username,
         }
@@ -252,6 +253,7 @@ def ensure_review(
         "comments": seed.get("comments") or "",
         "package_id": "",
         "ingest_lock": False,
+        "workflow_state": "draft",
         "updated_at": ts,
         "updated_by": username,
     }

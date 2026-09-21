@@ -32,7 +32,15 @@ import {
     Toolbar,
     VimBadge,
 } from "../layout";
-import { STATUS_LABELS, StatusChip, reviewIsValid } from "../status";
+import Text from "@splunk/react-ui/Text";
+import {
+    STATUS_LABELS,
+    StatusChip,
+    WorkflowChip,
+    reviewIsEditable,
+    reviewIsValid,
+    reviewWorkflowState,
+} from "../status";
 import VimField from "../vim/VimField";
 import { HelpOverlay, JumpOverlay, VimCommandBar } from "../vim/overlays";
 import { loadVimSetting, persistVimSetting } from "../vim/settings";
@@ -63,6 +71,7 @@ export default function EditorApp() {
     const [loading, setLoading] = useState(false);
     const [busy, setBusy] = useState(false);
     const [banner, setBanner] = useState(null);
+    const [rejectFeedback, setRejectFeedback] = useState("");
     const [finding, setFinding] = useState("");
     const [comments, setComments] = useState("");
     const [status, setStatus] = useState("not_reviewed");
@@ -334,6 +343,18 @@ export default function EditorApp() {
     }, [selected && selected.review._key, selected && selected.review.updated_at]);
 
     const doneCount = items.filter((item) => reviewIsValid(item.review)).length;
+    const workflowCounts = useMemo(() => {
+        const counts = { draft: 0, submitted: 0, accepted: 0 };
+        items.forEach((item) => {
+            const wf = reviewWorkflowState(item.review);
+            if (counts[wf] != null) {
+                counts[wf] += 1;
+            }
+        });
+        return counts;
+    }, [items]);
+    const selectedEditable =
+        selected && reviewIsEditable(selected.review) && !busy;
     const pct = items.length ? Math.round((doneCount / items.length) * 100) : 0;
     const dirty =
         selected &&
@@ -366,7 +387,7 @@ export default function EditorApp() {
     };
 
     const onStatus = (value) => {
-        if (!selected || busy) {
+        if (!selected || busy || !reviewIsEditable(selected.review)) {
             return;
         }
         const previous = selected.review.status;
@@ -428,8 +449,84 @@ export default function EditorApp() {
             .finally(() => setBusy(false));
     };
 
-    const onWrite = () => {
+    const applyWorkflowUpdate = (key, updated) => {
+        patchItem(key, { ...updated });
+        if (selected && selected.review._key === key) {
+            setRejectFeedback(updated.reject_feedback || "");
+        }
+    };
+
+    const onWorkflow = (action, feedback) => {
         if (!selected || busy) {
+            return;
+        }
+        const key = selected.review._key;
+        setBusy(true);
+        const path = "stig_reviews/" + key + "/" + action;
+        const body = action === "reject" ? { reject_feedback: feedback || "" } : {};
+        apiPatch(path, body)
+            .then((updated) => {
+                applyWorkflowUpdate(key, updated);
+                setBanner({
+                    type: "success",
+                    text: "Review " + action + " → " + (updated.workflow_state || action),
+                });
+            })
+            .catch((err) =>
+                setBanner({ type: "error", text: "Workflow failed: " + err.message })
+            )
+            .finally(() => setBusy(false));
+    };
+
+    const onBatchWorkflow = (action) => {
+        const ids = filtered
+            .filter((item) => {
+                const wf = reviewWorkflowState(item.review);
+                if (action === "submit") {
+                    return wf === "draft" && reviewIsValid(item.review);
+                }
+                if (action === "accept" || action === "reject") {
+                    return wf === "submitted";
+                }
+                return false;
+            })
+            .map((item) => item.review._key);
+        if (!ids.length) {
+            setBanner({
+                type: "warning",
+                text: "No findings in the current list match this workflow action.",
+            });
+            return;
+        }
+        setBusy(true);
+        apiPatch("stig_reviews/batch", {
+            action,
+            review_ids: ids,
+            reject_feedback: action === "reject" ? rejectFeedback : undefined,
+        })
+            .then((result) => {
+                (result.reviews || []).forEach((updated) => {
+                    applyWorkflowUpdate(updated._key, updated);
+                });
+                const errCount = (result.errors || []).length;
+                setBanner({
+                    type: errCount ? "warning" : "success",
+                    text:
+                        action +
+                        " batch: " +
+                        (result.updated || 0) +
+                        " updated" +
+                        (errCount ? ", " + errCount + " errors" : ""),
+                });
+            })
+            .catch((err) =>
+                setBanner({ type: "error", text: "Batch workflow failed: " + err.message })
+            )
+            .finally(() => setBusy(false));
+    };
+
+    const onWrite = () => {
+        if (!selected || busy || !reviewIsEditable(selected.review)) {
             return;
         }
         setBusy(true);
@@ -819,6 +916,24 @@ export default function EditorApp() {
                         label="Validate"
                     />
                     <Button
+                        appearance="secondary"
+                        disabled={busy || !filtered.length}
+                        onClick={() => onBatchWorkflow("submit")}
+                        label="Submit visible"
+                    />
+                    <Button
+                        appearance="secondary"
+                        disabled={busy || !filtered.length}
+                        onClick={() => onBatchWorkflow("accept")}
+                        label="Accept visible"
+                    />
+                    <Button
+                        appearance="secondary"
+                        disabled={busy || !filtered.length}
+                        onClick={() => onBatchWorkflow("reject")}
+                        label="Reject visible"
+                    />
+                    <Button
                         appearance="primary"
                         onClick={() => {
                             window.location.assign(viewUrl("stig_baselines_ui"));
@@ -828,7 +943,9 @@ export default function EditorApp() {
                 </Toolbar>
                 <HeaderMeta>
                     <div>
-                        {doneCount} completed · {items.length - doneCount} incomplete
+                        {doneCount} completed · {items.length - doneCount} incomplete ·{" "}
+                        {workflowCounts.submitted} submitted · {workflowCounts.accepted}{" "}
+                        accepted
                     </div>
                     <ProgressTrack title={pct + "% complete"}>
                         <ProgressFill $pct={pct} />
@@ -936,6 +1053,7 @@ export default function EditorApp() {
                                     >
                                         <span>{complete ? "✓" : ""}</span>
                                         <StatusChip status={rev.status} />
+                                        <WorkflowChip workflowState={rev.workflow_state} />
                                         <span>
                                             {host.hostname || host._key || "—"}
                                         </span>
@@ -993,7 +1111,18 @@ export default function EditorApp() {
                                             ? "yes"
                                             : "no"}
                                     </span>
+                                    <span>
+                                        <strong>Workflow</strong>{" "}
+                                        <WorkflowChip
+                                            workflowState={selected.review.workflow_state}
+                                        />
+                                    </span>
                                 </MetaLine>
+                                {selected.review.reject_feedback ? (
+                                    <Message appearance="error">
+                                        Reject feedback: {selected.review.reject_feedback}
+                                    </Message>
+                                ) : null}
                                 <Message
                                     appearance={
                                         reviewIsValid({
@@ -1015,6 +1144,7 @@ export default function EditorApp() {
                             <ControlGroup label="Status (saves immediately)">
                                 <Select
                                     value={status}
+                                    disabled={!selectedEditable}
                                     onChange={(e, { value }) => onStatus(value)}
                                 >
                                     {Object.keys(STATUS_LABELS).map((st) => (
@@ -1099,21 +1229,68 @@ export default function EditorApp() {
                                     onSwitchField={onSwitchField}
                                 />
                             </ControlGroup>
+                            <ControlGroup label="Governance (submit / accept / reject)">
+                                <Actions>
+                                    <Button
+                                        appearance="primary"
+                                        disabled={
+                                            busy ||
+                                            !reviewIsValid({
+                                                finding_details: finding,
+                                                comments,
+                                            }) ||
+                                            reviewWorkflowState(selected.review) !== "draft"
+                                        }
+                                        onClick={() => onWorkflow("submit")}
+                                        label="Submit"
+                                    />
+                                    <Button
+                                        appearance="secondary"
+                                        disabled={
+                                            busy ||
+                                            reviewWorkflowState(selected.review) !== "submitted"
+                                        }
+                                        onClick={() => onWorkflow("accept")}
+                                        label="Accept"
+                                    />
+                                    <Button
+                                        appearance="secondary"
+                                        disabled={
+                                            busy ||
+                                            reviewWorkflowState(selected.review) !== "submitted"
+                                        }
+                                        onClick={() =>
+                                            onWorkflow("reject", rejectFeedback)
+                                        }
+                                        label="Reject"
+                                    />
+                                </Actions>
+                                <Text
+                                    value={rejectFeedback}
+                                    onChange={(e, { value }) => setRejectFeedback(value)}
+                                    placeholder="Optional feedback when rejecting"
+                                />
+                            </ControlGroup>
                             <Actions>
                                 <Button
                                     appearance="primary"
-                                    disabled={busy || !dirty}
+                                    disabled={busy || !dirty || !selectedEditable}
                                     onClick={onWrite}
                                     label="Write"
                                 />
                                 <Button
                                     appearance="secondary"
-                                    disabled={!dirty}
+                                    disabled={!dirty || !selectedEditable}
                                     onClick={onRevert}
                                     label="Revert"
                                 />
                                 {dirty ? (
                                     <span>Unwritten finding details or comments</span>
+                                ) : null}
+                                {!selectedEditable ? (
+                                    <span>
+                                        Finding is locked while submitted or accepted.
+                                    </span>
                                 ) : null}
                             </Actions>
                         </FieldStack>

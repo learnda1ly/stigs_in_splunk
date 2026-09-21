@@ -74,11 +74,11 @@ Rebuild UI bundles after changing `ui/src`:
 
 `./scripts/build_ucc.sh` runs that step unless `SKIP_UI_BUILD=1`.
 
-After install, open the app → **STIG Editor**. Manage workspaces and STIG baselines under **Configuration**. Imports without a workspace go to **Default**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**.
+After install, open the app → **STIG Editor**. Manage workspaces and STIG baselines under **Configuration**. Imports without a workspace go to **Default**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**. **Submit** sends a completed finding for owner **Accept** / **Reject** (`stig_review_accept` or workspace `review_accept_principals`). See [FEATURE_PARITY.md](FEATURE_PARITY.md).
 
 ## Splunk roles
 
-Assign `stig_user` or `stig_admin`, or grant capabilities `stig_read`, `stig_write`, `stig_admin` (see `package/default/authorize.conf`; `role_admin` includes all three for PoC).
+Assign `stig_user` or `stig_admin`, or grant capabilities `stig_read`, `stig_write`, `stig_review_accept`, `stig_admin` (see `package/default/authorize.conf`; `role_stig_admin` / `role_admin` include accept/reject for PoC).
 
 ## REST base URL
 

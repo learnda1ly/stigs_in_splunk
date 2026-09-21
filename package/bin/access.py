@@ -42,6 +42,40 @@ def user_has_stig_admin(session: Dict[str, Any]) -> bool:
     return "stig_admin" in roles
 
 
+def _principal_matches(
+    principals: List[str], session: Dict[str, Any]
+) -> bool:
+    username = session.get("user") or ""
+    roles = user_roles(session)
+    for principal in principals:
+        if principal.startswith("user:") and principal[5:] == username:
+            return True
+        if principal.startswith("role:") and principal[5:] in roles:
+            return True
+    return False
+
+
+def user_can_accept_reviews(
+    collection_record: Dict[str, Any], session: Dict[str, Any]
+) -> bool:
+    """Owner/manager accept-reject: stig_admin, stig_review_accept, or review_accept_principals."""
+    if user_has_stig_admin(session):
+        return True
+    caps = session.get("capabilities") or {}
+    if caps.get("stig_review_accept"):
+        return True
+    if "stig_review_accept" in user_roles(session):
+        return True
+    if not user_can_read_collection(collection_record, session):
+        return False
+    accept_principals = _parse_principals(
+        collection_record.get("review_accept_principals")
+    )
+    if accept_principals and _principal_matches(accept_principals, session):
+        return True
+    return False
+
+
 def user_can_read_collection(
     collection_record: Dict[str, Any], session: Dict[str, Any]
 ) -> bool:

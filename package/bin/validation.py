@@ -50,7 +50,11 @@ def is_completed(review: Dict[str, Any]) -> bool:
 
 def annotate_review(review: Dict[str, Any]) -> Dict[str, Any]:
     """Return a copy with ``valid`` and ``validation_errors`` (not for KV)."""
+    import review_workflow
+
     out = dict(review)
+    out["workflow_state"] = review_workflow.workflow_state(out)
+    out["workflow_editable"] = review_workflow.is_editable(out)
     issues = collect_issues(out)
     out["valid"] = not issues
     out["validation_errors"] = issues

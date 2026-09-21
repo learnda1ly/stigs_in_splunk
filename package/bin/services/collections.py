@@ -160,6 +160,11 @@ def update_collection(
     if "access_principals" in body:
         val = body["access_principals"]
         patch["access_principals"] = dumps_json(val) if isinstance(val, list) else val
+    if "review_accept_principals" in body:
+        val = body["review_accept_principals"]
+        patch["review_accept_principals"] = (
+            dumps_json(val) if isinstance(val, list) else val
+        )
     if "is_default" in body:
         patch["is_default"] = bool(as_bool(body.get("is_default")))
     patch["updated_at"] = now_epoch()

@@ -397,6 +397,10 @@ Foreign keys are string `_key` values unless noted. Timestamps are **epoch secon
 | `status` | string | See §10 |
 | `finding_details`, `comments` | string | |
 | `ingest_lock` | bool | When **true**, HEC/reconcile must **not** overwrite this review. Default false; incoming is authoritative. |
+| `workflow_state` | string | `draft` \| `submitted` \| `accepted` (reject returns to `draft`; see FEATURE_PARITY.md) |
+| `submitted_at`, `submitted_by` | time / string | Set on submit |
+| `accepted_at`, `accepted_by` | time / string | Set on accept |
+| `rejected_at`, `rejected_by`, `reject_feedback` | | Set on reject (feedback optional) |
 | `updated_at` | time | |
 | `updated_by` | string | Set on every update |
 
@@ -416,6 +420,7 @@ Evaluation (`bin/access.py`):
 - **`stig_admin`** capability, or roles **`admin`** / **`sc_admin`:** full access to all workspaces.
 - **Read:** user matches a principal, OR list is empty (open read within cap holders).
 - **Write:** must pass read, plus **`stig_write`** capability (admin bypass).
+- **Accept/reject submitted reviews:** **`stig_review_accept`** capability, **`stig_admin`**, or a match on workspace **`review_accept_principals`** (`user:` / `role:` entries, same shape as `access_principals`).
 
 ### 8.2 Scope by entity
 
@@ -601,11 +606,15 @@ Requires **`stig_write`**.
 
 | Method | Path | Notes |
 |--------|------|--------|
-| GET | `/stig_reviews` | Query `checklist_id?`, `status?` |
+| GET | `/stig_reviews` | Query `checklist_id?`, `status?`, `workflow_state?` |
 | GET | `/stig_reviews/{id}` | Single review |
 | PATCH/PUT | `/stig_reviews/{id}` | `{status?, finding_details?, comments?, ingest_lock?}` |
+| POST | `/stig_reviews/{id}/submit` | Assessor submit (`stig_write`); review must be valid |
+| POST | `/stig_reviews/{id}/accept` | Owner accept (`stig_review_accept` / principals) |
+| POST | `/stig_reviews/{id}/reject` | `{reject_feedback?}` — returns review to `draft` |
+| POST | `/stig_reviews/batch` | `{action, review_ids[], reject_feedback?}` |
 
-Updates require workspace **write** access via parent checklist. Validate `status` against allowed set; accept internal or CKLB status strings on input. `ingest_lock=true` blocks HEC/reconcile from overwriting that finding.
+Updates require workspace **write** access via parent checklist. Content PATCH is allowed only in `workflow_state=draft` (except `stig_admin`). Validate `status` against allowed set; accept internal or CKLB status strings on input. `ingest_lock=true` blocks HEC/reconcile from overwriting that finding. See **FEATURE_PARITY.md** for the state machine.
 
 ---
 
@@ -622,11 +631,18 @@ All review rows:
 | table _key checklist_id group_id rule_id status finding_details comments updated_at
 ```
 
-Open findings only:
+Open findings only (assessor status):
 
 ```spl
 | inputlookup stig_reviews
 | search status=open
+```
+
+Open findings not yet accepted (governance):
+
+```spl
+| inputlookup stig_reviews
+| search status=open NOT workflow_state=accepted
 ```
 
 One baseline’s rules:

@@ -549,11 +549,49 @@ class StigRestHandler(PersistentServerConnectionApplication):
                         rule_id=query.get("rule_id"),
                         rule_version=query.get("rule_version"),
                         valid=query.get("valid"),
+                        workflow_state=query.get("workflow_state"),
                     )
                 )
             return _error("method not allowed", status=405)
 
+        if parts == ["batch"] and method in ("POST", "PATCH", "PUT"):
+            body = _body_json(payload)
+            action = (body.get("action") or "").strip().lower()
+            review_ids = body.get("review_ids") or body.get("ids") or []
+            if not isinstance(review_ids, list):
+                return _error("review_ids must be a list")
+            if not action:
+                return _error("action is required (submit, accept, reject)")
+            result = reviews_svc.batch_workflow(
+                service,
+                action,
+                [str(r) for r in review_ids],
+                username,
+                session,
+                reject_feedback=body.get("reject_feedback"),
+            )
+            return _json_response(result)
+
         key = parts[0]
+        if len(parts) == 2 and parts[1] in ("submit", "accept", "reject"):
+            action = parts[1]
+            if method not in ("POST", "PATCH", "PUT"):
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            if action == "submit":
+                updated = reviews_svc.submit_review(service, key, username, session)
+            elif action == "accept":
+                updated = reviews_svc.accept_review(service, key, username, session)
+            else:
+                updated = reviews_svc.reject_review(
+                    service,
+                    key,
+                    username,
+                    session,
+                    reject_feedback=body.get("reject_feedback"),
+                )
+            return _json_response(updated)
+
         if method == "GET":
             rec = reviews_svc.get_review(service, key, session)
             if not rec:
