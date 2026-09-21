@@ -66,9 +66,9 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count (approx.) |
 |--------|-----------------|
-| done | 20 |
+| done | 22 |
 | partial | 14 |
-| missing | 20 |
+| missing | 18 |
 | n/a | 8 |
 
 Priorities are suggestions for **this** Splunk port; adjust per your deployment (e.g. heavy automation → bump XCCDF results).
@@ -153,9 +153,9 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 |---------|-------------------------|--------|-----------|-----------------------------|-----|------|
 | Collection dashboard metrics | UI: completion, severity, CORA. API: `/collections/{id}/metrics/summary|detail` (+ aggregations) | **done** | SplunkUI **Collection dashboard** + `GET /stig_collections/{id}/metrics`; optional lookup dashboard `stig_collection_metrics_lookup`. No CORA scoring. | SPL dashboard or `GET /stig_collections/{id}/metrics` with counts by status/severity. | P0 | L |
 | Findings report (open reviews) | UI: Findings report. API: `GET .../findings` | **done** | SplunkUI findings tab + CSV export; `GET /stig_collections/{id}/findings` and `GET /stig_findings?stig_collection_id=` with pagination. | Dedicated findings endpoint or saved report + CSV export in UI. | P0 | M |
-| POA&M spreadsheet generation | UI: Generate POA&M. API: `GET .../poam` | **missing** | User guide: reference for eMASS, not replacement. | Export CSV/XLSX template from open findings; Splunk `outputcsv` alternative documented. | P1 | M |
+| POA&M spreadsheet generation | UI: Generate POA&M. API: `GET .../poam` | **done** | SplunkUI **POA&M CSV/XLSX** on Collection dashboard; `GET /stig_collections/{id}/poam?format=json\|csv\|xlsx` from governance-open findings; JSON includes SPL `outputcsv` alternative (spec §11.6 / README). eMASS template reference only. | Export CSV/XLSX template from open findings; Splunk `outputcsv` alternative documented. | P1 | M |
 | CORA risk scoring | README / dashboard screenshots | **missing** | — | **n/a** unless product requests; else P2 calculator from severity weights in SPL. | P2 | L |
-| Aggregated findings by rule/group/CCI | UI: Aggregated Findings panel | **missing** | — | `stats` SPL or REST aggregation by `group_id`, `rule_id`, CCI from rules lookup. | P1 | M |
+| Aggregated findings by rule/group/CCI | UI: Aggregated Findings panel | **done** | SplunkUI **Aggregated findings** tab; `GET /stig_collections/{id}/findings/aggregate` with `group_by=group_id,rule_id,cci` (governance-open counts; CCI from `stig_baseline_rules`). | `stats` SPL or REST aggregation by `group_id`, `rule_id`, CCI from rules lookup. | P1 | M |
 | Unreviewed rules/assets reports | API: `/collections/{id}/unreviewed/rules`, `.../assets` | **missing** | Filter in editor only. | REST or saved search returning unreviewed counts per host/baseline. | P1 | M |
 | Splunk search / lookups | SM: API-only for reports | **done** | `transforms.conf` + `inputlookup`; spec §12. | Document example SPL in README. | P1 | — |
 | CIM / vulnerability datamodel | — | **n/a** | Spec Phase 2. | Optional `stig:finding` CIM mapping. | P2 | M |
@@ -221,6 +221,8 @@ OpenAPI **tags** (approximate operation counts from `stig-manager.yaml`): Collec
 | `stig_findings` | Paginated workspace findings report (`stig_collection_id` query param) |
 | `stig_collections/{id}/metrics` | Workspace metrics subpath on collections handler |
 | `stig_collections/{id}/findings` | Workspace findings subpath on collections handler |
+| `stig_collections/{id}/findings/aggregate` | Governance-open findings counts by group, rule, CCI |
+| `stig_collections/{id}/poam` | POA&M-style CSV/XLSX/JSON export |
 | UCC `stigs_in_splunk_baseline` | Configuration table adapter |
 
 For any new capability, prefer **adding Splunk-shaped endpoints** under these resources (or `stig_collections/{id}/...` subpaths implemented in the persist handler) rather than mirroring STIG Manager URL literals, while keeping response shapes familiar to API migrators.

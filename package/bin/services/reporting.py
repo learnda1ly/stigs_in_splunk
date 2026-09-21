@@ -8,7 +8,22 @@ import access
 import kv_client
 import review_workflow
 import validation
-from models import KV_STIG_BASELINE_RULES, KV_STIG_CHECKLISTS, KV_STIG_HOSTS, KV_STIG_REVIEWS, STATUSES, now_epoch
+from models import (
+    KV_STIG_BASELINE_RULES,
+    KV_STIG_CHECKLISTS,
+    KV_STIG_HOSTS,
+    KV_STIG_REVIEWS,
+    STATUSES,
+    now_epoch,
+    parse_json_field,
+)
+from exporters.poam import (
+    POAM_COLUMNS,
+    findings_to_poam_rows,
+    poam_to_csv,
+    poam_xlsx_payload,
+    safe_poam_filename,
+)
 from services import baselines as baselines_svc
 from services import checklists as checklists_svc
 from services import collections as collections_svc
@@ -54,24 +69,42 @@ def _parse_status_filter(raw: Optional[str]) -> Optional[Set[str]]:
     return set(parts)
 
 
-def _rule_severity_index(service, baseline_ids: Iterable[str]) -> Dict[Tuple[str, str, str], str]:
-    """Map (baseline_id, rule_id, group_id) -> severity from baseline rules."""
+def _rule_meta_index(
+    service, baseline_ids: Iterable[str]
+) -> Dict[Tuple[str, str, str], Dict[str, Any]]:
+    """Map (baseline_id, rule_id, group_id) -> rule metadata from baseline rules."""
     rules_coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
-    index: Dict[Tuple[str, str, str], str] = {}
+    index: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
     for baseline_id in baseline_ids:
         if not baseline_id:
             continue
         for rule in kv_client.query_all(rules_coll, {"baseline_id": baseline_id}):
-            sev = (rule.get("severity") or "unknown").lower()
             bid = str(rule.get("baseline_id") or baseline_id)
             rid = str(rule.get("rule_id") or "")
             gid = str(rule.get("group_id") or "")
+            ccis = parse_json_field(rule.get("ccis"), default=[]) or []
+            meta = {
+                "rule_title": rule.get("rule_title") or "",
+                "severity": (rule.get("severity") or "unknown").lower(),
+                "rule_version": rule.get("rule_version") or "",
+                "ccis": ccis if isinstance(ccis, list) else [],
+                "group_title": rule.get("group_title") or "",
+            }
             if rid:
-                index[(bid, rid, gid)] = sev
-                index[(bid, rid, "")] = sev
+                index[(bid, rid, gid)] = meta
+                index[(bid, rid, "")] = meta
             if gid:
-                index[(bid, "", gid)] = sev
+                index[(bid, "", gid)] = meta
     return index
+
+
+def _severity_index_from_meta(
+    rule_meta_index: Dict[Tuple[str, str, str], Dict[str, Any]],
+) -> Dict[Tuple[str, str, str], str]:
+    return {
+        key: (value.get("severity") or "unknown")
+        for key, value in rule_meta_index.items()
+    }
 
 
 def review_severity(
@@ -159,7 +192,8 @@ def collection_metrics(
         reviews.extend(kv_client.query_all(reviews_coll, {"checklist_id": checklist_id}))
 
     hosts = hosts_svc.list_hosts(service, session, collection_id)
-    severity_index = _rule_severity_index(service, baseline_ids)
+    rule_meta_index = _rule_meta_index(service, baseline_ids)
+    severity_index = _severity_index_from_meta(rule_meta_index)
     metrics = aggregate_metrics(
         reviews,
         severity_index,
@@ -205,44 +239,74 @@ def _enrich_finding(
     }
 
 
-def collection_findings(
+def _collection_workspace_context(
+    service, collection_id: str, session: Dict[str, Any]
+) -> Dict[str, Any]:
+    checklists = checklists_svc.list_checklists(service, session, collection_id)
+    hosts = hosts_svc.list_hosts(service, session, collection_id)
+    baselines = {b["_key"]: b for b in baselines_svc.list_baselines(service) if b.get("_key")}
+    baseline_ids = {c.get("baseline_id") for c in checklists if c.get("baseline_id")}
+    rule_meta_index = _rule_meta_index(service, baseline_ids)
+    return {
+        "checklist_by_id": {c["_key"]: c for c in checklists if c.get("_key")},
+        "host_by_id": {h["_key"]: h for h in hosts if h.get("_key")},
+        "baselines": baselines,
+        "baseline_ids": baseline_ids,
+        "rule_meta_index": rule_meta_index,
+        "severity_index": _severity_index_from_meta(rule_meta_index),
+    }
+
+
+def _parse_findings_filters(query: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    query = query or {}
+    status_filter = _parse_status_filter(query.get("status"))
+    if status_filter is None:
+        status_filter = set(OPEN_STATUSES)
+    return {
+        "status_filter": status_filter,
+        "severity_filter": (query.get("severity") or "").strip().lower(),
+        "host_id_filter": (query.get("host_id") or "").strip(),
+        "hostname_filter": (query.get("hostname") or "").strip().casefold(),
+        "baseline_filter": (query.get("baseline_id") or "").strip(),
+        "rule_id_filter": (query.get("rule_id") or "").strip(),
+        "raw": query,
+    }
+
+
+def _filters_response(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    query = parsed["raw"]
+    return {
+        "status": sorted(parsed["status_filter"]),
+        "severity": parsed["severity_filter"] or None,
+        "host_id": parsed["host_id_filter"] or None,
+        "hostname": query.get("hostname") or None,
+        "baseline_id": parsed["baseline_filter"] or None,
+        "rule_id": parsed["rule_id_filter"] or None,
+    }
+
+
+def _list_collection_findings(
     service,
     collection_id: str,
     session: Dict[str, Any],
     query: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    query = query or {}
-    _require_read_collection(service, collection_id, session)
+    *,
+    ctx: Optional[Dict[str, Any]] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Dict[str, Any]]:
+    parsed = _parse_findings_filters(query)
+    status_filter = parsed["status_filter"]
+    severity_filter = parsed["severity_filter"]
+    host_id_filter = parsed["host_id_filter"]
+    hostname_filter = parsed["hostname_filter"]
+    baseline_filter = parsed["baseline_filter"]
+    rule_id_filter = parsed["rule_id_filter"]
 
-    status_filter = _parse_status_filter(query.get("status"))
-    if status_filter is None:
-        status_filter = set(OPEN_STATUSES)
-
-    severity_filter = (query.get("severity") or "").strip().lower()
-    host_id_filter = (query.get("host_id") or "").strip()
-    hostname_filter = (query.get("hostname") or "").strip().casefold()
-    baseline_filter = (query.get("baseline_id") or "").strip()
-    rule_id_filter = (query.get("rule_id") or "").strip()
-
-    limit = _parse_int(
-        query.get("limit"), DEFAULT_FINDINGS_LIMIT, minimum=1, maximum=MAX_FINDINGS_LIMIT
-    )
-    offset = _parse_int(query.get("offset"), 0, minimum=0)
-
-    checklists = checklists_svc.list_checklists(service, session, collection_id)
-    checklist_by_id = {c["_key"]: c for c in checklists if c.get("_key")}
-
-    hosts = hosts_svc.list_hosts(service, session, collection_id)
-    host_by_id = {h["_key"]: h for h in hosts if h.get("_key")}
-
-    baselines = {b["_key"]: b for b in baselines_svc.list_baselines(service) if b.get("_key")}
-    baseline_ids = {c.get("baseline_id") for c in checklists if c.get("baseline_id")}
-    severity_index = _rule_severity_index(service, baseline_ids)
-
+    if ctx is None:
+        ctx = _collection_workspace_context(service, collection_id, session)
     reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
     rows: List[Dict[str, Any]] = []
-    for checklist_id, checklist in checklist_by_id.items():
-        host = host_by_id.get(checklist.get("host_id") or "", {})
+    for checklist_id, checklist in ctx["checklist_by_id"].items():
+        host = ctx["host_by_id"].get(checklist.get("host_id") or "", {})
         if host_id_filter and checklist.get("host_id") != host_id_filter:
             continue
         if hostname_filter:
@@ -262,10 +326,12 @@ def collection_findings(
                 continue
             if rule_id_filter and review.get("rule_id") != rule_id_filter:
                 continue
-            sev = review_severity(review, severity_index)
+            sev = review_severity(review, ctx["severity_index"])
             if severity_filter and sev != severity_filter:
                 continue
-            baseline = baselines.get(review.get("baseline_id") or checklist.get("baseline_id") or "", {})
+            baseline = ctx["baselines"].get(
+                review.get("baseline_id") or checklist.get("baseline_id") or "", {}
+            )
             rows.append(
                 _enrich_finding(
                     review,
@@ -284,6 +350,26 @@ def collection_findings(
             row.get("rule_id") or "",
         )
     )
+    return rows, _filters_response(parsed), ctx
+
+
+def collection_findings(
+    service,
+    collection_id: str,
+    session: Dict[str, Any],
+    query: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    query = query or {}
+    _require_read_collection(service, collection_id, session)
+
+    limit = _parse_int(
+        query.get("limit"), DEFAULT_FINDINGS_LIMIT, minimum=1, maximum=MAX_FINDINGS_LIMIT
+    )
+    offset = _parse_int(query.get("offset"), 0, minimum=0)
+
+    rows, filters, _ctx = _list_collection_findings(
+        service, collection_id, session, query
+    )
     total = len(rows)
     page = rows[offset : offset + limit]
     return {
@@ -295,12 +381,276 @@ def collection_findings(
             "total": total,
             "has_more": offset + len(page) < total,
         },
-        "filters": {
-            "status": sorted(status_filter),
-            "severity": severity_filter or None,
-            "host_id": host_id_filter or None,
-            "hostname": query.get("hostname") or None,
-            "baseline_id": baseline_filter or None,
-            "rule_id": rule_id_filter or None,
+        "filters": filters,
+    }
+
+
+def _parse_group_by(raw: Optional[str]) -> Set[str]:
+    allowed = frozenset({"group_id", "rule_id", "cci"})
+    if raw is None or str(raw).strip() == "":
+        return set(allowed)
+    parts = {p.strip().lower() for p in str(raw).split(",") if p.strip()}
+    invalid = parts - allowed
+    if invalid:
+        raise ValueError(f"invalid group_by: {', '.join(sorted(invalid))}")
+    return parts
+
+
+def _rule_meta_for_finding(
+    finding: Dict[str, Any], rule_meta_index: Dict[Tuple[str, str, str], Dict[str, Any]]
+) -> Dict[str, Any]:
+    baseline_id = str(finding.get("baseline_id") or "")
+    rule_id = str(finding.get("rule_id") or "")
+    group_id = str(finding.get("group_id") or "")
+    for key in (
+        (baseline_id, rule_id, group_id),
+        (baseline_id, rule_id, ""),
+        (baseline_id, "", group_id),
+    ):
+        if key in rule_meta_index:
+            return rule_meta_index[key]
+    return {}
+
+
+def _aggregate_bucket(
+    buckets: Dict[str, Dict[str, Any]],
+    key: str,
+    *,
+    group_id: str = "",
+    rule_id: str = "",
+    cci: str = "",
+    severity: str = "",
+    hostname: str = "",
+    baseline_id: str = "",
+    stig_id: str = "",
+    baseline_title: str = "",
+) -> None:
+    if not key:
+        return
+    bucket = buckets.setdefault(
+        key,
+        {
+            "count": 0,
+            "host_count": 0,
+            "group_id": group_id,
+            "rule_id": rule_id,
+            "cci": cci,
+            "severity": severity,
+            "baseline_id": baseline_id,
+            "stig_id": stig_id,
+            "baseline_title": baseline_title,
+            "_hosts": set(),
         },
+    )
+    bucket["count"] += 1
+    if hostname:
+        bucket["_hosts"].add(hostname)
+    bucket["host_count"] = len(bucket["_hosts"])
+    if severity and not bucket.get("severity"):
+        bucket["severity"] = severity
+    if group_id and not bucket.get("group_id"):
+        bucket["group_id"] = group_id
+    if rule_id and not bucket.get("rule_id"):
+        bucket["rule_id"] = rule_id
+    if baseline_id and not bucket.get("baseline_id"):
+        bucket["baseline_id"] = baseline_id
+    if stig_id and not bucket.get("stig_id"):
+        bucket["stig_id"] = stig_id
+    if baseline_title and not bucket.get("baseline_title"):
+        bucket["baseline_title"] = baseline_title
+
+
+def _finalize_buckets(buckets: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for bucket in buckets.values():
+        hosts = bucket.pop("_hosts", set())
+        row = dict(bucket)
+        row["hostnames"] = sorted(hosts)
+        rows.append(row)
+    rows.sort(
+        key=lambda r: (
+            -int(r.get("count") or 0),
+            r.get("stig_id") or "",
+            r.get("baseline_id") or "",
+            r.get("group_id") or "",
+            r.get("rule_id") or "",
+            r.get("cci") or "",
+        )
+    )
+    return rows
+
+
+def _baseline_rule_bucket_key(baseline_id: str, rule_id: str) -> str:
+    return f"{baseline_id}\x1f{rule_id}"
+
+
+def _baseline_group_bucket_key(baseline_id: str, group_id: str) -> str:
+    return f"{baseline_id}\x1f{group_id}"
+
+
+def splunk_poam_alternative(collection_id: str) -> Dict[str, Any]:
+    """SPL hints for governance-open exports (not full POA&M column parity)."""
+    cid = collection_id.replace('"', '\\"')
+    governance = (
+        "status=open (workflow_state!=accepted OR NOT workflow_state=*)"
+    )
+    base = (
+        "| inputlookup stig_checklists "
+        f'| search stig_collection_id="{cid}" '
+        "| rename _key AS checklist_id "
+        "| join type=inner checklist_id [ | inputlookup stig_reviews "
+        f"| search {governance} ] "
+        "| lookup stig_hosts _key AS host_id OUTPUT hostname "
+    )
+    return {
+        "governance_filter": governance,
+        "note": (
+            "Matches REST intent: open assessor status excluding owner-accepted "
+            "(workflow_state=accepted). Legacy rows with no workflow_state are "
+            "treated as draft in Python and included here via NOT workflow_state=*. "
+            "POA&M columns (rule title, CCI) require joining stig_baseline_rules; "
+            "use GET /stig_collections/{id}/poam for enriched export."
+        ),
+        "findings_table_spl": base + "| table hostname baseline_id group_id rule_id finding_details comments",
+        "outputcsv_example": base + "| outputcsv stig_governance_open_findings.csv",
+        "enriched_spl": (
+            base
+            + "| lookup stig_baseline_rules baseline_id rule_id OUTPUT rule_title ccis severity "
+            "| table hostname stig_id baseline_id group_id rule_id severity rule_title ccis finding_details"
+        ),
+    }
+
+
+def collection_findings_aggregate(
+    service,
+    collection_id: str,
+    session: Dict[str, Any],
+    query: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Governance-open findings counts grouped by rule_id, group_id, and/or CCI."""
+    query = dict(query or {})
+    query.setdefault("status", "open")
+    _require_read_collection(service, collection_id, session)
+    group_by = _parse_group_by(query.get("group_by"))
+    rows, filters, ctx = _list_collection_findings(
+        service, collection_id, session, query
+    )
+    rule_meta_index = ctx["rule_meta_index"]
+
+    by_group: Dict[str, Dict[str, Any]] = {}
+    by_rule: Dict[str, Dict[str, Any]] = {}
+    by_cci: Dict[str, Dict[str, Any]] = {}
+
+    for finding in rows:
+        hostname = finding.get("hostname") or ""
+        group_id = finding.get("group_id") or ""
+        rule_id = finding.get("rule_id") or ""
+        baseline_id = str(finding.get("baseline_id") or "")
+        stig_id = finding.get("stig_id") or ""
+        baseline_title = finding.get("baseline_title") or ""
+        severity = finding.get("severity") or "unknown"
+        meta = _rule_meta_for_finding(finding, rule_meta_index)
+        ccis = meta.get("ccis") or []
+        if not ccis:
+            ccis = [""]
+
+        if "group_id" in group_by and group_id and baseline_id:
+            _aggregate_bucket(
+                by_group,
+                _baseline_group_bucket_key(baseline_id, group_id),
+                group_id=group_id,
+                rule_id=rule_id,
+                severity=severity,
+                hostname=hostname,
+                baseline_id=baseline_id,
+                stig_id=stig_id,
+                baseline_title=baseline_title,
+            )
+        if "rule_id" in group_by and rule_id and baseline_id:
+            _aggregate_bucket(
+                by_rule,
+                _baseline_rule_bucket_key(baseline_id, rule_id),
+                group_id=group_id,
+                rule_id=rule_id,
+                severity=severity,
+                hostname=hostname,
+                baseline_id=baseline_id,
+                stig_id=stig_id,
+                baseline_title=baseline_title,
+            )
+        if "cci" in group_by:
+            for cci in ccis:
+                cci_key = str(cci).strip() or "(no cci)"
+                _aggregate_bucket(
+                    by_cci,
+                    cci_key,
+                    group_id=group_id,
+                    rule_id=rule_id,
+                    cci=cci_key if cci_key != "(no cci)" else "",
+                    severity=severity,
+                    hostname=hostname,
+                )
+
+    out: Dict[str, Any] = {
+        "stig_collection_id": collection_id,
+        "generated_at": now_epoch(),
+        "open_findings_total": len(rows),
+        "group_by": sorted(group_by),
+        "filters": filters,
+        "scan_note": (
+            "Full workspace scan of matching reviews (no pagination). "
+            "Large workspaces may prefer Splunk lookups or filtered queries."
+        ),
+    }
+    if "group_id" in group_by:
+        out["by_group_id"] = _finalize_buckets(by_group)
+    if "rule_id" in group_by:
+        out["by_rule_id"] = _finalize_buckets(by_rule)
+    if "cci" in group_by:
+        out["by_cci"] = _finalize_buckets(by_cci)
+    return out
+
+
+def collection_poam(
+    service,
+    collection_id: str,
+    session: Dict[str, Any],
+    query: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """POA&M rows from governance-open findings (open ∧ not accepted)."""
+    query = dict(query or {})
+    query.setdefault("status", "open")
+    collection = _require_read_collection(service, collection_id, session)
+    findings, filters, ctx = _list_collection_findings(
+        service, collection_id, session, query
+    )
+    rows = findings_to_poam_rows(findings, ctx["rule_meta_index"])
+    fmt = (query.get("format") or "json").strip().lower()
+    filename = safe_poam_filename(collection_id, "xlsx" if fmt == "xlsx" else "csv")
+    row_count = len(rows)
+
+    if fmt == "csv":
+        return {
+            "format": "csv",
+            "filename": filename,
+            "content": poam_to_csv(rows),
+            "row_count": row_count,
+            "filters": filters,
+        }
+    if fmt == "xlsx":
+        payload = poam_xlsx_payload(rows, filename)
+        payload["filters"] = filters
+        payload["row_count"] = row_count
+        return payload
+
+    return {
+        "stig_collection_id": collection_id,
+        "collection_name": collection.get("name") or "",
+        "generated_at": now_epoch(),
+        "format": "json",
+        "columns": POAM_COLUMNS,
+        "rows": rows,
+        "row_count": row_count,
+        "filters": filters,
+        "splunk_alternative": splunk_poam_alternative(collection_id),
     }

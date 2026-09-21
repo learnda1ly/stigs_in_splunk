@@ -242,6 +242,17 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 )
             except KeyError:
                 return _error("not found", status=404)
+        if len(parts) == 3 and parts[1] == "findings" and parts[2] == "aggregate":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            try:
+                return _json_response(
+                    reporting_svc.collection_findings_aggregate(
+                        service, key, session, query
+                    )
+                )
+            except KeyError:
+                return _error("not found", status=404)
         if len(parts) == 2 and parts[1] == "findings":
             if method != "GET":
                 return _error("method not allowed", status=405)
@@ -251,6 +262,31 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 )
             except KeyError:
                 return _error("not found", status=404)
+        if len(parts) == 2 and parts[1] == "poam":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            try:
+                result = reporting_svc.collection_poam(service, key, session, query)
+            except KeyError:
+                return _error("not found", status=404)
+            if result.get("format") == "csv":
+                filename = result.get("filename") or "stig_poam.csv"
+                headers = [
+                    ("Content-Type", "text/csv; charset=utf-8"),
+                    (
+                        "Content-Disposition",
+                        f'attachment; filename="{filename}"',
+                    ),
+                ]
+                row_count = result.get("row_count")
+                if row_count is not None:
+                    headers.append(("X-Stig-Row-Count", str(row_count)))
+                return {
+                    "payload": result.get("content") or "",
+                    "status": 200,
+                    "headers": headers,
+                }
+            return _json_response(result)
 
         if method == "GET":
             rec = collections_svc.get_collection(service, key)

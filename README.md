@@ -165,12 +165,16 @@ Use `| inputlookup stig_reviews` (and related stanzas in `package/default/transf
 
 ## Collection metrics and findings report
 
-SplunkUI **Collection dashboard** (`stig_collection_dashboard_ui`) shows workspace-scoped review metrics and an open-findings report with CSV export.
+SplunkUI **Collection dashboard** (`stig_collection_dashboard_ui`) shows workspace-scoped review metrics, an open-findings report with CSV export, aggregated findings by group/rule/CCI, and POA&M CSV/XLSX export.
 
 REST (requires `stig_read` and workspace access):
 
 - `GET /stig_collections/{id}/metrics` — counts by review status and severity, plus completion summary.
 - `GET /stig_collections/{id}/findings` — paginated findings (default `status=open`; optional `severity`, `host_id`, `limit`, `offset`).
+- `GET /stig_collections/{id}/findings/aggregate` — governance-open finding counts by `group_id`, `rule_id`, and CCI (from baseline rules).
+- `GET /stig_collections/{id}/poam?format=json|csv|xlsx` — POA&M-style export template for governance-open findings (JSON includes example SPL alternative).
 - `GET /stig_findings?stig_collection_id={id}` — same findings payload as the collection subpath.
+
+For ad-hoc Splunk exports without REST, pipe open findings to `| outputcsv` after the governance filter in spec.md §12 (`status=open NOT workflow_state=accepted`).
 
 See spec.md §11.6 for query parameters and response fields.
