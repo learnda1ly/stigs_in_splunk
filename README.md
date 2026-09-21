@@ -62,6 +62,7 @@ Custom REST uses a **persist** handler (`package/bin/stig_rest_handler.py`) and 
 Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
 
 - **STIG Editor** — workspace + host filters, finding list, status, details, comments
+- **Collection review** — one baseline rule across all hosts in a workspace (batch save)
 - **Import** — drag-and-drop `.ckl` / `.cklb` checklists, a single XCCDF, or a DISA product/quarterly zip. The whole library zip is chunked to persist REST (`/stig_baselines/jobs`); every Manual-xccdf baseline is imported automatically. Findings go to HEC (`stig:finding`) and KV
 - **Export Checklists** — CKL / CKLB download, including bulk zip
 - **Configuration** — UCC-generated page for workspaces, STIG baselines, and editor/HEC settings. A **Default** workspace is created automatically; checklist imports land there until you move the host. The Baselines tab lists/deletes catalog rows. DISA library zips go on **Import** (chunked persist REST; every Manual-xccdf is imported). The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
@@ -76,7 +77,9 @@ Rebuild UI bundles after changing `ui/src`:
 
 `./scripts/build_ucc.sh` runs that step unless `SKIP_UI_BUILD=1`.
 
-After install, open the app → **STIG Editor**. Manage workspaces and STIG baselines under **Configuration**. Imports without a workspace go to **Default**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**.
+After install, open the app → **STIG Editor**. Use **Collection review** to work one rule across all hosts in a workspace (batch save). Manage workspaces and STIG baselines under **Configuration**. Imports without a workspace go to **Default**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**.
+
+Batch review updates: `POST .../stig_reviews/batch` with `{ "reviews": [{ "_key": "...", "status": "open", ... }] }`. Partial success is supported (per-row errors in the response).
 
 ## Splunk roles
 

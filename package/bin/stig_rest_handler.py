@@ -537,6 +537,15 @@ class StigRestHandler(PersistentServerConnectionApplication):
         session: Dict[str, Any],
         username: str,
     ) -> Dict[str, Any]:
+        if parts == ["batch"]:
+            if method not in ("POST", "PATCH", "PUT"):
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            result = reviews_svc.batch_update_reviews(
+                service, body, username, session
+            )
+            return _json_response(result)
+
         if not parts:
             if method == "GET":
                 return _json_response(

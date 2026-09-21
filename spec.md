@@ -601,11 +601,14 @@ Requires **`stig_write`**.
 
 | Method | Path | Notes |
 |--------|------|--------|
-| GET | `/stig_reviews` | Query `checklist_id?`, `status?` |
+| GET | `/stig_reviews` | Query `checklist_id?`, `status?`, `stig_collection_id?`, `rule_id?`, `rule_version?`, `valid?` |
 | GET | `/stig_reviews/{id}` | Single review |
 | PATCH/PUT | `/stig_reviews/{id}` | `{status?, finding_details?, comments?, ingest_lock?}` |
+| POST | `/stig_reviews/batch` | `{reviews: [{_key, status?, finding_details?, comments?, ingest_lock?}, ...]}` (alias: `updates`) |
 
 Updates require workspace **write** access via parent checklist. Validate `status` against allowed set; accept internal or CKLB status strings on input. `ingest_lock=true` blocks HEC/reconcile from overwriting that finding.
+
+**Batch updates** apply each row independently (**partial success**). Response: `{updated: [...], errors: [{_key?, error, code?}], summary: {total, succeeded, failed}}`. Rows the caller cannot write return `code: forbidden`; missing keys return `not_found`. Maximum **500** reviews per request.
 
 ---
 

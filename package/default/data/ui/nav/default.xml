@@ -1,5 +1,6 @@
 <nav search_view="search" color="#2d5016">
   <view name="stig_editor_ui" default="true" label="STIG Editor"/>
+  <view name="stig_collection_review_ui" label="Collection review"/>
   <view name="stig_baselines_ui" label="Import baselines"/>
   <view name="stig_import_ui" label="Import checklists"/>
   <view name="stig_export_ui" label="Export Checklists"/>
