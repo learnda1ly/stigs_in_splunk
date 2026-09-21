@@ -1,0 +1,51 @@
+<dashboard version="1.1" hideEdit="true">
+  <label>STIG collection metrics (lookup)</label>
+  <description>Complementary Simple XML view using kvstore lookups. Primary UX is the Collection dashboard SplunkUI page.</description>
+  <fieldset submitButton="false">
+    <input type="dropdown" token="collection_id">
+      <label>Workspace (stig_collection _key)</label>
+      <default></default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Reviews by status</title>
+      <table>
+        <search>
+          <query>| inputlookup stig_checklists
+| search stig_collection_id="$collection_id$"
+| fields _key
+| rename _key AS checklist_id
+| join type=inner checklist_id [
+    | inputlookup stig_reviews
+    | fields checklist_id status
+]
+| stats count BY status
+| sort status</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+      </table>
+    </panel>
+    <panel>
+      <title>Open findings</title>
+      <table>
+        <search>
+          <query>| inputlookup stig_checklists
+| search stig_collection_id="$collection_id$"
+| fields _key host_id baseline_id
+| rename _key AS checklist_id
+| join type=inner checklist_id [
+    | inputlookup stig_reviews
+    | search status=open
+    | fields checklist_id group_id rule_id status finding_details updated_at
+]
+| lookup stig_hosts _key AS host_id OUTPUT hostname
+| table hostname group_id rule_id status finding_details updated_at</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+</dashboard>

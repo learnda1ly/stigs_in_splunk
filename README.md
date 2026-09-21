@@ -145,3 +145,15 @@ export SPLUNK_PASSWORD='your-admin-password'
 ## Search
 
 Use `| inputlookup stig_reviews` (and related stanzas in `package/default/transforms.conf`) with app context **stigs_in_splunk**. See spec.md §12.
+
+## Collection metrics and findings report
+
+SplunkUI **Collection dashboard** (`stig_collection_dashboard_ui`) shows workspace-scoped review metrics and an open-findings report with CSV export.
+
+REST (requires `stig_read` and workspace access):
+
+- `GET /stig_collections/{id}/metrics` — counts by review status and severity, plus completion summary.
+- `GET /stig_collections/{id}/findings` — paginated findings (default `status=open`; optional `severity`, `host_id`, `limit`, `offset`).
+- `GET /stig_findings?stig_collection_id={id}` — same findings payload as the collection subpath.
+
+See spec.md §11.6 for query parameters and response fields.

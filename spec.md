@@ -539,6 +539,8 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 | GET | `/stig_collections/{id}` | — | Record or **404** |
 | PATCH/PUT | `/stig_collections/{id}` | Partial JSON | Updated record. Setting `is_default` true unsets the previous default. |
 | DELETE | `/stig_collections/{id}` | — | `{deleted: id}`; requires **stig_admin**. Cannot delete the default workspace. |
+| GET | `/stig_collections/{id}/metrics` | — | Workspace metrics: `totals`, `completion`, `by_status`, `by_severity`, `open_by_severity`. Requires **stig_read** and workspace access (**404** if hidden). |
+| GET | `/stig_collections/{id}/findings` | Query filters (see §11.6) | Paginated findings report for assessors. Default filter: `status=open`. |
 
 Default `access_principals` on create: `["user:<creator>"]` if omitted. The Default holding workspace uses `[]` (any user with STIG caps).
 
@@ -609,6 +611,18 @@ Requires **`stig_write`**.
 Updates require workspace **write** access via parent checklist. Validate `status` against allowed set; accept internal or CKLB status strings on input. `ingest_lock=true` blocks HEC/reconcile from overwriting that finding.
 
 **Batch updates** apply each row independently (**partial success**). Response: `{updated: [...], errors: [{_key?, error, code?}], summary: {total, succeeded, failed}}`. Rows the caller cannot write return `code: forbidden`; missing keys return `not_found`. Maximum **500** reviews per request.
+
+### 11.6 Metrics and findings report
+
+| Method | Path | Query | Response |
+|--------|------|-------|----------|
+| GET | `/stig_collections/{id}/metrics` | — | Aggregated counts from KV reviews (joined to baseline rules for severity). |
+| GET | `/stig_collections/{id}/findings` | `status?` (comma-separated; default **open**), `severity?`, `host_id?`, `hostname?` (substring), `baseline_id?`, `rule_id?`, `limit?` (default **500**, max **2000**), `offset?` (default **0**) | `{findings: [...], pagination: {limit, offset, total, has_more}, filters}` |
+| GET | `/stig_findings` | Same as collection findings; **`stig_collection_id` required** | Same body as `/stig_collections/{id}/findings` |
+
+Each finding row includes: `hostname`, `host_id`, `baseline_id`, `baseline_title`, `stig_id`, `group_id`, `rule_id`, `rule_version`, `severity`, `status`, `finding_details`, `comments`, `valid`, `ingest_lock`, `updated_at`, `updated_by`, `checklist_id`, `_key`.
+
+SplunkUI **Collection dashboard** (`stig_collection_dashboard_ui`) loads metrics and findings for the selected workspace and supports **CSV export** of the current findings table. Optional Simple XML dashboard: `stig_collection_metrics_lookup`.
 
 ---
 

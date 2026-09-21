@@ -1,0 +1,11 @@
+<dashboard version="1.1" script="stig_collection_dashboard_ui.js" hideEdit="true" hideExport="true" hideTitle="true">
+  <label>Collection dashboard</label>
+  <description>Workspace metrics and open findings report.</description>
+  <row>
+    <panel>
+      <html>
+        <div id="stig-ui-root"></div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

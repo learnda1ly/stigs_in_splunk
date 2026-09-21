@@ -14,6 +14,7 @@ module.exports = {
         baselines: path.join(__dirname, "src/baselines.jsx"),
         assignment: path.join(__dirname, "src/assignment.jsx"),
         collection_review: path.join(__dirname, "src/collection_review.jsx"),
+        collection_dashboard: path.join(__dirname, "src/collection_dashboard.jsx"),
     },
     output: {
         path: outDir,
