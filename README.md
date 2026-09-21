@@ -49,7 +49,7 @@ sudo systemctl restart Splunkd
 
 | Path | Role |
 |------|------|
-| `globalConfig.yaml` | UCC meta plus Configuration tabs (workspaces, baselines, editor/ingest) |
+| `globalConfig.yaml` | UCC meta plus Configuration tabs (workspaces, editor/ingest) |
 | `package/` | App source copied into the build (`bin/`, `default/*.conf`, `metadata/`, `app.manifest`) |
 | `package/lib/requirements.txt` | `splunktaucclib` for UCC Configuration REST (pip-installed into `output/.../lib`) |
 | `additional_packaging.py` | Post-build: KV reload trigger, keep UCC Configuration view, restore custom nav |
@@ -63,9 +63,9 @@ Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
 
 - **STIG Editor** — workspace + host filters, finding list, status, details, comments
 - **Collection review** — one baseline rule across all hosts in a workspace (batch save)
-- **Import** — drag-and-drop `.ckl` / `.cklb` checklists, a single XCCDF, or a DISA product/quarterly zip. The whole library zip is chunked to persist REST (`/stig_baselines/jobs`); every Manual-xccdf baseline is imported automatically. Findings go to HEC (`stig:finding`) and KV
-- **Export Checklists** — CKL / CKLB download, including bulk zip
-- **Configuration** — UCC-generated page for workspaces, STIG baselines, and editor/HEC settings. A **Default** workspace is created automatically; checklist imports land there until you move the host. The Baselines tab lists/deletes catalog rows. DISA library zips go on **Import** (chunked persist REST; every Manual-xccdf is imported). The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
+- **Import** — checklists (`.ckl` / `.cklb` to HEC and KV) and STIG baselines (single XCCDF, CKL/CKLB, or a DISA product/quarterly zip via chunked persist REST `/stig_baselines/jobs`) on one page with **Checklists** and **Baselines** sections
+- **Export** — CKL / CKLB download, including bulk zip
+- **Configuration** — UCC-generated page for workspaces and editor/HEC settings. A **Default** workspace is created automatically; checklist imports with no workspace go there until you move the host. The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
 
 Classic Simple XML + jQuery views remain under the **Classic** nav menu.
 
@@ -77,7 +77,7 @@ Rebuild UI bundles after changing `ui/src`:
 
 `./scripts/build_ucc.sh` runs that step unless `SKIP_UI_BUILD=1`.
 
-After install, open the app → **STIG Editor**. Use **Collection review** to work one rule across all hosts in a workspace (batch save). Manage workspaces and STIG baselines under **Configuration**. Imports without a workspace go to **Default**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**.
+After install, open the app → **STIG Editor**. Use **Collection review** to work one rule across all hosts in a workspace (batch save). Manage workspaces under **Configuration**; import baselines and checklists under **Import**. Imports without a workspace go to **Default**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**.
 
 Batch review updates: `POST .../stig_reviews/batch` with `{ "reviews": [{ "_key": "...", "status": "open", ... }] }`. Partial success is supported (per-row errors in the response).
 

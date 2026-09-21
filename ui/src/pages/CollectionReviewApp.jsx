@@ -414,7 +414,7 @@ export default function CollectionReviewApp() {
                 <HeaderMeta>
                     {loading ? <WaitSpinner /> : null}
                     <Link to={viewUrl("stig_editor_ui")}>Editor</Link>
-                    <Link to={viewUrl("stig_import_ui")}>Import checklists</Link>
+                    <Link to={viewUrl("stig_import_ui")}>Import</Link>
                     <Link to={viewUrl("stig_export_ui")}>Export</Link>
                     <Link to={viewUrl("configuration")}>Configuration</Link>
                 </HeaderMeta>
