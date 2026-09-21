@@ -10,7 +10,7 @@ UCC_PYTHON="${UCC_PYTHON:-$ROOT/.venv-ucc/bin/python}"
 TA_VERSION="${TA_VERSION:-0.1.0}"
 if [[ ! -x "$UCC_GEN" ]]; then
   echo "ucc-gen not found. Create venv and install:" >&2
-  echo "  python3 -m venv .venv-ucc && .venv-ucc/bin/pip install 'splunk-add-on-ucc-framework>=5.68'" >&2
+  echo "  python3 -m venv .venv-ucc && .venv-ucc/bin/pip install -r requirements-ucc.txt" >&2
   echo "Install from PyPI (not GitHub). The git checkout does not ship the prebuilt UCC UI." >&2
   exit 1
 fi
@@ -38,7 +38,7 @@ GLOBAL_JSON="$OUTPUT/stigs_in_splunk/appserver/static/js/build/globalConfig.json
 if [[ ! -f "$ENTRY_JS" ]]; then
   echo "ERROR: missing $ENTRY_JS" >&2
   echo "Install UCC from PyPI so the prebuilt configuration UI is included:" >&2
-  echo "  .venv-ucc/bin/pip install --force-reinstall 'splunk-add-on-ucc-framework>=5.68'" >&2
+  echo "  .venv-ucc/bin/pip install --force-reinstall -r requirements-ucc.txt" >&2
   exit 1
 fi
 if [[ ! -f "$GLOBAL_JSON" ]]; then

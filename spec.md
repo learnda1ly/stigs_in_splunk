@@ -172,7 +172,7 @@ Do not upload a DISA library zip through the UCC file widget. Splunk wraps that 
 
 ```bash
 python3 -m venv .venv-ucc
-.venv-ucc/bin/pip install 'splunk-add-on-ucc-framework>=5.68'
+.venv-ucc/bin/pip install -r requirements-ucc.txt
 ./scripts/build_ucc.sh
 ./scripts/package_ucc.sh    # optional .tar.gz for Splunk Web install
 ```

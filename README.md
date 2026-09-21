@@ -14,7 +14,7 @@ This app is packaged with the [Splunk UCC framework](https://splunk.github.io/ad
 
 ```bash
 python3 -m venv .venv-ucc
-.venv-ucc/bin/pip install 'splunk-add-on-ucc-framework>=5.68'
+.venv-ucc/bin/pip install -r requirements-ucc.txt
 ```
 
 Install from PyPI, not GitHub. The git checkout does not ship `entry_page.js`, so the Configuration page is a blank white screen.
