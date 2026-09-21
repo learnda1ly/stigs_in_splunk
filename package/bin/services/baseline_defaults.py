@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-import access
 import audit
 import kv_client
 from models import (
@@ -38,15 +37,19 @@ def _parse_map(rec: Optional[Dict[str, Any]]) -> Dict[str, str]:
 
 
 def _require_write(service, collection_id: str, session: Dict[str, Any]) -> Dict[str, Any]:
-    rec = collections_svc.get_collection(service, collection_id)
-    if not rec or not access.user_can_write_collection(rec, session):
+    from services import grants as grants_svc
+
+    rec, ctx, _grants = grants_svc.workspace_context(service, collection_id, session)
+    if not ctx.can_write:
         raise PermissionError("access denied to stig_collection")
     return rec
 
 
 def _require_read(service, collection_id: str, session: Dict[str, Any]) -> Dict[str, Any]:
-    rec = collections_svc.get_collection(service, collection_id)
-    if not rec or not access.user_can_read_collection(rec, session):
+    from services import grants as grants_svc
+
+    rec, ctx, _grants = grants_svc.workspace_context(service, collection_id, session)
+    if not ctx.can_read:
         raise KeyError(collection_id)
     return rec
 

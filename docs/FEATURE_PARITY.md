@@ -21,7 +21,7 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 | STIG on asset / checklist | `stig_checklist` (host + baseline + workspace) |
 | Review | `stig_review` (per rule, per checklist) |
 | STIG library / benchmark revision | `stig_baseline` + `stig_baseline_rules` (global catalog) |
-| Collection grant + ACL | `access_principals` on workspace + Splunk capabilities `stig_read` / `stig_write` / `stig_admin` |
+| Collection grant + ACL | KV `stig_collection_grants` + legacy `access_principals`; Splunk capabilities `stig_read` / `stig_write` / `stig_admin` |
 | Watcher / scan ingest | HEC `stig:finding` + `POST /stig_imports` + `stigkvreconcile` saved search |
 | Metrics / reports | Intended: Splunk dashboards, `inputlookup`, and (future) REST aggregations |
 
@@ -83,8 +83,8 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 |---------|-------------------------|--------|-----------|-----------------------------|-----|------|
 | Collections (workspaces) | UI: Nav tree, Collection Configuration. API: `GET/POST /collections`, `GET/PATCH/DELETE /collections/{collectionId}` | **done** | Splunk uses `stig_collections`; UCC Workspaces tab + `GET/POST /stig_collections`. Default workspace for imports. | CRUD via REST and Configuration; default workspace enforced; delete rules documented. | P0 | — |
 | Collection metadata | API: `/collections/{id}/metadata`, `/metadata/keys/...` | **partial** | `description` on workspace; no arbitrary key/value metadata API. | Optional JSON metadata on `stig_collections`; GET/PATCH documented; searchable via lookup if needed. | P2 | S |
-| Collection grants (users & roles) | UI: Grants panel, New Grant. API: `/collections/{id}/grants`, `.../grants/{grantId}` | **partial** | `access_principals` lists `user:` / `role:`; no per-grant **Owner / Manager / Restricted** semantics. | Document mapping from Splunk roles to workspace access; optional grant records if finer roles needed. | P1 | M |
-| Grant ACL (asset/STIG/label scoped) | UI: target icon on grant. API: `PUT .../grants/{grantId}/acl` | **missing** | Workspace is all-or-nothing for principals (plus global `stig_admin`). | ACL rules filter hosts/checklists by host id, baseline id, or label; enforced on REST + editor. | P1 | L |
+| Collection grants (users & roles) | UI: Grants panel, New Grant. API: `/collections/{id}/grants`, `.../grants/{grantId}` | **done** | KV `stig_collection_grants` with **owner / manager / member / restricted**; REST under `/stig_collections/{id}/grants`; SplunkUI **Workspace grants** page. Legacy `access_principals` still honored (dual-read). | Grant CRUD + role capability matrix documented in spec; tests for roles. | P1 | M |
+| Grant ACL (asset/STIG/label scoped) | UI: target icon on grant. API: `PUT .../grants/{grantId}/acl` | **partial** | Host + baseline id filters on restricted grants; enforced on REST list/get/patch and SplunkUI lists. **Labels** not implemented (follow-up). | `PUT/PATCH .../grants/{id}/acl`; restricted users see only allowed hosts/checklists/reviews/metrics. | P1 | L |
 | Labels on assets | UI: label assignment, filter. API: `/collections/{id}/labels`, `.../labels/{labelId}/assets` | **missing** | No label entity; host `metadata` JSON only. | KV collection or embedded labels; filter `GET /stig_hosts` and editor by label. | P2 | M |
 | Transfer assets between collections | UI: transfer workflow. API: `POST /collections/{id}/export-to/{dstCollectionId}` | **partial** | `PATCH /stig_hosts/{id}` with `stig_collection_id` moves host; checklists follow (spec). No bulk transfer UI. | Bulk move API + UI; audit log per host. | P2 | M |
 | Clone collection | API: `POST /collections/{collectionId}/clone` | **missing** | — | Clone workspace with hosts, checklists, reviews (optional flags). | P2 | M |

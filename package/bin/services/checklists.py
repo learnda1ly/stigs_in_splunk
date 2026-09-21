@@ -29,16 +29,23 @@ from importers.ingest import match_review_seed
 from services import baselines as baselines_svc
 from services import baseline_defaults as baseline_defaults_svc
 from services import collections as collections_svc
+from services import grants as grants_svc
 from services import hosts as hosts_svc
 
 
 def _require_collection(service, collection_id: str, session: Dict[str, Any], write: bool = False):
-    rec = collections_svc.get_collection(service, collection_id)
-    if not rec:
-        raise KeyError(collection_id)
-    ok = access.user_can_write_collection(rec, session) if write else access.user_can_read_collection(rec, session)
-    if not ok:
-        raise PermissionError("access denied to stig_collection")
+    try:
+        if write:
+            grants_svc.require_workspace_write(service, collection_id, session)
+        else:
+            grants_svc.require_workspace_read(service, collection_id, session)
+    except KeyError as exc:
+        raise KeyError(collection_id) from exc
+
+
+def _access_context(service, collection_id: str, session: Dict[str, Any]):
+    _rec, ctx, _grants = grants_svc.workspace_context(service, collection_id, session)
+    return ctx
 
 
 def list_checklists(
@@ -49,9 +56,19 @@ def list_checklists(
     records = kv_client.query_all(coll, query)
     if stig_collection_id:
         _require_collection(service, stig_collection_id, session)
-        return records
-    allowed = {r["_key"] for r in collections_svc.list_collections(service, session)}
-    return [r for r in records if r.get("stig_collection_id") in allowed]
+        ctx = _access_context(service, stig_collection_id, session)
+        return access.filter_checklists(records, ctx)
+    visible = collections_svc.list_collections(service, session)
+    by_id = {r["_key"]: r for r in visible}
+    out: List[Dict[str, Any]] = []
+    for rec in records:
+        cid = rec.get("stig_collection_id")
+        if cid not in by_id:
+            continue
+        ctx = _access_context(service, cid, session)
+        if access.checklist_allowed(rec, ctx):
+            out.append(rec)
+    return out
 
 
 def get_checklist(
@@ -59,8 +76,15 @@ def get_checklist(
 ) -> Optional[Dict[str, Any]]:
     coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
     rec = kv_client.get_by_key(coll, key)
-    if rec:
+    if not rec:
+        return None
+    try:
         _require_collection(service, rec["stig_collection_id"], session, write=write)
+    except (KeyError, PermissionError):
+        return None
+    ctx = _access_context(service, rec["stig_collection_id"], session)
+    if not access.checklist_allowed(rec, ctx):
+        return None
     return rec
 
 

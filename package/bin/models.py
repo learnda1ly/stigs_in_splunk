@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 APP_NAME = "stigs_in_splunk"
 
 KV_STIG_COLLECTIONS = "stig_collections"
+KV_STIG_COLLECTION_GRANTS = "stig_collection_grants"
 KV_STIG_HOSTS = "stig_hosts"
 KV_STIG_BASELINES = "stig_baselines"
 KV_STIG_BASELINE_RULES = "stig_baseline_rules"

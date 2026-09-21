@@ -91,7 +91,7 @@ Assign `stig_user` or `stig_admin`, or grant capabilities `stig_read`, `stig_wri
 https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 ```
 
-Resources: `stig_collections` (including `/{id}/baseline_defaults`), `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_assignment_rules`.
+Resources: `stig_collections` (including `/{id}/grants`, `/{id}/baseline_defaults`, `/{id}/metrics`, `/{id}/findings`), `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_assignment_rules`.
 
 ## Example flow (curl)
 
