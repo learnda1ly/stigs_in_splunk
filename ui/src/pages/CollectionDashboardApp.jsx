@@ -13,6 +13,7 @@ import {
     apiFetch,
     apiGet,
     defaultWorkspaceId,
+    downloadBase64,
     downloadText,
     viewUrl,
     workspaceLabel,
@@ -122,6 +123,9 @@ export default function CollectionDashboardApp() {
     const [hostFilter, setHostFilter] = useState("");
     const [loading, setLoading] = useState(false);
     const [findingsLoading, setFindingsLoading] = useState(false);
+    const [aggregate, setAggregate] = useState(null);
+    const [aggregateLoading, setAggregateLoading] = useState(false);
+    const [poamLoading, setPoamLoading] = useState(false);
     const [banner, setBanner] = useState(null);
 
     useEffect(() => {
@@ -147,6 +151,23 @@ export default function CollectionDashboardApp() {
                 setBanner({ type: "error", message: String(err.message || err) });
             })
             .finally(() => setLoading(false));
+    };
+
+    const loadAggregate = (cid) => {
+        if (!cid) {
+            setAggregate(null);
+            return;
+        }
+        setAggregateLoading(true);
+        apiFetch("stig_collections/" + cid + "/findings/aggregate", {
+            query: { group_by: "group_id,rule_id,cci" },
+        })
+            .then((data) => setAggregate(data))
+            .catch((err) => {
+                setAggregate(null);
+                setBanner({ type: "error", message: String(err.message || err) });
+            })
+            .finally(() => setAggregateLoading(false));
     };
 
     const loadFindings = (cid, opts) => {
@@ -197,13 +218,22 @@ export default function CollectionDashboardApp() {
         if (tab === "findings") {
             loadFindings(collectionId);
         }
+        if (tab === "aggregate") {
+            loadAggregate(collectionId);
+        }
     }, [collectionId]);
 
     useEffect(() => {
         if (tab === "findings" && collectionId) {
             loadFindings(collectionId);
         }
-    }, [tab, statusFilter, severityFilter, hostFilter]);
+    }, [tab, statusFilter, severityFilter, hostFilter, collectionId]);
+
+    useEffect(() => {
+        if (tab === "aggregate" && collectionId) {
+            loadAggregate(collectionId);
+        }
+    }, [tab, collectionId]);
 
     const statusCounts = useMemo(
         () => countRows(metrics && metrics.by_status),
@@ -224,6 +254,90 @@ export default function CollectionDashboardApp() {
             (collectionId || "workspace").slice(0, 8) +
             ".csv";
         downloadText(name, findingsToCsv(findings), "text/csv");
+    };
+
+    const exportPoam = (fmt) => {
+        if (!collectionId) {
+            return;
+        }
+        setPoamLoading(true);
+        setBanner(null);
+        const path = "stig_collections/" + collectionId + "/poam";
+        apiFetch(path, { query: { format: fmt } })
+            .then((data) => {
+                if (fmt === "xlsx" && data.content_base64) {
+                    downloadBase64(
+                        data.filename || "stig_poam.xlsx",
+                        data.content_base64,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    );
+                    return;
+                }
+                if (fmt === "csv" && typeof data === "string") {
+                    downloadText(
+                        "stig_poam_" + collectionId.slice(0, 8) + ".csv",
+                        data,
+                        "text/csv"
+                    );
+                    return;
+                }
+                if (data.rows && data.rows.length) {
+                    const headers = (data.columns || []).map((c) => c.label || c.key);
+                    const keys = (data.columns || []).map((c) => c.key);
+                    const lines = [headers.join(",")];
+                    data.rows.forEach((row) => {
+                        lines.push(
+                            keys.map((key) => csvEscape(row[key])).join(",")
+                        );
+                    });
+                    downloadText(
+                        "stig_poam_" + collectionId.slice(0, 8) + ".csv",
+                        lines.join("\n"),
+                        "text/csv"
+                    );
+                    return;
+                }
+                setBanner({ type: "warning", message: "No open findings for POA&M." });
+            })
+            .catch((err) =>
+                setBanner({ type: "error", message: String(err.message || err) })
+            )
+            .finally(() => setPoamLoading(false));
+    };
+
+    const renderAggregateTable = (title, rows, keyField) => {
+        if (!rows || !rows.length) {
+            return (
+                <Message type="info" style={{ marginTop: 12 }}>
+                    No rows for {title}.
+                </Message>
+            );
+        }
+        return (
+            <>
+                <Heading level={4} style={{ marginTop: 20 }}>{title}</Heading>
+                <Table>
+                    <Table.Head>
+                        <Table.HeadCell>{keyField}</Table.HeadCell>
+                        <Table.HeadCell>Count</Table.HeadCell>
+                        <Table.HeadCell>Hosts</Table.HeadCell>
+                        <Table.HeadCell>Severity</Table.HeadCell>
+                    </Table.Head>
+                    <Table.Body>
+                        {rows.map((row) => (
+                            <Table.Row key={(row[keyField] || "") + row.count}>
+                                <Table.Cell>{row[keyField] || "—"}</Table.Cell>
+                                <Table.Cell>{row.count}</Table.Cell>
+                                <Table.Cell>{row.host_count}</Table.Cell>
+                                <Table.Cell>
+                                    {SEVERITY_LABELS[row.severity] || row.severity || "—"}
+                                </Table.Cell>
+                            </Table.Row>
+                        ))}
+                    </Table.Body>
+                </Table>
+            </>
+        );
     };
 
     return (
@@ -264,6 +378,7 @@ export default function CollectionDashboardApp() {
                     <TabBar activeTabId={tab} onChange={(e, { selectedTabId }) => setTab(selectedTabId)}>
                         <TabBar.Tab label="Metrics" tabId="metrics" />
                         <TabBar.Tab label="Findings report" tabId="findings" />
+                        <TabBar.Tab label="Aggregated findings" tabId="aggregate" />
                     </TabBar>
 
                     {tab === "metrics" ? (
@@ -364,7 +479,9 @@ export default function CollectionDashboardApp() {
                                 <Message type="info">Select a workspace to load metrics.</Message>
                             ) : null}
                         </>
-                    ) : (
+                    ) : null}
+
+                    {tab === "findings" ? (
                         <>
                             <Toolbar style={{ marginTop: 12, marginBottom: 12 }}>
                                 <ControlGroup label="Status" labelPosition="top">
@@ -415,6 +532,18 @@ export default function CollectionDashboardApp() {
                                     </Button>
                                     <Button appearance="primary" onClick={exportCsv}>
                                         Export CSV
+                                    </Button>
+                                    <Button
+                                        disabled={poamLoading}
+                                        onClick={() => exportPoam("csv")}
+                                    >
+                                        POA&M CSV
+                                    </Button>
+                                    <Button
+                                        disabled={poamLoading}
+                                        onClick={() => exportPoam("xlsx")}
+                                    >
+                                        POA&M XLSX
                                     </Button>
                                 </Actions>
                             </Toolbar>
@@ -471,7 +600,47 @@ export default function CollectionDashboardApp() {
                                 <Message type="info">No findings match the current filters.</Message>
                             ) : null}
                         </>
-                    )}
+                    ) : null}
+
+                    {tab === "aggregate" ? (
+                        <>
+                            <Toolbar style={{ marginTop: 12, marginBottom: 12 }}>
+                                <Actions>
+                                    <Button onClick={() => loadAggregate(collectionId)}>
+                                        Refresh
+                                    </Button>
+                                </Actions>
+                            </Toolbar>
+                            {aggregateLoading ? <WaitSpinner /> : null}
+                            {aggregate ? (
+                                <>
+                                    <Message type="info">
+                                        Governance-open findings (status open, not accepted):{" "}
+                                        {aggregate.open_findings_total || 0}
+                                    </Message>
+                                    {renderAggregateTable(
+                                        "By group (V-ID)",
+                                        aggregate.by_group_id,
+                                        "group_id"
+                                    )}
+                                    {renderAggregateTable(
+                                        "By rule",
+                                        aggregate.by_rule_id,
+                                        "rule_id"
+                                    )}
+                                    {renderAggregateTable(
+                                        "By CCI",
+                                        aggregate.by_cci,
+                                        "cci"
+                                    )}
+                                </>
+                            ) : !aggregateLoading ? (
+                                <Message type="info">
+                                    Select a workspace to load aggregated open findings.
+                                </Message>
+                            ) : null}
+                        </>
+                    ) : null}
                 </PagePad>
             </Body>
         </Shell>

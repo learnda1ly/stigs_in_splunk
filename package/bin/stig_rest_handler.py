@@ -242,6 +242,17 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 )
             except KeyError:
                 return _error("not found", status=404)
+        if len(parts) == 3 and parts[1] == "findings" and parts[2] == "aggregate":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            try:
+                return _json_response(
+                    reporting_svc.collection_findings_aggregate(
+                        service, key, session, query
+                    )
+                )
+            except KeyError:
+                return _error("not found", status=404)
         if len(parts) == 2 and parts[1] == "findings":
             if method != "GET":
                 return _error("method not allowed", status=405)
@@ -251,6 +262,20 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 )
             except KeyError:
                 return _error("not found", status=404)
+        if len(parts) == 2 and parts[1] == "poam":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            try:
+                result = reporting_svc.collection_poam(service, key, session, query)
+            except KeyError:
+                return _error("not found", status=404)
+            if result.get("format") == "csv":
+                return {
+                    "payload": result.get("content") or "",
+                    "status": 200,
+                    "headers": [("Content-Type", "text/csv; charset=utf-8")],
+                }
+            return _json_response(result)
 
         if method == "GET":
             rec = collections_svc.get_collection(service, key)
