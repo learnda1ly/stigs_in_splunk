@@ -22,6 +22,7 @@ from importers.ingest import detect_format
 from services import baselines as baselines_svc
 from services import baseline_jobs as baseline_jobs_svc
 from services import checklists as checklists_svc
+from services import baseline_defaults as baseline_defaults_svc
 from services import collections as collections_svc
 from services import hosts as hosts_svc
 from services import assignment as assignment_svc
@@ -187,6 +188,45 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return _error("method not allowed", status=405)
 
         key = parts[0]
+        if len(parts) >= 2 and parts[1] == "baseline_defaults":
+            if method == "GET" and len(parts) == 2:
+                try:
+                    return _json_response(
+                        baseline_defaults_svc.list_defaults(service, key, session)
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            if method in ("POST", "PUT", "PATCH") and len(parts) == 2:
+                body = _body_json(payload)
+                try:
+                    rec = baseline_defaults_svc.set_default(
+                        service,
+                        key,
+                        body.get("stig_id") or body.get("benchmark_id") or "",
+                        body.get("baseline_id") or "",
+                        username,
+                        session,
+                    )
+                    return _json_response(rec)
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            if method == "DELETE" and len(parts) == 3:
+                try:
+                    return _json_response(
+                        baseline_defaults_svc.delete_default(
+                            service, key, parts[2], username, session
+                        )
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            return _error("method not allowed", status=405)
+
         if len(parts) == 2 and parts[1] == "metrics":
             if method != "GET":
                 return _error("method not allowed", status=405)
@@ -660,8 +700,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
         if not body:
             return _error("empty import body")
         fmt = (query.get("format") or detect_format(source_uri, body)).lower()
-        if fmt not in {"ckl", "cklb"}:
-            return _error("format must be ckl or cklb")
+        if fmt not in {"ckl", "cklb", "xccdf-results", "xccdf_results", "xccdfresults"}:
+            return _error("format must be ckl, cklb, or xccdf-results")
         rec = imports_svc.import_checklist_file(
             service,
             body,

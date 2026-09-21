@@ -580,13 +580,14 @@ Import responses:
 | POST | `/stig_checklists` | `{stig_collection_id, host_id, baseline_id, title?, mode?, target_data?}` → spawns reviews |
 | GET/PATCH/DELETE | `/stig_checklists/{id}` | DELETE cascades reviews |
 | GET | `/stig_checklists/{id}/export` | Query `format=cklb|ckl` |
-| POST | `/stig_imports` | Query `format=ckl|cklb`, `source_uri`, `stig_collection_id`; raw CKL/CKLB body |
+| POST | `/stig_imports` | Query `format=ckl|cklb|xccdf-results`, `source_uri`, `stig_collection_id`; raw body |
+| GET/POST/DELETE | `/stig_collections/{id}/baseline_defaults` | Workspace default `baseline_id` per `stig_id` (`default_baseline_map` on collection) |
 
 POST validates: host belongs to workspace; baseline exists; baseline has rules.
 
 ### 11.4.1 Checklist file import and HEC ingest
 
-`POST /stig_imports` parses one `.ckl` or `.cklb` the same way [STIG Manager Watcher](https://github.com/NUWCDIVNPT/stigman-watcher) does (`reviewsFromCkl` / `reviewsFromCklb`), then:
+`POST /stig_imports` parses one `.ckl`, `.cklb`, or XCCDF `TestResult` scan file. CKL/CKLB use the same shape as [STIG Manager Watcher](https://github.com/NUWCDIVNPT/stigman-watcher) (`reviewsFromCkl` / `reviewsFromCklb`). XCCDF results map `rule-result@result` to Watcher `result` values (`pass`, `fail`, `notapplicable`, `notchecked`), then:
 
 1. Emits one **fat** `stig:finding` JSON event per rule to **HEC** (`index=stig`, `sourcetype=stig:finding`). Each event includes Watcher review fields **and** asset `target_data`, STIG metadata, and the rule body (title, check content, fix text, CCIs, hashes) so a CKL/CKLB can be synthesized later from the index + KV.
 2. Applies the same events to KV current state (host, baseline, checklist, reviews).

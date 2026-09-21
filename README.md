@@ -91,7 +91,7 @@ Assign `stig_user` or `stig_admin`, or grant capabilities `stig_read`, `stig_wri
 https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 ```
 
-Resources: `stig_collections`, `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`.
+Resources: `stig_collections` (including `/{id}/baseline_defaults`), `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_assignment_rules`.
 
 ## Example flow (curl)
 
@@ -115,6 +115,23 @@ Checklist file ingest (indexes `stig:finding` via HEC, then updates KV). Omit `s
 curl -k -u admin:changeme -X POST \
   "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_imports?format=cklb&stig_collection_id=COLLECTION_ID&source_uri=host.cklb" \
   --data-binary @path/to/host.cklb
+```
+
+XCCDF scan results (`TestResult` with `rule-result` children). Import the matching Manual STIG baseline first (or set a workspace default revision):
+
+```bash
+curl -k -u admin:changeme -X POST \
+  "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_imports?format=xccdf-results&stig_collection_id=COLLECTION_ID&source_uri=host-results.xml" \
+  --data-binary @tests/fixtures/minimal_xccdf_results.xml
+```
+
+Workspace default baseline per `stig_id` (explicit `baseline_id` on create/import always wins):
+
+```bash
+curl -k -u admin:changeme -X POST \
+  "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_collections/COLLECTION_ID/baseline_defaults" \
+  -H "Content-Type: application/json" \
+  -d '{"stig_id":"Example_STIG","baseline_id":"BASELINE_KV_KEY"}'
 ```
 
 Reconcile indexed findings into KV (same job as the 5-minute saved search):

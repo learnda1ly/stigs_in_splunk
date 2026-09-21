@@ -41,14 +41,17 @@ def import_checklist_file(
     if not target.get("name"):
         raise ValueError("checklist has no host_name")
 
+    fmt_lower = (format_name or "").lower()
     source_product = "evaluate-stig"
-    if any(
+    if fmt_lower in {"xccdf-results", "xccdf_results", "xccdfresults"}:
+        source_product = "xccdf-results"
+    elif any(
         (review.get("resultEngine") or {}).get("product") == "Evaluate-STIG"
         for checklist in parsed.get("checklists") or []
         for review in checklist.get("reviews") or []
     ):
         source_product = "evaluate-stig"
-    elif (format_name or "").lower() in {"ckl", "cklb"}:
+    elif fmt_lower in {"ckl", "cklb"}:
         source_product = "stigman-watcher"
 
     collection_name = (

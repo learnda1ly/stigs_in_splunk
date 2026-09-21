@@ -27,6 +27,7 @@ from models import (
 )
 from importers.ingest import match_review_seed
 from services import baselines as baselines_svc
+from services import baseline_defaults as baseline_defaults_svc
 from services import collections as collections_svc
 from services import hosts as hosts_svc
 
@@ -124,9 +125,24 @@ def create_checklist(
 ) -> Dict[str, Any]:
     collection_id = body.get("stig_collection_id")
     host_id = body.get("host_id")
-    baseline_id = body.get("baseline_id")
-    if not all([collection_id, host_id, baseline_id]):
-        raise ValueError("stig_collection_id, host_id, and baseline_id are required")
+    baseline_id = (body.get("baseline_id") or "").strip()
+    stig_id = (body.get("stig_id") or body.get("benchmark_id") or "").strip()
+    if not collection_id or not host_id:
+        raise ValueError("stig_collection_id and host_id are required")
+    if not baseline_id:
+        if not stig_id:
+            raise ValueError(
+                "baseline_id is required unless stig_id is provided for workspace default resolution"
+            )
+        baseline_id = baseline_defaults_svc.resolve_baseline_id(
+            service,
+            collection_id=collection_id,
+            stig_id=stig_id,
+            xccdf_benchmark_id=body.get("xccdf_benchmark_id") or "",
+            version=str(body.get("version") or ""),
+        )
+        if not baseline_id:
+            raise ValueError(f"no baseline found for stig_id {stig_id}")
 
     _require_collection(service, collection_id, session, write=True)
     host = hosts_svc.get_host(service, host_id, session)
