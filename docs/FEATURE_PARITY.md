@@ -123,7 +123,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
 |---------|-------------------------|--------|-----------|-----------------------------|-----|------|
 | Asset review workspace (single STIG) | UI: Evaluation tab. API: `GET/PATCH .../reviews/{assetId}/{ruleId}` | **done** | STIG Editor (React): rule list, status, details, comments, progress. | Status immediate save; details/comments require write; keyboard/vim optional. | P0 | — |
-| Collection review workspace (one rule, many assets) | UI: Collection Review. API: batch-oriented review GETs | **missing** | No multi-host grid for same rule/baseline. | New SplunkUI view: pick baseline+rule, edit rows per host; batch PATCH API. | P0 | L |
+| Collection review workspace (one rule, many assets) | UI: Collection Review. API: batch-oriented review GETs | **done** | SplunkUI **Collection review** view (`stig_collection_review_ui`); no submit/accept workflow. | New SplunkUI view: pick baseline+rule, edit rows per host; batch PATCH API. | P0 | L |
 | Review status enum | Open / NAF / N/A / Not Reviewed | **done** | Same canonical statuses; CKL/CKLB mapping on export. | Round-trip export tests. | P0 | — |
 | Review detail & comments | API: review body fields | **done** | `finding_details`, `comments`; UI validation via `reviewIsValid`. | Align required-field policy with collection settings (future). | P0 | — |
 | Save vs submit vs accept/reject | UI: Submit, Accept, Reject with feedback | **missing** | No `submitted` / `accepted` / `rejected` states or owner workflow. | Optional workflow fields on `stig_reviews` + UI actions; owner-only accept/reject. | P1 | L |
@@ -131,7 +131,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Review history | API: `/collections/{id}/review-history`, stats | **missing** | Only `updated_at` / `updated_by` on review. | History collection or indexed audit; UI timeline per rule. | P2 | L |
 | Review aging rules | API: `/collections/{id}/tasks/review-aging/config` | **missing** | — | Scheduled search or KV flags for stale reviews; optional notifications. | P2 | M |
 | Cross-asset review resources (drag-drop) | UI: Review Resources panel | **missing** | — | Show other hosts’ same rule review in editor sidebar; copy action. | P2 | M |
-| Bulk review update | API: `POST .../reviews` batch, `postReviewBatch` | **missing** | Single `PATCH /stig_reviews/{id}` only. | `POST /stig_reviews/batch` with cap checks. | P1 | M |
+| Bulk review update | API: `POST .../reviews` batch, `postReviewBatch` | **done** | `POST /stig_reviews/batch` (partial success, max 500 rows). | `POST /stig_reviews/batch` with cap checks. | P1 | M |
 | Ingest lock (manual override) | SM: manual authoritative reviews | **done** | `ingest_lock` on review; HEC/reconcile skips. | UI toggle in editor; tests in `test_checklist_ingest`. | P1 | — |
 
 ### E. Import / export / automation
@@ -215,7 +215,7 @@ OpenAPI **tags** (approximate operation counts from `stig-manager.yaml`): Collec
 | `stig_hosts` | Asset CRUD, move workspace |
 | `stig_baselines` | List, import, rules, delete, `jobs` chunk import |
 | `stig_checklists` | CRUD, export, `export_bulk` |
-| `stig_reviews` | List, get, patch (`ingest_lock`) |
+| `stig_reviews` | List, get, patch (`ingest_lock`), batch (`/batch`) |
 | `stig_imports` | CKL/CKLB ingest, reconcile |
 | `stig_settings` | Editor settings adapter |
 | UCC `stigs_in_splunk_baseline` | Configuration table adapter |
