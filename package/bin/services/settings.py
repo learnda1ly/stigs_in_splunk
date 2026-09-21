@@ -42,6 +42,7 @@ def _public(rec: Dict[str, Any], username: str = "") -> Dict[str, Any]:
     return {
         "_key": rec.get("_key") or UCC_SETTINGS_STANZA,
         "vim_mode": bool(as_bool(rec.get("vim_mode"))),
+        "trust_event_collection_id": bool(as_bool(rec.get("trust_event_collection_id"))),
         "ingest_index": rec.get("ingest_index") or DEFAULT_INGEST_INDEX,
         "ingest_sourcetype": rec.get("ingest_sourcetype") or DEFAULT_INGEST_SOURCETYPE,
         "hec_url": rec.get("hec_url") or DEFAULT_HEC_URL,
@@ -110,6 +111,9 @@ def _write_ucc(session_key: str, record: Dict[str, Any]) -> bool:
         return False
     postargs = {
         "vim_mode": "1" if as_bool(record.get("vim_mode")) else "0",
+        "trust_event_collection_id": (
+            "1" if as_bool(record.get("trust_event_collection_id")) else "0"
+        ),
         "ingest_index": record.get("ingest_index") or DEFAULT_INGEST_INDEX,
         "ingest_sourcetype": record.get("ingest_sourcetype") or DEFAULT_INGEST_SOURCETYPE,
         "hec_url": record.get("hec_url") or DEFAULT_HEC_URL,
@@ -160,8 +164,14 @@ def save_settings(service, body: Dict[str, Any], username: str) -> Dict[str, Any
     body.pop("hec_token", None)
     existing = _read_ucc(_session_key(service)) or _read_kv(service)
     vim = as_bool(body["vim_mode"]) if "vim_mode" in body else as_bool(existing.get("vim_mode"))
+    trust = (
+        as_bool(body["trust_event_collection_id"])
+        if "trust_event_collection_id" in body
+        else as_bool(existing.get("trust_event_collection_id"))
+    )
     record = {
         "vim_mode": bool(vim) if vim is not None else False,
+        "trust_event_collection_id": bool(trust) if trust is not None else False,
         "ingest_index": _pick(body, existing, "ingest_index", DEFAULT_INGEST_INDEX),
         "ingest_sourcetype": _pick(
             body, existing, "ingest_sourcetype", DEFAULT_INGEST_SOURCETYPE

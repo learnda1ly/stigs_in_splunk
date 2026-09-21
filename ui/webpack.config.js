@@ -12,6 +12,7 @@ module.exports = {
         export: path.join(__dirname, "src/export.jsx"),
         import: path.join(__dirname, "src/import.jsx"),
         baselines: path.join(__dirname, "src/baselines.jsx"),
+        assignment: path.join(__dirname, "src/assignment.jsx"),
         collection_review: path.join(__dirname, "src/collection_review.jsx"),
     },
     output: {

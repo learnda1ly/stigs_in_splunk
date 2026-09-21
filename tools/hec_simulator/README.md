@@ -32,6 +32,15 @@ Runs **outside** Splunk; no `splunk` Python module is required.
 
 Optional per-host `collection_id` in `hosts.yaml` overrides `STIG_COLLECTION_ID` for that host only.
 
+## Workspace assignment (routing tests)
+
+When testing **workspace assignment rules**, omit `collection_id` / `collectionId` from
+`hosts.yaml` (or leave it blank). The reconcile resolver routes by assignment rules,
+host×baseline overrides, and the Default workspace.
+
+Optional: pass `--collection-id` only when validating legacy senders with
+`trust_event_collection_id` enabled in Configuration.
+
 ## Configuration
 
 - **`hosts.yaml`** — six hosts with `hostname`, `ip`, `baseline_key`, and `package_id` (`100001`–`100006`).

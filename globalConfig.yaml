@@ -75,6 +75,13 @@ pages:
                 defaultValue: false
                 help: "Three layers in the editor \u2014 INSERT, field NORMAL, and\
                     \ NAV. The editor badge can also toggle this per browser."
+            -   field: trust_event_collection_id
+                label: Trust collectionId on HEC events
+                type: checkbox
+                defaultValue: false
+                help: When off (default), workspace routing uses assignment rules and
+                    overrides only. Enable only for legacy senders that always set
+                    collectionId correctly.
             -   field: ingest_index
                 label: Index
                 type: text
@@ -106,6 +113,7 @@ pages:
                 - vim_mode
             -   label: Finding ingest (HEC)
                 fields:
+                - trust_event_collection_id
                 - ingest_index
                 - ingest_sourcetype
                 - hec_url
