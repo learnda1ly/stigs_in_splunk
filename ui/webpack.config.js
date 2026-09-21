@@ -11,6 +11,8 @@ module.exports = {
         editor: path.join(__dirname, "src/editor.jsx"),
         export: path.join(__dirname, "src/export.jsx"),
         import: path.join(__dirname, "src/import.jsx"),
+        baselines: path.join(__dirname, "src/baselines.jsx"),
+        collection_review: path.join(__dirname, "src/collection_review.jsx"),
     },
     output: {
         path: outDir,

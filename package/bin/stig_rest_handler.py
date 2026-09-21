@@ -20,6 +20,7 @@ import access
 import kv_client
 from importers.ingest import detect_format
 from services import baselines as baselines_svc
+from services import baseline_jobs as baseline_jobs_svc
 from services import checklists as checklists_svc
 from services import collections as collections_svc
 from services import hosts as hosts_svc
@@ -57,7 +58,10 @@ def _body_bytes(payload: Dict[str, Any]) -> bytes:
         return b""
     if isinstance(raw, bytes):
         return raw
-    return str(raw).encode("utf-8")
+    text = str(raw)
+    if text[:2] == "PK":
+        return text.encode("latin-1", errors="replace")
+    return text.encode("utf-8")
 
 
 def _normalize_query(raw: Any) -> Dict[str, Any]:
@@ -75,6 +79,9 @@ def _normalize_query(raw: Any) -> Dict[str, Any]:
 
 
 def _body_json(payload: Dict[str, Any]) -> Dict[str, Any]:
+    raw = payload.get("payload")
+    if isinstance(raw, dict):
+        return raw
     data = _body_bytes(payload)
     if not data:
         return {}
@@ -130,6 +137,10 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return self._settings(method, parts, payload, service, username)
             if resource == "stig_imports":
                 return self._imports(method, parts, query, payload, service, session, username)
+            if resource == "stigs_in_splunk_baseline":
+                return self._ucc_baselines(
+                    method, parts, query, payload, service, session, username
+                )
             return _error(f"unknown resource: {resource}", status=404)
         except PermissionError as exc:
             return _error(str(exc), status=403)
@@ -216,6 +227,93 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return _json_response({"deleted": key})
         return _error("method not allowed", status=405)
 
+    def _ucc_baselines(
+        self,
+        method: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        """Persist stand-in for UCC /stigs_in_splunk_baseline (not EAI XML)."""
+        if method == "GET":
+            want = (parts[0] if parts else "") or str(query.get("id") or "").strip()
+            entries = []
+            acl = {
+                "app": "stigs_in_splunk",
+                "can_change_perms": False,
+                "can_list": True,
+                "can_share_app": True,
+                "can_share_global": False,
+                "can_share_user": False,
+                "can_write": True,
+                "modifiable": True,
+                "owner": "nobody",
+                "perms": {"read": ["*"], "write": ["*"]},
+                "sharing": "app",
+            }
+            for rec in baselines_svc.list_baselines(service):
+                name = baselines_svc.ucc_name_for(rec)
+                if not name:
+                    continue
+                if want and name != want:
+                    continue
+                content = {
+                    "disabled": False,
+                    "eai:acl": acl,
+                    "name": name,
+                    "stig_id": rec.get("stig_id") or "",
+                    "title": rec.get("title") or rec.get("stig_name") or "",
+                    "version": rec.get("version") or "",
+                    "release_info": rec.get("release_info") or "",
+                    "rule_count": rec.get("rule_count") or 0,
+                    "source_type": rec.get("source_type") or "",
+                    "source_uri": rec.get("source_uri") or "",
+                    "content_fingerprint": rec.get("content_fingerprint") or "",
+                    "format": rec.get("source_type") or "",
+                    "content": "",
+                }
+                entries.append(
+                    {
+                        "name": name,
+                        "id": name,
+                        "acl": acl,
+                        "content": content,
+                    }
+                )
+            return _json_response({"entry": entries})
+
+        if method == "DELETE":
+            if not access.user_has_stig_admin(session):
+                return _error("stig_admin required", status=403)
+            name = (parts[0] if parts else "").strip()
+            if not name:
+                return _error("baseline id required")
+            rec = baselines_svc.find_baseline_by_ucc_name(service, name)
+            if not rec:
+                return _error("not found", status=404)
+            baselines_svc.delete_baseline(service, rec["_key"], username)
+            return _json_response({"deleted": name})
+
+        if method in ("POST", "PUT", "PATCH"):
+            # UCC reads messages[0].text; {error: "..."} becomes "An unknown error occurred".
+            msg = (
+                "Configuration cannot import a DISA library zip. Splunk used to wrap "
+                "that file in EAI XML and fail with Unable to xml-parse. Open Import "
+                "and drop the zip there — it is uploaded in 4MB persist chunks and "
+                "every Manual-xccdf STIG is imported automatically."
+            )
+            return _json_response(
+                {
+                    "messages": [{"type": "ERROR", "text": msg}],
+                    "error": msg,
+                },
+                status=400,
+            )
+        return _error("method not allowed", status=405)
+
     def _baselines(
         self,
         method: str,
@@ -234,13 +332,26 @@ class StigRestHandler(PersistentServerConnectionApplication):
             body = _body_bytes(payload)
             if not body:
                 return _error("empty import body")
-            rec, created = baselines_svc.import_baseline(
+            results = baselines_svc.import_baselines_payload(
                 service, body, fmt, username, source_uri
             )
-            payload = dict(rec)
-            if not created:
-                payload["deduplicated"] = True
-            return _json_response(payload, status=201 if created else 200)
+            created_any = any(item.get("created") for item in results)
+            payload_out = {
+                "imported": len(results),
+                "created": sum(1 for item in results if item.get("created")),
+                "deduplicated": sum(1 for item in results if not item.get("created")),
+                "baselines": [item["record"] for item in results],
+            }
+            if len(results) == 1:
+                payload_out.update(results[0]["record"])
+                payload_out["created"] = bool(results[0].get("created"))
+                payload_out["deduplicated"] = not results[0].get("created")
+            return _json_response(payload_out, status=201 if created_any else 200)
+
+        if parts and parts[0] == "jobs":
+            return self._baseline_jobs(
+                method, parts[1:], query, payload, service, username
+            )
 
         if len(parts) == 2 and parts[1] == "rules":
             baseline_id = parts[0]
@@ -268,6 +379,55 @@ class StigRestHandler(PersistentServerConnectionApplication):
             baselines_svc.delete_baseline(service, key, username)
             return _json_response({"deleted": key})
         return _error("not found", status=404)
+
+    def _baseline_jobs(
+        self,
+        method: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        payload: Dict[str, Any],
+        service,
+        username: str,
+    ) -> Dict[str, Any]:
+        if not parts:
+            if method != "POST":
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            rec = baseline_jobs_svc.create_job(
+                body.get("filename") or "",
+                int(body.get("size") or 0),
+                username,
+            )
+            return _json_response(rec, status=201)
+        job_id = parts[0]
+        if method == "GET":
+            return _json_response(baseline_jobs_svc.get_job(job_id, username))
+        if method == "DELETE":
+            baseline_jobs_svc.delete_job(job_id, username)
+            return _json_response({"deleted": job_id})
+        if method != "POST":
+            return _error("method not allowed", status=405)
+        body = _body_json(payload)
+        action = (body.get("action") or query.get("action") or "").strip().lower()
+        if action == "chunk":
+            data = baseline_jobs_svc.decode_chunk(body.get("data"))
+            rec = baseline_jobs_svc.append_chunk(
+                job_id, username, int(body.get("offset") or 0), data
+            )
+            return _json_response(rec)
+        if action == "finalize":
+            rec = baseline_jobs_svc.finalize_job(job_id, username)
+            return _json_response(rec)
+        if action == "import":
+            rec = baseline_jobs_svc.import_member(
+                service, job_id, username, body.get("path") or ""
+            )
+            payload_out = dict(rec.get("record") or {})
+            payload_out["created"] = bool(rec.get("created"))
+            payload_out["deduplicated"] = not rec.get("created")
+            payload_out["path"] = rec.get("path")
+            return _json_response(payload_out, status=201 if rec.get("created") else 200)
+        return _error("action must be chunk, finalize, or import")
 
     def _checklists(
         self,
@@ -377,6 +537,15 @@ class StigRestHandler(PersistentServerConnectionApplication):
         session: Dict[str, Any],
         username: str,
     ) -> Dict[str, Any]:
+        if parts == ["batch"]:
+            if method not in ("POST", "PATCH", "PUT"):
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            result = reviews_svc.batch_update_reviews(
+                service, body, username, session
+            )
+            return _json_response(result)
+
         if not parts:
             if method == "GET":
                 return _json_response(
@@ -429,8 +598,6 @@ class StigRestHandler(PersistentServerConnectionApplication):
         if method != "POST":
             return _error("method not allowed", status=405)
         collection_id = query.get("stig_collection_id") or ""
-        if not collection_id:
-            return _error("stig_collection_id is required")
         source_uri = query.get("source_uri") or ""
         body = _body_bytes(payload)
         if not body:

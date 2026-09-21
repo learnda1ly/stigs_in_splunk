@@ -15,6 +15,7 @@ import {
     downloadText,
     unwrap,
     viewUrl,
+    workspaceLabel,
 } from "../api";
 import {
     Actions,
@@ -209,7 +210,7 @@ export default function ExportApp() {
                             {collections.map((c) => (
                                 <Select.Option
                                     key={c._key}
-                                    label={c.name || c._key}
+                                    label={workspaceLabel(c)}
                                     value={c._key}
                                 />
                             ))}

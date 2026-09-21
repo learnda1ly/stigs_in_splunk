@@ -53,7 +53,7 @@ if [[ ! -d "$UCC_LIB/splunktaucclib" ]]; then
   echo "Add splunktaucclib>=6.6.0,<8 and solnlib>=5.5.0,<8 to package/lib/requirements.txt and rebuild." >&2
   exit 1
 fi
-PYTHONPATH="$UCC_LIB" "$UCC_PYTHON" -c "from splunktaucclib.rest_handler.admin_external import AdminExternalHandler; print('splunktaucclib ok')"
+PYTHONPATH="$UCC_LIB" "$UCC_PYTHON" -c "import splunktaucclib; print('splunktaucclib ok')"
 
 APP_MOUNT="${SPLUNK_HOME:-/opt/splunk}/etc/apps/stigs_in_splunk"
 if mountpoint -q "$APP_MOUNT" 2>/dev/null; then

@@ -5,5 +5,6 @@
 #
 # Pin solnlib below 8: 8.x pulls grpcio/OpenTelemetry wheels that do not match
 # Splunk's Python.
-splunktaucclib>=6.6.0,<8
+# splunktaucclib >=8.2.0 required by ucc-gen 6.x (used by the UCC App Builder).
+splunktaucclib>=8.2.0,<9
 solnlib>=5.5.0,<8
