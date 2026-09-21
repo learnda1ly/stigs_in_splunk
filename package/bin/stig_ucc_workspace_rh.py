@@ -7,6 +7,7 @@ from splunktaucclib.rest_handler.admin_external import AdminExternalHandler, bui
 import access
 from models import as_bool
 from services import collections as collections_svc
+from services import grants as grants_svc
 from stig_ucc_kv import (
     as_conf_entities,
     connect,
@@ -82,7 +83,9 @@ class WorkspaceRestHandler(AdminExternalHandler):
         if not rec:
             _fail("workspace not found")
         session = handler_session(self)
-        if not access.user_can_write_collection(rec, session):
+        grants = grants_svc.query_grants(service, rec["_key"])
+        ctx = access.resolve_workspace_access(rec, session, grants)
+        if not ctx.edit_collection and not access.user_can_write_collection(rec, session, grants):
             _fail("not allowed to update this workspace")
         payload = self.payload or {}
         patch = {}

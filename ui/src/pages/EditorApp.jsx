@@ -936,7 +936,7 @@ export default function EditorApp() {
                     <Button
                         appearance="primary"
                         onClick={() => {
-                            window.location.assign(viewUrl("stig_baselines_ui"));
+                            window.location.assign(viewUrl("stig_import_ui") + "#baselines");
                         }}
                         label="Import baselines"
                     />
@@ -976,8 +976,8 @@ export default function EditorApp() {
                                 ? "NORMAL"
                                 : "NAV"}
                     </VimBadge>
-                    <Link to={viewUrl("stig_baselines_ui")}>Import baselines</Link>
-                    <Link to={viewUrl("stig_import_ui")}>Import checklists</Link>
+                    <Link to={viewUrl("stig_collection_review_ui")}>Collection review</Link>
+                    <Link to={viewUrl("stig_import_ui")}>Import</Link>
                     <Link to={viewUrl("configuration")}>Configuration</Link>
                     <Link to={viewUrl("stig_editor")}>Classic</Link>
                 </HeaderMeta>

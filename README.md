@@ -4,6 +4,8 @@ Minimal Splunk app that stores DISA STIG baseline and checklist **review** state
 
 See [spec.md](spec.md) for the full build specification.
 
+For a gap backlog vs [STIG Manager](https://github.com/NUWCDIVNPT/stig-manager) (reference only), see [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md).
+
 ## Build with Splunk UCC
 
 This app is packaged with the [Splunk UCC framework](https://splunk.github.io/addonfactory-ucc-generator/) (`ucc-gen`). Source lives under `package/`; the installable app is produced under `output/stigs_in_splunk`.
@@ -12,7 +14,7 @@ This app is packaged with the [Splunk UCC framework](https://splunk.github.io/ad
 
 ```bash
 python3 -m venv .venv-ucc
-.venv-ucc/bin/pip install 'splunk-add-on-ucc-framework>=5.68'
+.venv-ucc/bin/pip install -r requirements-ucc.txt
 ```
 
 Install from PyPI, not GitHub. The git checkout does not ship `entry_page.js`, so the Configuration page is a blank white screen.
@@ -47,7 +49,7 @@ sudo systemctl restart Splunkd
 
 | Path | Role |
 |------|------|
-| `globalConfig.yaml` | UCC meta plus Configuration tabs (workspaces, baselines, editor/ingest) |
+| `globalConfig.yaml` | UCC meta plus Configuration tabs (workspaces, editor/ingest) |
 | `package/` | App source copied into the build (`bin/`, `default/*.conf`, `metadata/`, `app.manifest`) |
 | `package/lib/requirements.txt` | `splunktaucclib` for UCC Configuration REST (pip-installed into `output/.../lib`) |
 | `additional_packaging.py` | Post-build: KV reload trigger, keep UCC Configuration view, restore custom nav |
@@ -60,9 +62,10 @@ Custom REST uses a **persist** handler (`package/bin/stig_rest_handler.py`) and 
 Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
 
 - **STIG Editor** — workspace + host filters, finding list, status, details, comments
-- **Import** — drag-and-drop `.ckl` / `.cklb` checklists, a single XCCDF, or a DISA product/quarterly zip. The whole library zip is chunked to persist REST (`/stig_baselines/jobs`); every Manual-xccdf baseline is imported automatically. Findings go to HEC (`stig:finding`) and KV
-- **Export Checklists** — CKL / CKLB download, including bulk zip
-- **Configuration** — UCC-generated page for workspaces, STIG baselines, and editor/HEC settings. A **Default** workspace is created automatically; checklist imports land there until you move the host. The Baselines tab lists/deletes catalog rows. DISA library zips go on **Import** (chunked persist REST; every Manual-xccdf is imported). The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
+- **Collection review** — one baseline rule across all hosts in a workspace (batch save)
+- **Import** — checklists (`.ckl` / `.cklb` to HEC and KV) and STIG baselines (single XCCDF, CKL/CKLB, or a DISA product/quarterly zip via chunked persist REST `/stig_baselines/jobs`) on one page with **Checklists** and **Baselines** sections
+- **Export** — CKL / CKLB download, including bulk zip
+- **Configuration** — UCC-generated page for workspaces and editor/HEC settings. A **Default** workspace is created automatically; checklist imports with no workspace go there until you move the host. The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
 
 Classic Simple XML + jQuery views remain under the **Classic** nav menu.
 
@@ -74,7 +77,9 @@ Rebuild UI bundles after changing `ui/src`:
 
 `./scripts/build_ucc.sh` runs that step unless `SKIP_UI_BUILD=1`.
 
-After install, open the app → **STIG Editor**. Manage workspaces and STIG baselines under **Configuration**. Imports without a workspace go to **Default**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**. **Submit** sends a completed finding for owner **Accept** / **Reject** (`stig_review_accept` or workspace `review_accept_principals`). See [FEATURE_PARITY.md](FEATURE_PARITY.md).
+After install, open the app → **STIG Editor**. Use **Collection review** to work one rule across all hosts in a workspace (batch save). Manage workspaces under **Configuration**; import baselines and checklists under **Import**. Imports without a workspace go to **Default**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**. **Submit** sends a completed finding for owner **Accept** / **Reject** (workspace **owner** / **manager** grants, `stig_review_accept`, or `review_accept_principals`). See [FEATURE_PARITY.md](FEATURE_PARITY.md).
+
+Batch review field updates: `POST .../stig_reviews/batch` with `{ "reviews": [{ "_key": "...", "status": "open", ... }] }`. Batch governance: same path with `{ "action": "submit|accept|reject", "review_ids": ["..."] }`. Partial success is supported (per-row errors in the response).
 
 ## Splunk roles
 
@@ -86,7 +91,7 @@ Assign `stig_user` or `stig_admin`, or grant capabilities `stig_read`, `stig_wri
 https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 ```
 
-Resources: `stig_collections`, `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`.
+Resources: `stig_collections` (including `/{id}/grants`, `/{id}/baseline_defaults`, `/{id}/metrics`, `/{id}/findings`), `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_assignment_rules`.
 
 ## Example flow (curl)
 
@@ -110,6 +115,23 @@ Checklist file ingest (indexes `stig:finding` via HEC, then updates KV). Omit `s
 curl -k -u admin:changeme -X POST \
   "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_imports?format=cklb&stig_collection_id=COLLECTION_ID&source_uri=host.cklb" \
   --data-binary @path/to/host.cklb
+```
+
+XCCDF scan results (`TestResult` with `rule-result` children). Import the matching Manual STIG baseline first (or set a workspace default revision):
+
+```bash
+curl -k -u admin:changeme -X POST \
+  "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_imports?format=xccdf-results&stig_collection_id=COLLECTION_ID&source_uri=host-results.xml" \
+  --data-binary @tests/fixtures/minimal_xccdf_results.xml
+```
+
+Workspace default baseline per `stig_id` (explicit `baseline_id` on create/import always wins):
+
+```bash
+curl -k -u admin:changeme -X POST \
+  "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_collections/COLLECTION_ID/baseline_defaults" \
+  -H "Content-Type: application/json" \
+  -d '{"stig_id":"Example_STIG","baseline_id":"BASELINE_KV_KEY"}'
 ```
 
 Reconcile indexed findings into KV (same job as the 5-minute saved search):
@@ -140,3 +162,15 @@ export SPLUNK_PASSWORD='your-admin-password'
 ## Search
 
 Use `| inputlookup stig_reviews` (and related stanzas in `package/default/transforms.conf`) with app context **stigs_in_splunk**. See spec.md §12.
+
+## Collection metrics and findings report
+
+SplunkUI **Collection dashboard** (`stig_collection_dashboard_ui`) shows workspace-scoped review metrics and an open-findings report with CSV export.
+
+REST (requires `stig_read` and workspace access):
+
+- `GET /stig_collections/{id}/metrics` — counts by review status and severity, plus completion summary.
+- `GET /stig_collections/{id}/findings` — paginated findings (default `status=open`; optional `severity`, `host_id`, `limit`, `offset`).
+- `GET /stig_findings?stig_collection_id={id}` — same findings payload as the collection subpath.
+
+See spec.md §11.6 for query parameters and response fields.

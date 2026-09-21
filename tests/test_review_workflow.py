@@ -80,6 +80,19 @@ class ReviewAcceptAccessTests(unittest.TestCase):
         session = {"user": "owner1", "roles": [], "capabilities": {}}
         self.assertTrue(access.user_can_accept_reviews(workspace, session))
 
+    def test_owner_grant_can_accept(self):
+        workspace = {"access_principals": "[]"}
+        session = {"user": "alice", "roles": [], "capabilities": {}}
+        grants = [
+            {
+                "principal": "user:alice",
+                "grant_role": "owner",
+                "acl_host_ids": "[]",
+                "acl_baseline_ids": "[]",
+            }
+        ]
+        self.assertTrue(access.user_can_accept_reviews(workspace, session, grants))
+
 
 if __name__ == "__main__":
     unittest.main()

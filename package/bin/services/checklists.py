@@ -27,17 +27,25 @@ from models import (
 )
 from importers.ingest import match_review_seed
 from services import baselines as baselines_svc
+from services import baseline_defaults as baseline_defaults_svc
 from services import collections as collections_svc
+from services import grants as grants_svc
 from services import hosts as hosts_svc
 
 
 def _require_collection(service, collection_id: str, session: Dict[str, Any], write: bool = False):
-    rec = collections_svc.get_collection(service, collection_id)
-    if not rec:
-        raise KeyError(collection_id)
-    ok = access.user_can_write_collection(rec, session) if write else access.user_can_read_collection(rec, session)
-    if not ok:
-        raise PermissionError("access denied to stig_collection")
+    try:
+        if write:
+            grants_svc.require_workspace_write(service, collection_id, session)
+        else:
+            grants_svc.require_workspace_read(service, collection_id, session)
+    except KeyError as exc:
+        raise KeyError(collection_id) from exc
+
+
+def _access_context(service, collection_id: str, session: Dict[str, Any]):
+    _rec, ctx, _grants = grants_svc.workspace_context(service, collection_id, session)
+    return ctx
 
 
 def list_checklists(
@@ -48,9 +56,19 @@ def list_checklists(
     records = kv_client.query_all(coll, query)
     if stig_collection_id:
         _require_collection(service, stig_collection_id, session)
-        return records
-    allowed = {r["_key"] for r in collections_svc.list_collections(service, session)}
-    return [r for r in records if r.get("stig_collection_id") in allowed]
+        ctx = _access_context(service, stig_collection_id, session)
+        return access.filter_checklists(records, ctx)
+    visible = collections_svc.list_collections(service, session)
+    by_id = {r["_key"]: r for r in visible}
+    out: List[Dict[str, Any]] = []
+    for rec in records:
+        cid = rec.get("stig_collection_id")
+        if cid not in by_id:
+            continue
+        ctx = _access_context(service, cid, session)
+        if access.checklist_allowed(rec, ctx):
+            out.append(rec)
+    return out
 
 
 def get_checklist(
@@ -58,8 +76,15 @@ def get_checklist(
 ) -> Optional[Dict[str, Any]]:
     coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
     rec = kv_client.get_by_key(coll, key)
-    if rec:
+    if not rec:
+        return None
+    try:
         _require_collection(service, rec["stig_collection_id"], session, write=write)
+    except (KeyError, PermissionError):
+        return None
+    ctx = _access_context(service, rec["stig_collection_id"], session)
+    if not access.checklist_allowed(rec, ctx):
+        return None
     return rec
 
 
@@ -105,6 +130,8 @@ def apply_review_seeds(
             patch["finding_details"] = seed["finding_details"] or ""
         if "comments" in seed:
             patch["comments"] = seed["comments"] or ""
+        if "package_id" in seed:
+            patch["package_id"] = seed["package_id"] or ""
         patch["valid"] = validation.persistable_valid(patch)
         patch["updated_at"] = ts
         patch["updated_by"] = username
@@ -122,9 +149,24 @@ def create_checklist(
 ) -> Dict[str, Any]:
     collection_id = body.get("stig_collection_id")
     host_id = body.get("host_id")
-    baseline_id = body.get("baseline_id")
-    if not all([collection_id, host_id, baseline_id]):
-        raise ValueError("stig_collection_id, host_id, and baseline_id are required")
+    baseline_id = (body.get("baseline_id") or "").strip()
+    stig_id = (body.get("stig_id") or body.get("benchmark_id") or "").strip()
+    if not collection_id or not host_id:
+        raise ValueError("stig_collection_id and host_id are required")
+    if not baseline_id:
+        if not stig_id:
+            raise ValueError(
+                "baseline_id is required unless stig_id is provided for workspace default resolution"
+            )
+        baseline_id = baseline_defaults_svc.resolve_baseline_id(
+            service,
+            collection_id=collection_id,
+            stig_id=stig_id,
+            xccdf_benchmark_id=body.get("xccdf_benchmark_id") or "",
+            version=str(body.get("version") or ""),
+        )
+        if not baseline_id:
+            raise ValueError(f"no baseline found for stig_id {stig_id}")
 
     _require_collection(service, collection_id, session, write=True)
     host = hosts_svc.get_host(service, host_id, session)
@@ -198,7 +240,7 @@ def create_checklist(
             "status": seed.get("status") or "not_reviewed",
             "finding_details": seed.get("finding_details") or "",
             "comments": seed.get("comments") or "",
-            "package_id": "",
+            "package_id": str(seed.get("package_id") or ""),
             "ingest_lock": False,
             "workflow_state": "draft",
             "updated_at": ts,
@@ -251,7 +293,7 @@ def ensure_review(
         "status": seed.get("status") or "not_reviewed",
         "finding_details": seed.get("finding_details") or "",
         "comments": seed.get("comments") or "",
-        "package_id": "",
+        "package_id": str(seed.get("package_id") or ""),
         "ingest_lock": False,
         "workflow_state": "draft",
         "updated_at": ts,

@@ -9,12 +9,42 @@ from typing import Any, Dict, List, Tuple
 
 import audit
 from importers.events import finding_key, normalize_finding_event
-from importers.ingest import reviews_to_seeds
-from models import parse_json_field
+from importers.ingest import review_seed_payload, reviews_to_seeds
+from models import dumps_json, parse_json_field
 from services import baselines as baselines_svc
+from services import baseline_defaults as baseline_defaults_svc
 from services import checklists as checklists_svc
+from services import assignment as assignment_svc
 from services import collections as collections_svc
 from services import hosts as hosts_svc
+
+
+def _ingest_metadata_block(event: Dict[str, Any]) -> Dict[str, Any]:
+    """Splunk-app ingest context stored on stig_hosts.metadata (JSON)."""
+    block: Dict[str, Any] = {}
+    for key in ("source_product", "sourceRef", "collectionName"):
+        val = event.get(key)
+        if val is not None and str(val).strip():
+            block[key] = val
+    engine = event.get("resultEngine")
+    if engine is not None:
+        block["resultEngine"] = engine
+    return block
+
+
+def _merge_host_metadata(existing_meta: Any, event: Dict[str, Any], asset_meta: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(asset_meta or {})
+    if isinstance(existing_meta, str):
+        existing_meta = parse_json_field(existing_meta, default={}) or {}
+    if isinstance(existing_meta, dict):
+        for key, val in existing_meta.items():
+            if key not in merged:
+                merged[key] = val
+    ingest = _ingest_metadata_block(event)
+    if ingest:
+        prior = merged.get("ingest") if isinstance(merged.get("ingest"), dict) else {}
+        merged["ingest"] = {**prior, **ingest}
+    return merged
 
 
 def _upsert_host(
@@ -29,7 +59,12 @@ def _upsert_host(
     existing = hosts_svc.find_host_by_hostname(
         service, session, collection_id, hostname
     )
-    metadata = asset.get("metadata") if isinstance(asset.get("metadata"), dict) else {}
+    asset_meta = asset.get("metadata") if isinstance(asset.get("metadata"), dict) else {}
+    metadata = _merge_host_metadata(
+        existing.get("metadata") if existing else {},
+        event,
+        asset_meta,
+    )
     body = {
         "stig_collection_id": collection_id,
         "hostname": hostname,
@@ -51,6 +86,10 @@ def _upsert_host(
             patch[dest] = val
     if metadata.get("cklRole") and metadata["cklRole"] != existing.get("role"):
         patch["role"] = metadata["cklRole"]
+    new_meta = _merge_host_metadata(existing.get("metadata"), event, asset_meta)
+    old_meta = parse_json_field(existing.get("metadata"), default={}) or {}
+    if new_meta != old_meta:
+        patch["metadata"] = dumps_json(new_meta)
     if patch:
         existing = hosts_svc.update_host(
             service, existing["_key"], patch, username, session
@@ -62,6 +101,7 @@ def _upsert_baseline(
     service,
     events: List[Dict[str, Any]],
     username: str,
+    collection_id: str = "",
 ) -> Tuple[Dict[str, Any], bool]:
     first = events[0]
     meta = dict(first.get("stig") or {})
@@ -78,6 +118,19 @@ def _upsert_baseline(
         seen.add(key)
         rules.append(rule)
     if not rules:
+        explicit = (first.get("baselineId") or "").strip()
+        resolved_id = baseline_defaults_svc.resolve_baseline_id(
+            service,
+            collection_id=collection_id,
+            explicit_baseline_id=explicit,
+            stig_id=meta.get("stig_id") or first.get("benchmarkId") or "",
+            xccdf_benchmark_id=meta.get("xccdf_benchmark_id") or "",
+            version=meta.get("version") or "",
+        )
+        if resolved_id:
+            existing = baselines_svc.get_baseline(service, resolved_id)
+            if existing:
+                return existing, False
         existing = baselines_svc.find_baseline_by_stig(
             service, meta.get("stig_id") or "", meta.get("version") or ""
         )
@@ -102,6 +155,7 @@ def apply_finding_events(
     events: List[Dict[str, Any]],
     username: str,
     session: Dict[str, Any],
+    forced_collection_id: str = "",
 ) -> Dict[str, Any]:
     normalized: List[Dict[str, Any]] = []
     errors: List[str] = []
@@ -115,7 +169,6 @@ def apply_finding_events(
     for event in normalized:
         gkey = "|".join(
             [
-                event.get("collectionId") or "",
                 (event.get("assetName") or "").casefold(),
                 (event.get("benchmarkId") or "").casefold(),
             ]
@@ -128,23 +181,45 @@ def apply_finding_events(
     applied = 0
     locked = 0
     unmatched = 0
+    assigned_by_rule = 0
+    assigned_by_override = 0
+    assigned_by_default = 0
+    assigned_by_event = 0
+    assigned_by_forced = 0
     checklists: List[Dict[str, Any]] = []
 
     for batch_map in groups.values():
         batch = list(batch_map.values())
         first = batch[0]
-        collection_id = first.get("collectionId") or ""
-        if not collection_id:
-            collection_id = collections_svc.ensure_default_collection(
-                service, username
-            )["_key"]
+        resolved = assignment_svc.resolve_collection_id(
+            first,
+            service,
+            session,
+            forced_collection_id=forced_collection_id,
+            username=username,
+            audit_resolve=not forced_collection_id,
+        )
+        collection_id = resolved.get("stig_collection_id") or ""
+        reason = resolved.get("reason") or ""
+        if reason == assignment_svc.REASON_RULE:
+            assigned_by_rule += 1
+        elif reason == assignment_svc.REASON_OVERRIDE:
+            assigned_by_override += 1
+        elif reason == assignment_svc.REASON_DEFAULT:
+            assigned_by_default += 1
+        elif reason == assignment_svc.REASON_EVENT_COLLECTION:
+            assigned_by_event += 1
+        elif reason == assignment_svc.REASON_FORCED:
+            assigned_by_forced += 1
         checklists_svc._require_collection(service, collection_id, session, write=True)
         host, created_host = _upsert_host(
             service, first, collection_id, username, session
         )
         if created_host:
             host_created += 1
-        baseline, created_baseline = _upsert_baseline(service, batch, username)
+        baseline, created_baseline = _upsert_baseline(
+            service, batch, username, collection_id=collection_id
+        )
         for event in batch:
             baselines_svc.ensure_baseline_rule(
                 service, baseline["_key"], event.get("rule") or {}, event.get("stig")
@@ -157,18 +232,7 @@ def apply_finding_events(
             baseline["_key"],
         )
         target_data = (first.get("asset") or {}).get("target_data") or {}
-        seeds = reviews_to_seeds(
-            [
-                {
-                    "ruleId": event.get("ruleId"),
-                    "groupId": event.get("groupId"),
-                    "result": event.get("result"),
-                    "detail": event.get("detail"),
-                    "comment": event.get("comment"),
-                }
-                for event in batch
-            ]
-        )
+        seeds = reviews_to_seeds(batch)
         if existing:
             if target_data:
                 current = parse_json_field(existing.get("target_data"), default={}) or {}
@@ -227,6 +291,9 @@ def apply_finding_events(
                 "host_id": host["_key"],
                 "hostname": host.get("hostname"),
                 "benchmark_id": first.get("benchmarkId"),
+                "stig_collection_id": collection_id,
+                "assignment_reason": reason,
+                "assignment_rule_key": resolved.get("rule_key"),
                 "review_count": len(batch),
                 "reviews_applied": result.get("updated", 0),
                 "reviews_locked": result.get("locked", 0),
@@ -248,6 +315,11 @@ def apply_finding_events(
         "applied": applied,
         "locked": locked,
         "unmatched": unmatched,
+        "assigned_by_rule": assigned_by_rule,
+        "assigned_by_override": assigned_by_override,
+        "assigned_by_default": assigned_by_default,
+        "assigned_by_event_collection": assigned_by_event,
+        "assigned_by_forced_import": assigned_by_forced,
         "errors": errors,
         "finding_count": len(normalized),
     }

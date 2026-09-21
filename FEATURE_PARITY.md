@@ -2,7 +2,7 @@
 
 | # | Area | STIG Manager concept | Status | Notes |
 |---|------|----------------------|--------|-------|
-| 5 | Save vs submit vs accept/reject | Saved → Submitted → Accepted/Rejected | **done** | `workflow_state` on `stig_reviews`; REST `POST .../submit|accept|reject` and `POST .../batch`; SplunkUI STIG Editor actions + batch on visible rows; capability `stig_review_accept` + optional `review_accept_principals` on workspace. Classic Simple XML editor: **partial** (use SplunkUI for governance). |
+| 5 | Save vs submit vs accept/reject | Saved → Submitted → Accepted/Rejected | **done** | `workflow_state` on `stig_reviews`; REST `POST .../submit|accept|reject` and governance batch on `POST .../batch` (field batch unchanged); SplunkUI STIG Editor actions + batch on visible rows; accept via workspace **owner**/**manager** grants, `stig_review_accept`, or `review_accept_principals`. Classic Simple XML editor: **partial**. |
 
 ## Workflow state machine
 

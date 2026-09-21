@@ -32,6 +32,9 @@ COLLECTIONS = (
     "stig_checklists",
     "stig_reviews",
     "stig_editor_settings",
+    "stig_assignment_rules",
+    "stig_host_baseline_assignments",
+    "stig_collection_grants",
 )
 
 

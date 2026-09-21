@@ -1,4 +1,6 @@
 tests/fixtures/cache/
+tests/fixtures/baselines/.cache/
+tests/fixtures/baselines/U_*.xml
 output/
 .venv-ucc/
 ui/node_modules/

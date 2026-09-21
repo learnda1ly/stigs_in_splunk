@@ -1,0 +1,10 @@
+<dashboard version="1.1" script="stig_grants_ui.js" isDashboard="false">
+  <label>Workspace grants</label>
+  <row>
+    <panel>
+      <html>
+        <div id="stig-ui-root"/>
+      </html>
+    </panel>
+  </row>
+</dashboard>

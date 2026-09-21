@@ -12,12 +12,15 @@ from typing import Any, Dict, List, Optional
 APP_NAME = "stigs_in_splunk"
 
 KV_STIG_COLLECTIONS = "stig_collections"
+KV_STIG_COLLECTION_GRANTS = "stig_collection_grants"
 KV_STIG_HOSTS = "stig_hosts"
 KV_STIG_BASELINES = "stig_baselines"
 KV_STIG_BASELINE_RULES = "stig_baseline_rules"
 KV_STIG_CHECKLISTS = "stig_checklists"
 KV_STIG_REVIEWS = "stig_reviews"
 KV_STIG_EDITOR_SETTINGS = "stig_editor_settings"
+KV_STIG_ASSIGNMENT_RULES = "stig_assignment_rules"
+KV_STIG_HOST_BASELINE_ASSIGNMENTS = "stig_host_baseline_assignments"
 
 DEFAULT_INGEST_INDEX = "stig"
 DEFAULT_INGEST_SOURCETYPE = "stig:finding"

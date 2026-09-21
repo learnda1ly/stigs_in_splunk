@@ -13,6 +13,9 @@ from models import KV_STIG_REVIEWS, STATUSES, as_bool, kv_record, now_epoch, nor
 from models import KV_STIG_CHECKLISTS, KV_STIG_COLLECTIONS
 from services import checklists as checklists_svc
 from services import collections as collections_svc
+from services import grants as grants_svc
+
+MAX_BATCH_REVIEWS = 500
 
 
 def _as_bool(value) -> Optional[bool]:
@@ -36,7 +39,7 @@ def _annotate(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def _workspace_for_checklist(
     service, checklist_id: str, session: Dict[str, Any], write: bool = False
-) -> Dict[str, Any]:
+) -> tuple:
     checklist = checklists_svc.get_checklist(
         service, checklist_id, session, write=write
     )
@@ -45,11 +48,8 @@ def _workspace_for_checklist(
     collection_id = checklist.get("stig_collection_id")
     if not collection_id:
         raise ValueError("checklist missing stig_collection_id")
-    coll = kv_client.get_collection(service, KV_STIG_COLLECTIONS)
-    workspace = kv_client.get_by_key(coll, collection_id)
-    if not workspace:
-        raise KeyError(collection_id)
-    return workspace
+    rec, _ctx, grants = grants_svc.workspace_context(service, collection_id, session)
+    return rec, grants
 
 
 def _ensure_editable(existing: Dict[str, Any], session: Dict[str, Any]) -> None:
@@ -102,13 +102,13 @@ def _workflow_action(
     checklist_id = existing.get("checklist_id")
     if not checklist_id:
         raise ValueError("review missing checklist_id")
-    workspace = _workspace_for_checklist(service, checklist_id, session, write=True)
+    workspace, grants = _workspace_for_checklist(service, checklist_id, session, write=True)
 
     if action == "submit":
-        if not access.user_can_write_collection(workspace, session):
+        if not access.user_can_write_collection(workspace, session, grants):
             raise PermissionError("stig_write required to submit reviews")
     elif action in ("accept", "reject"):
-        if not access.user_can_accept_reviews(workspace, session):
+        if not access.user_can_accept_reviews(workspace, session, grants):
             raise PermissionError("stig_review_accept or review owner required")
     else:
         raise ValueError(f"unknown workflow action: {action}")
@@ -259,8 +259,8 @@ def update_review(
     checklist_id = existing.get("checklist_id")
     if not checklist_id:
         raise ValueError("review missing checklist_id")
-    workspace = _workspace_for_checklist(service, checklist_id, session, write=True)
-    if not access.user_can_write_collection(workspace, session):
+    workspace, grants = _workspace_for_checklist(service, checklist_id, session, write=True)
+    if not access.user_can_write_collection(workspace, session, grants):
         raise PermissionError("stig_write required")
 
     content_keys = {"status", "finding_details", "comments", "package_id", "ingest_lock"}
@@ -293,6 +293,72 @@ def update_review(
     stored = kv_client.update_record(coll, key, kv_record(patch))
     audit.log_event("update", "stig_review", key, username, {"status": stored.get("status")})
     return validation.annotate_review(stored)
+
+
+def batch_update_reviews(
+    service,
+    body: Dict[str, Any],
+    username: str,
+    session: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Update many reviews in one request.
+
+    Partial success: each row is applied independently. The response always includes
+    ``updated`` and ``errors`` arrays plus a ``summary`` count. HTTP 200 when the
+    batch was accepted (even if some rows failed); 400 when the request body is invalid.
+    """
+    items = body.get("reviews")
+    if items is None:
+        items = body.get("updates")
+    if not isinstance(items, list):
+        raise ValueError("reviews must be an array")
+    if not items:
+        raise ValueError("reviews must not be empty")
+    if len(items) > MAX_BATCH_REVIEWS:
+        raise ValueError(f"batch exceeds maximum of {MAX_BATCH_REVIEWS} reviews")
+
+    updated: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            errors.append({"index": index, "error": "each review must be an object"})
+            continue
+        key = item.get("_key") or item.get("id")
+        if not key:
+            errors.append({"index": index, "error": "_key is required"})
+            continue
+        patch = {
+            k: v for k, v in item.items() if k not in ("_key", "id")
+        }
+        if not patch:
+            errors.append({"_key": str(key), "error": "no fields to update"})
+            continue
+        try:
+            updated.append(
+                update_review(service, str(key), patch, username, session)
+            )
+        except PermissionError as exc:
+            errors.append(
+                {"_key": str(key), "error": str(exc), "code": "forbidden"}
+            )
+        except KeyError:
+            errors.append(
+                {"_key": str(key), "error": "not found", "code": "not_found"}
+            )
+        except ValueError as exc:
+            errors.append(
+                {"_key": str(key), "error": str(exc), "code": "invalid"}
+            )
+
+    return {
+        "updated": updated,
+        "errors": errors,
+        "summary": {
+            "total": len(items),
+            "succeeded": len(updated),
+            "failed": len(errors),
+        },
+    }
 
 
 def validate_checklist(

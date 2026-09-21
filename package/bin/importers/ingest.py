@@ -34,14 +34,22 @@ def detect_format(source_uri: str = "", content: bytes | str = b"") -> str:
         return "cklb"
     if name.endswith(".ckl"):
         return "ckl"
+    if name.endswith("-results.xml") or name.endswith("_results.xml"):
+        return "xccdf-results"
     if isinstance(content, bytes):
-        sample = content.lstrip()[:32]
+        sample = content.lstrip()[:4096]
         if sample.startswith(b"{") or sample.startswith(b"["):
             return "cklb"
+        if b"TestResult" in sample and b"rule-result" in sample:
+            return "xccdf-results"
+        if b"<Benchmark" in sample and b"<Rule " in sample:
+            return "xccdf"
         return "ckl"
     text = str(content).lstrip()
     if text.startswith("{") or text.startswith("["):
         return "cklb"
+    if "TestResult" in text and "rule-result" in text:
+        return "xccdf-results"
     return "ckl"
 
 
@@ -148,14 +156,26 @@ def streamed_finding(
     return finding
 
 
-def reviews_to_seeds(reviews: List[Dict[str, Any]]) -> Dict[str, Dict[str, str]]:
-    seeds: Dict[str, Dict[str, str]] = {}
+def review_seed_payload(review: Dict[str, Any]) -> Dict[str, Any]:
+    """KV review patch from a streamed review or normalized finding event."""
+    status = review.get("_status")
+    if not status:
+        status = status_from_result(review.get("result"))
+    payload: Dict[str, Any] = {
+        "status": status or "not_reviewed",
+        "finding_details": review.get("detail") or review.get("finding_details") or "",
+        "comments": review.get("comment") or review.get("comments") or "",
+    }
+    package_id = review.get("package_id") or review.get("packageId")
+    if package_id is not None and str(package_id).strip():
+        payload["package_id"] = str(package_id).strip()
+    return payload
+
+
+def reviews_to_seeds(reviews: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    seeds: Dict[str, Dict[str, Any]] = {}
     for review in reviews or []:
-        payload = {
-            "status": status_from_result(review.get("result")),
-            "finding_details": review.get("detail") or "",
-            "comments": review.get("comment") or "",
-        }
+        payload = review_seed_payload(review)
         keys = [review.get("ruleId"), review.get("groupId")]
         extra: List[str] = []
         for key in keys:
@@ -208,4 +228,8 @@ def parse_ingest(
         from importers import cklb
 
         return cklb.parse_cklb_ingest(body, source_uri=source_uri)
+    if fmt in {"xccdf-results", "xccdf_results", "xccdfresults"}:
+        from importers import xccdf_results
+
+        return xccdf_results.parse_xccdf_results(body, source_uri=source_uri)
     raise ValueError(f"unsupported checklist format: {format_name}")

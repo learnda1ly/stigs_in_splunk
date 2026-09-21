@@ -9,15 +9,23 @@ import audit
 import kv_client
 from models import KV_STIG_CHECKLISTS, KV_STIG_HOSTS, dumps_json, kv_record, new_id, now_epoch
 from services import collections as collections_svc
+from services import grants as grants_svc
 
 
 def _require_collection_access(service, collection_id: str, session: Dict[str, Any], write: bool = False):
-    rec = collections_svc.get_collection(service, collection_id)
-    if not rec:
-        raise KeyError(collection_id)
-    ok = access.user_can_write_collection(rec, session) if write else access.user_can_read_collection(rec, session)
-    if not ok:
-        raise PermissionError("access denied to stig_collection")
+    try:
+        _rec, ctx = (
+            grants_svc.require_workspace_write(service, collection_id, session)
+            if write
+            else grants_svc.require_workspace_read(service, collection_id, session)
+        )
+    except KeyError as exc:
+        raise KeyError(collection_id) from exc
+
+
+def _access_context(service, collection_id: str, session: Dict[str, Any]):
+    _rec, ctx, _grants = grants_svc.workspace_context(service, collection_id, session)
+    return ctx
 
 
 def list_hosts(
@@ -28,10 +36,19 @@ def list_hosts(
     records = kv_client.query_all(coll, query)
     if stig_collection_id:
         _require_collection_access(service, stig_collection_id, session)
-        return records
-    allowed = {r["_key"] for r in collections_svc.list_collections(service, session)}
-    collection_ids = allowed
-    return [r for r in records if r.get("stig_collection_id") in collection_ids]
+        ctx = _access_context(service, stig_collection_id, session)
+        return access.filter_hosts(records, ctx)
+    visible = collections_svc.list_collections(service, session)
+    by_id = {r["_key"]: r for r in visible}
+    out: List[Dict[str, Any]] = []
+    for rec in records:
+        cid = rec.get("stig_collection_id")
+        if cid not in by_id:
+            continue
+        ctx = _access_context(service, cid, session)
+        if access.host_allowed(rec, ctx):
+            out.append(rec)
+    return out
 
 
 def find_host_by_hostname(
@@ -52,8 +69,15 @@ def find_host_by_hostname(
 def get_host(service, key: str, session: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     coll = kv_client.get_collection(service, KV_STIG_HOSTS)
     rec = kv_client.get_by_key(coll, key)
-    if rec:
+    if not rec:
+        return None
+    try:
         _require_collection_access(service, rec["stig_collection_id"], session)
+    except (KeyError, PermissionError):
+        return None
+    ctx = _access_context(service, rec["stig_collection_id"], session)
+    if not access.host_allowed(rec, ctx):
+        return None
     return rec
 
 

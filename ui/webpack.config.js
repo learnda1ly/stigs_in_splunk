@@ -12,6 +12,11 @@ module.exports = {
         export: path.join(__dirname, "src/export.jsx"),
         import: path.join(__dirname, "src/import.jsx"),
         baselines: path.join(__dirname, "src/baselines.jsx"),
+        assignment: path.join(__dirname, "src/assignment.jsx"),
+        collection_review: path.join(__dirname, "src/collection_review.jsx"),
+        collection_dashboard: path.join(__dirname, "src/collection_dashboard.jsx"),
+        workspace_defaults: path.join(__dirname, "src/workspace_defaults.jsx"),
+        grants: path.join(__dirname, "src/grants.jsx"),
     },
     output: {
         path: outDir,

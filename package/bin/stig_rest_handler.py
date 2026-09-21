@@ -22,10 +22,14 @@ from importers.ingest import detect_format
 from services import baselines as baselines_svc
 from services import baseline_jobs as baseline_jobs_svc
 from services import checklists as checklists_svc
+from services import baseline_defaults as baseline_defaults_svc
 from services import collections as collections_svc
+from services import grants as grants_svc
 from services import hosts as hosts_svc
+from services import assignment as assignment_svc
 from services import imports as imports_svc
 from services import reconcile as reconcile_svc
+from services import reporting as reporting_svc
 from services import reviews as reviews_svc
 from services import settings as settings_svc
 
@@ -125,6 +129,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
         try:
             if resource == "stig_collections":
                 return self._collections(method, parts, query, payload, service, session, username)
+            if resource == "stig_findings":
+                return self._findings(method, parts, query, service, session)
             if resource == "stig_hosts":
                 return self._hosts(method, parts, query, payload, service, session, username)
             if resource == "stig_baselines":
@@ -137,6 +143,18 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return self._settings(method, parts, payload, service, username)
             if resource == "stig_imports":
                 return self._imports(method, parts, query, payload, service, session, username)
+            if resource == "stig_assignment_rules":
+                return self._assignment_rules(
+                    method, parts, query, payload, service, session, username
+                )
+            if resource == "stig_host_baseline_assignments":
+                return self._host_baseline_assignments(
+                    method, parts, query, payload, service, session, username
+                )
+            if resource == "stig_assignment":
+                return self._assignment_preview(
+                    method, parts, query, payload, service, session, username
+                )
             if resource == "stigs_in_splunk_baseline":
                 return self._ucc_baselines(
                     method, parts, query, payload, service, session, username
@@ -171,16 +189,87 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return _error("method not allowed", status=405)
 
         key = parts[0]
+        if len(parts) >= 2 and parts[1] == "baseline_defaults":
+            if method == "GET" and len(parts) == 2:
+                try:
+                    return _json_response(
+                        baseline_defaults_svc.list_defaults(service, key, session)
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            if method in ("POST", "PUT", "PATCH") and len(parts) == 2:
+                body = _body_json(payload)
+                try:
+                    rec = baseline_defaults_svc.set_default(
+                        service,
+                        key,
+                        body.get("stig_id") or body.get("benchmark_id") or "",
+                        body.get("baseline_id") or "",
+                        username,
+                        session,
+                    )
+                    return _json_response(rec)
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            if method == "DELETE" and len(parts) == 3:
+                try:
+                    return _json_response(
+                        baseline_defaults_svc.delete_default(
+                            service, key, parts[2], username, session
+                        )
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            return _error("method not allowed", status=405)
+
+        if len(parts) >= 2 and parts[1] == "grants":
+            return self._collection_grants(
+                method, key, parts[2:], payload, service, session, username
+            )
+
+        if len(parts) == 2 and parts[1] == "metrics":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            try:
+                return _json_response(
+                    reporting_svc.collection_metrics(service, key, session)
+                )
+            except KeyError:
+                return _error("not found", status=404)
+        if len(parts) == 2 and parts[1] == "findings":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            try:
+                return _json_response(
+                    reporting_svc.collection_findings(service, key, session, query)
+                )
+            except KeyError:
+                return _error("not found", status=404)
+
         if method == "GET":
             rec = collections_svc.get_collection(service, key)
-            if not rec or not access.user_can_read_collection(rec, session):
+            grants = grants_svc.query_grants(service, key)
+            if not rec or not access.user_can_read_collection(rec, session, grants):
                 return _error("not found", status=404)
             return _json_response(rec)
         if method in ("PATCH", "POST", "PUT"):
             rec = collections_svc.get_collection(service, key)
-            if not rec or not access.user_can_write_collection(rec, session):
+            if not rec:
+                return _error("not found", status=404)
+            grants = grants_svc.query_grants(service, key)
+            ctx = access.resolve_workspace_access(rec, session, grants)
+            if not ctx.edit_collection and not ctx.edit_access_principals:
                 return _error("not found", status=404)
             body = _body_json(payload)
+            if "access_principals" in body and not ctx.edit_access_principals:
+                if not access.user_has_stig_admin(session):
+                    return _error("owner or stig_admin required to change access_principals", status=403)
             updated = collections_svc.update_collection(service, key, body, username)
             return _json_response(updated)
         if method == "DELETE":
@@ -189,6 +278,101 @@ class StigRestHandler(PersistentServerConnectionApplication):
             collections_svc.delete_collection(service, key, username)
             return _json_response({"deleted": key})
         return _error("method not allowed", status=405)
+
+    def _collection_grants(
+        self,
+        method: str,
+        collection_id: str,
+        parts: List[str],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        if not parts:
+            if method == "GET":
+                try:
+                    rows = grants_svc.list_grants(service, collection_id, session)
+                    return _json_response(rows)
+                except KeyError:
+                    return _error("not found", status=404)
+            if method == "POST":
+                body = _body_json(payload)
+                try:
+                    rec = grants_svc.create_grant(
+                        service, collection_id, body, username, session
+                    )
+                    return _json_response(rec, status=201)
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            return _error("method not allowed", status=405)
+
+        grant_id = parts[0]
+        if len(parts) == 2 and parts[1] == "acl":
+            if method not in ("PUT", "PATCH", "POST"):
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            try:
+                rec = grants_svc.update_grant_acl(
+                    service, collection_id, grant_id, body, username, session
+                )
+                return _json_response(rec)
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+
+        if method == "GET":
+            rec = grants_svc.get_grant(service, collection_id, grant_id, session)
+            if not rec:
+                return _error("not found", status=404)
+            return _json_response(rec)
+        if method in ("PATCH", "PUT", "POST"):
+            body = _body_json(payload)
+            try:
+                rec = grants_svc.update_grant(
+                    service, collection_id, grant_id, body, username, session
+                )
+                return _json_response(rec)
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+        if method == "DELETE":
+            try:
+                grants_svc.delete_grant(
+                    service, collection_id, grant_id, username, session
+                )
+                return _json_response({"deleted": grant_id})
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+        return _error("method not allowed", status=405)
+
+    def _findings(
+        self,
+        method: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        if parts:
+            return _error("not found", status=404)
+        if method != "GET":
+            return _error("method not allowed", status=405)
+        collection_id = (query.get("stig_collection_id") or "").strip()
+        if not collection_id:
+            return _error("stig_collection_id is required")
+        try:
+            return _json_response(
+                reporting_svc.collection_findings(service, collection_id, session, query)
+            )
+        except KeyError:
+            return _error("not found", status=404)
 
     def _hosts(
         self,
@@ -557,18 +741,21 @@ class StigRestHandler(PersistentServerConnectionApplication):
         if parts == ["batch"] and method in ("POST", "PATCH", "PUT"):
             body = _body_json(payload)
             action = (body.get("action") or "").strip().lower()
-            review_ids = body.get("review_ids") or body.get("ids") or []
-            if not isinstance(review_ids, list):
-                return _error("review_ids must be a list")
-            if not action:
-                return _error("action is required (submit, accept, reject)")
-            result = reviews_svc.batch_workflow(
-                service,
-                action,
-                [str(r) for r in review_ids],
-                username,
-                session,
-                reject_feedback=body.get("reject_feedback"),
+            if action in ("submit", "accept", "reject"):
+                review_ids = body.get("review_ids") or body.get("ids") or []
+                if not isinstance(review_ids, list):
+                    return _error("review_ids must be a list")
+                result = reviews_svc.batch_workflow(
+                    service,
+                    action,
+                    [str(r) for r in review_ids],
+                    username,
+                    session,
+                    reject_feedback=body.get("reject_feedback"),
+                )
+                return _json_response(result)
+            result = reviews_svc.batch_update_reviews(
+                service, body, username, session
             )
             return _json_response(result)
 
@@ -632,8 +819,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
         if not body:
             return _error("empty import body")
         fmt = (query.get("format") or detect_format(source_uri, body)).lower()
-        if fmt not in {"ckl", "cklb"}:
-            return _error("format must be ckl or cklb")
+        if fmt not in {"ckl", "cklb", "xccdf-results", "xccdf_results", "xccdfresults"}:
+            return _error("format must be ckl, cklb, or xccdf-results")
         rec = imports_svc.import_checklist_file(
             service,
             body,
@@ -642,11 +829,127 @@ class StigRestHandler(PersistentServerConnectionApplication):
             session,
             collection_id,
             source_uri,
+            operator_collection_id=collection_id,
         )
         created = rec.get("host", {}).get("created") or any(
             item.get("created") for item in rec.get("checklists") or []
         )
         return _json_response(rec, status=201 if created else 200)
+
+    def _assignment_rules(
+        self,
+        method: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        if not parts:
+            if method == "GET":
+                return _json_response(assignment_svc.list_rules(service))
+            if method == "POST":
+                body = _body_json(payload)
+                rec = assignment_svc.create_rule(service, body, username)
+                return _json_response(rec, status=201)
+            return _error("method not allowed", status=405)
+        key = parts[0]
+        if method == "GET":
+            rec = assignment_svc.get_rule(service, key)
+            if not rec:
+                return _error("not found", status=404)
+            return _json_response(rec)
+        if method in ("PATCH", "POST", "PUT"):
+            body = _body_json(payload)
+            updated = assignment_svc.update_rule(service, key, body, username)
+            return _json_response(updated)
+        if method == "DELETE":
+            if not access.user_has_stig_admin(session):
+                return _error("stig_admin required", status=403)
+            assignment_svc.delete_rule(service, key, username)
+            return _json_response({"deleted": key})
+        return _error("method not allowed", status=405)
+
+    def _host_baseline_assignments(
+        self,
+        method: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        if not parts:
+            if method == "GET":
+                return _json_response(assignment_svc.list_overrides(service))
+            if method == "POST":
+                body = _body_json(payload)
+                rec = assignment_svc.create_override(service, body, username)
+                return _json_response(rec, status=201)
+            return _error("method not allowed", status=405)
+        key = parts[0]
+        if method == "GET":
+            rec = assignment_svc.get_override(service, key)
+            if not rec:
+                return _error("not found", status=404)
+            return _json_response(rec)
+        if method in ("PATCH", "POST", "PUT"):
+            body = _body_json(payload)
+            updated = assignment_svc.update_override(service, key, body, username)
+            return _json_response(updated)
+        if method == "DELETE":
+            if not access.user_has_stig_admin(session):
+                return _error("stig_admin required", status=403)
+            assignment_svc.delete_override(service, key, username)
+            return _json_response({"deleted": key})
+        return _error("method not allowed", status=405)
+
+    def _assignment_preview(
+        self,
+        method: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        if parts != ["preview"]:
+            return _error("not found", status=404)
+        if method not in ("GET", "POST"):
+            return _error("method not allowed", status=405)
+        body = _body_json(payload)
+        event = body.get("event") if body else {}
+        if not event and query.get("event"):
+            try:
+                event = json.loads(query.get("event") or "{}")
+            except (TypeError, ValueError):
+                event = {}
+        if not event:
+            return _error("event body required")
+        from importers.events import normalize_finding_event
+
+        try:
+            normalized = normalize_finding_event(event)
+        except ValueError as exc:
+            return _error(str(exc))
+        forced = (body.get("forced_collection_id") or query.get("forced_collection_id") or "").strip()
+        if forced:
+            result = assignment_svc.resolve_collection_id(
+                normalized,
+                service,
+                session,
+                forced_collection_id=forced,
+                username=username,
+                audit_resolve=False,
+            )
+        else:
+            result = assignment_svc.preview_resolution(
+                service, normalized, session, username=username
+            )
+        return _json_response(result)
 
     def _settings(
         self,
