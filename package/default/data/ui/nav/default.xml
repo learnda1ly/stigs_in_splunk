@@ -1,5 +1,6 @@
 <nav search_view="search" color="#2d5016">
   <view name="stig_editor_ui" default="true" label="STIG Editor" icon="filenode"/>
+  <view name="stig_collection_review_ui" label="Collection review"/>
   <view name="stig_import_ui" label="Import" icon="forwarderuniversal"/>
   <view name="stig_export_ui" label="Export" icon="filechart"/>
   <view name="configuration" label="Configuration" icon="cog"/>

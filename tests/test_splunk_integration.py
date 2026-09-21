@@ -159,6 +159,27 @@ class TestStigRestWorkflow(unittest.TestCase):
         self.assertEqual(rule["status"], "open")
         self.assertIn("integration test finding", rule.get("finding_details") or "")
 
+    def test_07_batch_review_update(self):
+        self.assertTrue(self.review_id and self.checklist_id)
+        result = self.client.post_app_json(
+            "stig_reviews/batch",
+            {
+                "reviews": [
+                    {
+                        "_key": self.review_id,
+                        "status": "not_a_finding",
+                        "finding_details": "batch path",
+                        "comments": "integration batch",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(result.get("summary", {}).get("succeeded"), 1)
+        self.assertEqual(result.get("summary", {}).get("failed"), 0)
+        updated = (result.get("updated") or [])[0]
+        self.assertEqual(updated.get("status"), "not_a_finding")
+        self.assertTrue(updated.get("valid"))
+
 
 if __name__ == "__main__":
     unittest.main()

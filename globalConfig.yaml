@@ -26,6 +26,8 @@ pages:
                 header:
                 -   field: name
                     label: Name
+                -   field: is_default
+                    label: Default
                 -   field: description
                     label: Description
                 -   field: access_principals
@@ -33,6 +35,8 @@ pages:
                 moreInfo:
                 -   field: name
                     label: Name
+                -   field: is_default
+                    label: Default import workspace
                 -   field: description
                     label: Description
                 -   field: access_principals
@@ -56,6 +60,12 @@ pages:
                 help: JSON array of user:<name> or role:<name>. Empty means any user
                     with STIG capabilities can read this workspace.
                 defaultValue: ''
+            -   field: is_default
+                label: Default import workspace
+                type: checkbox
+                defaultValue: false
+                help: Checklist imports with no workspace go here until you move the
+                    host. Only one workspace is default.
         -   name: general
             title: Editor & ingest
             entity:

@@ -120,6 +120,11 @@ def decode_uploaded_file(raw: Any) -> bytes:
     if raw is None:
         return b""
     if isinstance(raw, bytes):
+        if raw[:2] == b"PK":
+            return raw
+        stripped_bytes = raw.strip()
+        if stripped_bytes[:1] in (b"<", b"{", b"["):
+            return stripped_bytes
         text = raw.decode("utf-8", errors="replace")
     else:
         text = str(raw)
@@ -128,6 +133,11 @@ def decode_uploaded_file(raw: Any) -> bytes:
         return b""
     if stripped.startswith("<") or stripped.startswith("{") or stripped.startswith("["):
         return stripped.encode("utf-8")
+    if stripped.startswith("PK"):
+        try:
+            return stripped.encode("latin-1")
+        except UnicodeEncodeError:
+            return stripped.encode("utf-8", errors="replace")
     try:
         return base64.b64decode(stripped, validate=False)
     except (ValueError, TypeError):

@@ -12,6 +12,8 @@ from models import KV_STIG_CHECKLISTS
 from services import checklists as checklists_svc
 from services import collections as collections_svc
 
+MAX_BATCH_REVIEWS = 500
+
 
 def _as_bool(value) -> Optional[bool]:
     if value is None or value == "":
@@ -130,6 +132,72 @@ def update_review(
     stored = kv_client.update_record(coll, key, kv_record(patch))
     audit.log_event("update", "stig_review", key, username, {"status": stored.get("status")})
     return validation.annotate_review(stored)
+
+
+def batch_update_reviews(
+    service,
+    body: Dict[str, Any],
+    username: str,
+    session: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Update many reviews in one request.
+
+    Partial success: each row is applied independently. The response always includes
+    ``updated`` and ``errors`` arrays plus a ``summary`` count. HTTP 200 when the
+    batch was accepted (even if some rows failed); 400 when the request body is invalid.
+    """
+    items = body.get("reviews")
+    if items is None:
+        items = body.get("updates")
+    if not isinstance(items, list):
+        raise ValueError("reviews must be an array")
+    if not items:
+        raise ValueError("reviews must not be empty")
+    if len(items) > MAX_BATCH_REVIEWS:
+        raise ValueError(f"batch exceeds maximum of {MAX_BATCH_REVIEWS} reviews")
+
+    updated: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            errors.append({"index": index, "error": "each review must be an object"})
+            continue
+        key = item.get("_key") or item.get("id")
+        if not key:
+            errors.append({"index": index, "error": "_key is required"})
+            continue
+        patch = {
+            k: v for k, v in item.items() if k not in ("_key", "id")
+        }
+        if not patch:
+            errors.append({"_key": str(key), "error": "no fields to update"})
+            continue
+        try:
+            updated.append(
+                update_review(service, str(key), patch, username, session)
+            )
+        except PermissionError as exc:
+            errors.append(
+                {"_key": str(key), "error": str(exc), "code": "forbidden"}
+            )
+        except KeyError:
+            errors.append(
+                {"_key": str(key), "error": "not found", "code": "not_found"}
+            )
+        except ValueError as exc:
+            errors.append(
+                {"_key": str(key), "error": str(exc), "code": "invalid"}
+            )
+
+    return {
+        "updated": updated,
+        "errors": errors,
+        "summary": {
+            "total": len(items),
+            "succeeded": len(updated),
+            "failed": len(errors),
+        },
+    }
 
 
 def validate_checklist(

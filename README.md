@@ -4,6 +4,8 @@ Minimal Splunk app that stores DISA STIG baseline and checklist **review** state
 
 See [spec.md](spec.md) for the full build specification.
 
+For a gap backlog vs [STIG Manager](https://github.com/NUWCDIVNPT/stig-manager) (reference only), see [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md).
+
 ## Build with Splunk UCC
 
 This app is packaged with the [Splunk UCC framework](https://splunk.github.io/addonfactory-ucc-generator/) (`ucc-gen`). Source lives under `package/`; the installable app is produced under `output/stigs_in_splunk`.
@@ -47,7 +49,7 @@ sudo systemctl restart Splunkd
 
 | Path | Role |
 |------|------|
-| `globalConfig.yaml` | UCC meta plus Configuration tabs (workspaces, baselines, editor/ingest) |
+| `globalConfig.yaml` | UCC meta plus Configuration tabs (workspaces, editor/ingest) |
 | `package/` | App source copied into the build (`bin/`, `default/*.conf`, `metadata/`, `app.manifest`) |
 | `package/lib/requirements.txt` | `splunktaucclib` for UCC Configuration REST (pip-installed into `output/.../lib`) |
 | `additional_packaging.py` | Post-build: KV reload trigger, keep UCC Configuration view, restore custom nav |
@@ -60,9 +62,10 @@ Custom REST uses a **persist** handler (`package/bin/stig_rest_handler.py`) and 
 Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
 
 - **STIG Editor** — workspace + host filters, finding list, status, details, comments
-- **Import** — checklists (`.ckl` / `.cklb` to HEC and KV) and STIG baselines (XCCDF / CKL / CKLB) on one page with tabs
+- **Collection review** — one baseline rule across all hosts in a workspace (batch save)
+- **Import** — checklists (`.ckl` / `.cklb` to HEC and KV) and STIG baselines (single XCCDF, CKL/CKLB, or a DISA product/quarterly zip via chunked persist REST `/stig_baselines/jobs`) on one page with **Checklists** and **Baselines** sections
 - **Export** — CKL / CKLB download, including bulk zip
-- **Configuration** — UCC-generated page for workspaces and editor/HEC settings. The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
+- **Configuration** — UCC-generated page for workspaces and editor/HEC settings. A **Default** workspace is created automatically; checklist imports with no workspace go there until you move the host. The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
 
 Classic Simple XML + jQuery views remain under the **Classic** nav menu.
 
@@ -74,7 +77,9 @@ Rebuild UI bundles after changing `ui/src`:
 
 `./scripts/build_ucc.sh` runs that step unless `SKIP_UI_BUILD=1`.
 
-After install, open the app → **STIG Editor**. Manage workspaces under **Configuration**; import baselines and checklists under **Import**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**.
+After install, open the app → **STIG Editor**. Use **Collection review** to work one rule across all hosts in a workspace (batch save). Manage workspaces under **Configuration**; import baselines and checklists under **Import**. Imports without a workspace go to **Default**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**.
+
+Batch review updates: `POST .../stig_reviews/batch` with `{ "reviews": [{ "_key": "...", "status": "open", ... }] }`. Partial success is supported (per-row errors in the response).
 
 ## Splunk roles
 
@@ -90,15 +95,21 @@ Resources: `stig_collections`, `stig_hosts`, `stig_baselines`, `stig_checklists`
 
 ## Example flow (curl)
 
-See [spec.md](spec.md) §16 for the full curl workflow. Quick baseline import:
+Quick baseline import (single XCCDF). Large DISA library zips must use chunked `/stig_baselines/jobs`, not one POST:
 
 ```bash
 curl -k -u admin:changeme -X POST \
   "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_baselines/import?format=xccdf&source_uri=minimal_benchmark.xml" \
   --data-binary @tests/fixtures/minimal_benchmark.xml
+
+# Library zip (~360MB): chunked persist jobs, never UCC/EAI
+# 1) POST /stig_baselines/jobs  {"filename":"U_SRG-STIG_Library.zip","size":377487360}
+# 2) POST /stig_baselines/jobs/<id>  {"action":"chunk","offset":0,"data":"<base64>"}  (4MB each)
+# 3) POST /stig_baselines/jobs/<id>  {"action":"finalize"}
+# 4) POST /stig_baselines/jobs/<id>  {"action":"import","path":"...Manual-xccdf.xml"}
 ```
 
-Checklist file ingest (indexes `stig:finding` via HEC, then updates KV):
+Checklist file ingest (indexes `stig:finding` via HEC, then updates KV). Omit `stig_collection_id` to use the Default workspace:
 
 ```bash
 curl -k -u admin:changeme -X POST \
