@@ -19,7 +19,8 @@ import {
     Toolbar,
 } from "../layout";
 
-const ACCEPT = ".ckl,.cklb,application/json,text/xml,application/xml";
+const ACCEPT =
+    ".ckl,.cklb,.xml,application/json,text/xml,application/xml,*-results.xml";
 
 function detectFormat(name) {
     const lower = String(name || "").toLowerCase();
@@ -28,6 +29,9 @@ function detectFormat(name) {
     }
     if (lower.endsWith(".ckl")) {
         return "ckl";
+    }
+    if (lower.endsWith("-results.xml") || lower.endsWith("_results.xml")) {
+        return "xccdf-results";
     }
     return "";
 }

@@ -34,14 +34,22 @@ def detect_format(source_uri: str = "", content: bytes | str = b"") -> str:
         return "cklb"
     if name.endswith(".ckl"):
         return "ckl"
+    if name.endswith("-results.xml") or name.endswith("_results.xml"):
+        return "xccdf-results"
     if isinstance(content, bytes):
-        sample = content.lstrip()[:32]
+        sample = content.lstrip()[:4096]
         if sample.startswith(b"{") or sample.startswith(b"["):
             return "cklb"
+        if b"TestResult" in sample and b"rule-result" in sample:
+            return "xccdf-results"
+        if b"<Benchmark" in sample and b"<Rule " in sample:
+            return "xccdf"
         return "ckl"
     text = str(content).lstrip()
     if text.startswith("{") or text.startswith("["):
         return "cklb"
+    if "TestResult" in text and "rule-result" in text:
+        return "xccdf-results"
     return "ckl"
 
 
@@ -220,4 +228,8 @@ def parse_ingest(
         from importers import cklb
 
         return cklb.parse_cklb_ingest(body, source_uri=source_uri)
+    if fmt in {"xccdf-results", "xccdf_results", "xccdfresults"}:
+        from importers import xccdf_results
+
+        return xccdf_results.parse_xccdf_results(body, source_uri=source_uri)
     raise ValueError(f"unsupported checklist format: {format_name}")

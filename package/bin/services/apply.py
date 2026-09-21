@@ -12,6 +12,7 @@ from importers.events import finding_key, normalize_finding_event
 from importers.ingest import review_seed_payload, reviews_to_seeds
 from models import dumps_json, parse_json_field
 from services import baselines as baselines_svc
+from services import baseline_defaults as baseline_defaults_svc
 from services import checklists as checklists_svc
 from services import assignment as assignment_svc
 from services import collections as collections_svc
@@ -100,6 +101,7 @@ def _upsert_baseline(
     service,
     events: List[Dict[str, Any]],
     username: str,
+    collection_id: str = "",
 ) -> Tuple[Dict[str, Any], bool]:
     first = events[0]
     meta = dict(first.get("stig") or {})
@@ -116,6 +118,19 @@ def _upsert_baseline(
         seen.add(key)
         rules.append(rule)
     if not rules:
+        explicit = (first.get("baselineId") or "").strip()
+        resolved_id = baseline_defaults_svc.resolve_baseline_id(
+            service,
+            collection_id=collection_id,
+            explicit_baseline_id=explicit,
+            stig_id=meta.get("stig_id") or first.get("benchmarkId") or "",
+            xccdf_benchmark_id=meta.get("xccdf_benchmark_id") or "",
+            version=meta.get("version") or "",
+        )
+        if resolved_id:
+            existing = baselines_svc.get_baseline(service, resolved_id)
+            if existing:
+                return existing, False
         existing = baselines_svc.find_baseline_by_stig(
             service, meta.get("stig_id") or "", meta.get("version") or ""
         )
@@ -202,7 +217,9 @@ def apply_finding_events(
         )
         if created_host:
             host_created += 1
-        baseline, created_baseline = _upsert_baseline(service, batch, username)
+        baseline, created_baseline = _upsert_baseline(
+            service, batch, username, collection_id=collection_id
+        )
         for event in batch:
             baselines_svc.ensure_baseline_rule(
                 service, baseline["_key"], event.get("rule") or {}, event.get("stig")

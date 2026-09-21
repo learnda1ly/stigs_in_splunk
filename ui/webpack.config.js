@@ -15,6 +15,7 @@ module.exports = {
         assignment: path.join(__dirname, "src/assignment.jsx"),
         collection_review: path.join(__dirname, "src/collection_review.jsx"),
         collection_dashboard: path.join(__dirname, "src/collection_dashboard.jsx"),
+        workspace_defaults: path.join(__dirname, "src/workspace_defaults.jsx"),
     },
     output: {
         path: outDir,

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TestResult xmlns="http://checklists.nist.gov/xccdf/1.2" id="xccdf_org.cisecurity.benchmarks_test_result_1" test-system="cpe:/a:openscap" start-time="2026-01-01T00:00:00" end-time="2026-01-01T00:05:00">
+  <benchmark href="#xccdf_mil.disa.stig_benchmark_Example_STIG"/>
+  <target>scan-host-01</target>
+  <rule-result idref="xccdf_mil.disa.stig_rule_SV-000001" result="fail">
+    <message severity="medium">sshd allows root login</message>
+  </rule-result>
+  <rule-result idref="xccdf_mil.disa.stig_rule_SV-000002" result="pass"/>
+  <rule-result idref="xccdf_mil.disa.stig_rule_SV-000003" result="notapplicable"/>
+</TestResult>
