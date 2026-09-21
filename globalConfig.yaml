@@ -10,9 +10,9 @@ meta:
 pages:
     configuration:
         title: Configuration
-        description: Workspaces, STIG baseline catalog, and ingest settings. Do not
-            upload a DISA .zip here — use Import baselines. The HEC token stays
-            on the Splunk stig_findings input and is never shown here.
+        description: Workspaces and editor/ingest settings. Import STIG baselines and
+            checklists from the Import page. The HEC token stays on the Splunk
+            stig_findings input and is never shown here.
         tabs:
         -   name: workspace
             title: Workspaces
@@ -66,63 +66,6 @@ pages:
                 defaultValue: false
                 help: Checklist imports with no workspace go here until you move the
                     host. Only one workspace is default.
-        -   name: baseline
-            title: Baselines (catalog)
-            formTitle: baseline
-            style: page
-            restHandlerModule: stig_ucc_baseline_rh
-            restHandlerClass: BaselineRestHandler
-            table:
-                actions:
-                - delete
-                header:
-                -   field: name
-                    label: Id
-                -   field: stig_id
-                    label: STIG id
-                -   field: title
-                    label: Title
-                -   field: version
-                    label: Version
-                -   field: release_info
-                    label: Release
-                -   field: rule_count
-                    label: Rules
-                -   field: source_type
-                    label: Source
-                moreInfo:
-                -   field: stig_id
-                    label: STIG id
-                -   field: title
-                    label: Title
-                -   field: version
-                    label: Version
-                -   field: release_info
-                    label: Release
-                -   field: rule_count
-                    label: Rules
-                -   field: source_uri
-                    label: Source
-                -   field: content_fingerprint
-                    label: Fingerprint
-            entity:
-            -   field: library_zip
-                label: Import a DISA library
-                type: helpLink
-                help: This page lists and deletes catalog rows only. It cannot
-                    accept a .zip. Open Import baselines and drop the
-                    quarterly/product zip; every Manual-xccdf STIG is imported
-                    automatically (SRGs/SCAP skipped).
-                options:
-                    text: Open Import baselines
-                    link: /app/stigs_in_splunk/stig_baselines_ui
-            -   field: name
-                label: Id
-                type: text
-                required: true
-                help: Row id for a leftover create only. Library zips belong on Import baselines.
-                options:
-                    disableonEdit: true
         -   name: general
             title: Editor & ingest
             entity:

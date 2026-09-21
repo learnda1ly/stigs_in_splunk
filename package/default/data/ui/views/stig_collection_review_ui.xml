@@ -1,0 +1,11 @@
+<dashboard version="1.1" script="stig_collection_review_ui.js" hideEdit="true" hideExport="true" hideTitle="true">
+  <label>Collection review</label>
+  <description>Review one STIG rule across hosts in a workspace.</description>
+  <row>
+    <panel>
+      <html>
+        <div id="stig-ui-root"></div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

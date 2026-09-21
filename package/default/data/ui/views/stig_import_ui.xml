@@ -1,6 +1,6 @@
 <dashboard version="1.1" script="stig_import_ui.js" hideEdit="true" hideExport="true" hideTitle="true">
-  <label>Import checklists</label>
-  <description>Import host checklists (.ckl / .cklb). DISA library zips go on Import baselines.</description>
+  <label>Import</label>
+  <description>Import STIG checklists and baselines.</description>
   <row>
     <panel>
       <html>
