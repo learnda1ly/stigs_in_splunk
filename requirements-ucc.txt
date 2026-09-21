@@ -1,0 +1,3 @@
+# Splunk UCC App Builder (ucc-gen). Install into .venv-ucc only — not shipped in the TA.
+#   python3 -m venv .venv-ucc && .venv-ucc/bin/pip install -r requirements-ucc.txt
+splunk-add-on-ucc-framework==6.6.0

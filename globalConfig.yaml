@@ -3,7 +3,7 @@ meta:
     restRoot: stigs_in_splunk
     displayName: STIG in Splunk
     version: 0.1.0
-    schemaVersion: 0.0.9
+    schemaVersion: 0.0.10
     checkForUpdates: false
     isVisible: true
     hideUCCVersion: true
