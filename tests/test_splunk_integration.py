@@ -180,6 +180,35 @@ class TestStigRestWorkflow(unittest.TestCase):
         self.assertEqual(updated.get("status"), "not_a_finding")
         self.assertTrue(updated.get("valid"))
 
+    def test_08_collection_metrics(self):
+        self.assertTrue(self.collection_id)
+        doc = self.client.get_app_json(
+            f"stig_collections/{self.collection_id}/metrics"
+        )
+        self.assertEqual(doc.get("stig_collection_id"), self.collection_id)
+        self.assertIn("by_status", doc)
+        self.assertIn("completion", doc)
+        self.assertGreaterEqual(int(doc.get("totals", {}).get("reviews") or 0), 1)
+
+    def test_09_collection_findings(self):
+        self.assertTrue(all([self.collection_id, self.review_id]))
+        self.client.patch_app_json(
+            f"stig_reviews/{self.review_id}",
+            {"status": "open", "finding_details": "findings report test"},
+        )
+        doc = self.client.get_app_json(
+            "stig_findings",
+            query={"stig_collection_id": self.collection_id, "limit": 50},
+        )
+        self.assertEqual(doc.get("stig_collection_id"), self.collection_id)
+        findings = doc.get("findings") or []
+        self.assertGreaterEqual(len(findings), 1)
+        self.assertIn("pagination", doc)
+        row = findings[0]
+        self.assertIn("hostname", row)
+        self.assertIn("group_id", row)
+        self.assertEqual(row.get("status"), "open")
+
 
 if __name__ == "__main__":
     unittest.main()

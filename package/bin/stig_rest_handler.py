@@ -27,6 +27,7 @@ from services import hosts as hosts_svc
 from services import assignment as assignment_svc
 from services import imports as imports_svc
 from services import reconcile as reconcile_svc
+from services import reporting as reporting_svc
 from services import reviews as reviews_svc
 from services import settings as settings_svc
 
@@ -126,6 +127,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
         try:
             if resource == "stig_collections":
                 return self._collections(method, parts, query, payload, service, session, username)
+            if resource == "stig_findings":
+                return self._findings(method, parts, query, service, session)
             if resource == "stig_hosts":
                 return self._hosts(method, parts, query, payload, service, session, username)
             if resource == "stig_baselines":
@@ -184,6 +187,25 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return _error("method not allowed", status=405)
 
         key = parts[0]
+        if len(parts) == 2 and parts[1] == "metrics":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            try:
+                return _json_response(
+                    reporting_svc.collection_metrics(service, key, session)
+                )
+            except KeyError:
+                return _error("not found", status=404)
+        if len(parts) == 2 and parts[1] == "findings":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            try:
+                return _json_response(
+                    reporting_svc.collection_findings(service, key, session, query)
+                )
+            except KeyError:
+                return _error("not found", status=404)
+
         if method == "GET":
             rec = collections_svc.get_collection(service, key)
             if not rec or not access.user_can_read_collection(rec, session):
@@ -202,6 +224,28 @@ class StigRestHandler(PersistentServerConnectionApplication):
             collections_svc.delete_collection(service, key, username)
             return _json_response({"deleted": key})
         return _error("method not allowed", status=405)
+
+    def _findings(
+        self,
+        method: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        if parts:
+            return _error("not found", status=404)
+        if method != "GET":
+            return _error("method not allowed", status=405)
+        collection_id = (query.get("stig_collection_id") or "").strip()
+        if not collection_id:
+            return _error("stig_collection_id is required")
+        try:
+            return _json_response(
+                reporting_svc.collection_findings(service, collection_id, session, query)
+            )
+        except KeyError:
+            return _error("not found", status=404)
 
     def _hosts(
         self,
