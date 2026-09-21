@@ -123,12 +123,9 @@ class TestFindingsFilters(unittest.TestCase):
 
 
 class TestFindingsAggregate(unittest.TestCase):
-    @patch.object(reporting_svc, "_collection_workspace_context")
     @patch.object(reporting_svc, "_list_collection_findings")
     @patch.object(reporting_svc, "_require_read_collection")
-    def test_aggregate_open_by_rule_and_cci(
-        self, mock_require, mock_list, mock_ctx
-    ):
+    def test_aggregate_open_by_rule_and_cci(self, mock_require, mock_list):
         mock_require.return_value = {"name": "Lab"}
         mock_list.return_value = (
             [
@@ -138,6 +135,7 @@ class TestFindingsAggregate(unittest.TestCase):
                     "rule_id": "r1",
                     "severity": "high",
                     "baseline_id": "b1",
+                    "stig_id": "STIG_A",
                 },
                 {
                     "hostname": "h2",
@@ -145,15 +143,16 @@ class TestFindingsAggregate(unittest.TestCase):
                     "rule_id": "r1",
                     "severity": "high",
                     "baseline_id": "b1",
+                    "stig_id": "STIG_A",
                 },
             ],
             {"status": ["open"]},
+            {
+                "rule_meta_index": {
+                    ("b1", "r1", "V-1"): {"ccis": ["CCI-000366"]},
+                }
+            },
         )
-        mock_ctx.return_value = {
-            "rule_meta_index": {
-                ("b1", "r1", "V-1"): {"ccis": ["CCI-000366"]},
-            }
-        }
         service = MagicMock()
         session = {"user": "u", "capabilities": {"stig_read": True}}
         out = reporting_svc.collection_findings_aggregate(
@@ -166,12 +165,62 @@ class TestFindingsAggregate(unittest.TestCase):
         self.assertEqual(out["by_cci"][0]["count"], 2)
         self.assertEqual(out["by_cci"][0]["host_count"], 2)
 
-
-class TestCollectionPoam(unittest.TestCase):
-    @patch.object(reporting_svc, "_collection_workspace_context")
     @patch.object(reporting_svc, "_list_collection_findings")
     @patch.object(reporting_svc, "_require_read_collection")
-    def test_poam_json_rows(self, mock_require, mock_list, mock_ctx):
+    def test_aggregate_rule_id_scoped_by_baseline(self, mock_require, mock_list):
+        mock_require.return_value = {"name": "Lab"}
+        mock_list.return_value = (
+            [
+                {
+                    "hostname": "h1",
+                    "group_id": "V-1",
+                    "rule_id": "shared_rule",
+                    "severity": "high",
+                    "baseline_id": "b1",
+                    "stig_id": "STIG_A",
+                },
+                {
+                    "hostname": "h2",
+                    "group_id": "V-2",
+                    "rule_id": "shared_rule",
+                    "severity": "low",
+                    "baseline_id": "b2",
+                    "stig_id": "STIG_B",
+                },
+            ],
+            {"status": ["open"]},
+            {"rule_meta_index": {}},
+        )
+        out = reporting_svc.collection_findings_aggregate(
+            MagicMock(),
+            "ws1",
+            {"user": "u"},
+            {"group_by": "rule_id"},
+        )
+        self.assertEqual(len(out["by_rule_id"]), 2)
+        stigs = sorted(row["stig_id"] for row in out["by_rule_id"])
+        self.assertEqual(stigs, ["STIG_A", "STIG_B"])
+        self.assertTrue(all(row["count"] == 1 for row in out["by_rule_id"]))
+
+    @patch.object(reporting_svc.grants_svc, "query_grants")
+    @patch.object(reporting_svc.collections_svc, "get_collection")
+    @patch.object(reporting_svc.access, "user_can_read_collection")
+    def test_aggregate_hidden_workspace_raises_key_error(
+        self, mock_can_read, mock_get, mock_grants
+    ):
+        mock_get.return_value = {"_key": "secret", "access_principals": "[]"}
+        mock_grants.return_value = []
+        mock_can_read.return_value = False
+        with self.assertRaises(KeyError):
+            reporting_svc.collection_findings_aggregate(
+                MagicMock(), "secret", {"user": "bob", "capabilities": {"stig_read": True}}, {}
+            )
+
+
+class TestCollectionPoam(unittest.TestCase):
+    @patch.object(reporting_svc, "_list_collection_findings")
+    @patch.object(reporting_svc, "_require_read_collection")
+    def test_poam_json_rows(self, mock_require, mock_list):
         mock_require.return_value = {"name": "Prod"}
         mock_list.return_value = (
             [
@@ -186,21 +235,37 @@ class TestCollectionPoam(unittest.TestCase):
                 }
             ],
             {"status": ["open"]},
-        )
-        mock_ctx.return_value = {
-            "rule_meta_index": {
-                ("b1", "r9", "V-9"): {
-                    "rule_title": "Title",
-                    "ccis": ["CCI-1"],
+            {
+                "rule_meta_index": {
+                    ("b1", "r9", "V-9"): {
+                        "rule_title": "Title",
+                        "ccis": ["CCI-1"],
+                    }
                 }
-            }
-        }
+            },
+        )
         out = reporting_svc.collection_poam(
             MagicMock(), "ws9", {"user": "u"}, {"format": "json"}
         )
         self.assertEqual(out["row_count"], 1)
         self.assertEqual(out["rows"][0]["weakness_id"], "V-9")
-        self.assertIn("splunk_alternative", out)
+        alt = out["splunk_alternative"]
+        self.assertIn("governance_filter", alt)
+        self.assertIn("note", alt)
+
+    @patch.object(reporting_svc.grants_svc, "query_grants")
+    @patch.object(reporting_svc.collections_svc, "get_collection")
+    @patch.object(reporting_svc.access, "user_can_read_collection")
+    def test_poam_hidden_workspace_raises_key_error(
+        self, mock_can_read, mock_get, mock_grants
+    ):
+        mock_get.return_value = {"_key": "secret"}
+        mock_grants.return_value = []
+        mock_can_read.return_value = False
+        with self.assertRaises(KeyError):
+            reporting_svc.collection_poam(
+                MagicMock(), "secret", {"user": "bob", "capabilities": {"stig_read": True}}, {}
+            )
 
 
 if __name__ == "__main__":

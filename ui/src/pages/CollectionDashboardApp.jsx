@@ -153,6 +153,20 @@ export default function CollectionDashboardApp() {
             .finally(() => setLoading(false));
     };
 
+    const findingsRestQuery = (extra) => {
+        const query = {};
+        if (statusFilter) {
+            query.status = statusFilter;
+        }
+        if (severityFilter) {
+            query.severity = severityFilter;
+        }
+        if (hostFilter) {
+            query.host_id = hostFilter;
+        }
+        return Object.assign(query, extra || {});
+    };
+
     const loadAggregate = (cid) => {
         if (!cid) {
             setAggregate(null);
@@ -160,7 +174,7 @@ export default function CollectionDashboardApp() {
         }
         setAggregateLoading(true);
         apiFetch("stig_collections/" + cid + "/findings/aggregate", {
-            query: { group_by: "group_id,rule_id,cci" },
+            query: findingsRestQuery({ group_by: "group_id,rule_id,cci" }),
         })
             .then((data) => setAggregate(data))
             .catch((err) => {
@@ -233,7 +247,7 @@ export default function CollectionDashboardApp() {
         if (tab === "aggregate" && collectionId) {
             loadAggregate(collectionId);
         }
-    }, [tab, collectionId]);
+    }, [tab, collectionId, statusFilter, severityFilter, hostFilter]);
 
     const statusCounts = useMemo(
         () => countRows(metrics && metrics.by_status),
@@ -256,6 +270,16 @@ export default function CollectionDashboardApp() {
         downloadText(name, findingsToCsv(findings), "text/csv");
     };
 
+    const poamRowsToCsv = (data) => {
+        const headers = (data.columns || []).map((c) => c.label || c.key);
+        const keys = (data.columns || []).map((c) => c.key);
+        const lines = [headers.join(",")];
+        (data.rows || []).forEach((row) => {
+            lines.push(keys.map((key) => csvEscape(row[key])).join(","));
+        });
+        return lines.join("\n");
+    };
+
     const exportPoam = (fmt) => {
         if (!collectionId) {
             return;
@@ -263,41 +287,33 @@ export default function CollectionDashboardApp() {
         setPoamLoading(true);
         setBanner(null);
         const path = "stig_collections/" + collectionId + "/poam";
-        apiFetch(path, { query: { format: fmt } })
+        const filterQuery = findingsRestQuery();
+        apiFetch(path, { query: Object.assign({ format: "json" }, filterQuery) })
             .then((data) => {
-                if (fmt === "xlsx" && data.content_base64) {
-                    downloadBase64(
-                        data.filename || "stig_poam.xlsx",
-                        data.content_base64,
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    );
-                    return;
-                }
-                if (fmt === "csv" && typeof data === "string") {
-                    downloadText(
-                        "stig_poam_" + collectionId.slice(0, 8) + ".csv",
-                        data,
-                        "text/csv"
-                    );
-                    return;
-                }
-                if (data.rows && data.rows.length) {
-                    const headers = (data.columns || []).map((c) => c.label || c.key);
-                    const keys = (data.columns || []).map((c) => c.key);
-                    const lines = [headers.join(",")];
-                    data.rows.forEach((row) => {
-                        lines.push(
-                            keys.map((key) => csvEscape(row[key])).join(",")
-                        );
+                if (!data || !data.row_count) {
+                    setBanner({
+                        type: "warning",
+                        message: "No findings match the current filters for POA&M.",
                     });
-                    downloadText(
-                        "stig_poam_" + collectionId.slice(0, 8) + ".csv",
-                        lines.join("\n"),
-                        "text/csv"
-                    );
                     return;
                 }
-                setBanner({ type: "warning", message: "No open findings for POA&M." });
+                if (fmt === "xlsx") {
+                    return apiFetch(path, {
+                        query: Object.assign({ format: "xlsx" }, filterQuery),
+                    }).then((xlsx) => {
+                        if (xlsx.content_base64) {
+                            downloadBase64(
+                                xlsx.filename || "stig_poam.xlsx",
+                                xlsx.content_base64,
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            );
+                        }
+                    });
+                }
+                const filename =
+                    (data.stig_collection_id || collectionId).slice(0, 8) +
+                    "_poam.csv";
+                downloadText(filename, poamRowsToCsv(data), "text/csv");
             })
             .catch((err) =>
                 setBanner({ type: "error", message: String(err.message || err) })
@@ -305,7 +321,56 @@ export default function CollectionDashboardApp() {
             .finally(() => setPoamLoading(false));
     };
 
-    const renderAggregateTable = (title, rows, keyField) => {
+    const renderFindingsFilters = (actions) => (
+        <Toolbar style={{ marginTop: 12, marginBottom: 12 }}>
+            <ControlGroup label="Status" labelPosition="top">
+                <Select
+                    value={statusFilter}
+                    onChange={(e, { value }) => setStatusFilter(value)}
+                >
+                    <Select.Option label="Open (default)" value="open" />
+                    <Select.Option
+                        label="Open + Not reviewed"
+                        value="open,not_reviewed"
+                    />
+                    <Select.Option
+                        label="All statuses"
+                        value="not_reviewed,open,not_a_finding,not_applicable"
+                    />
+                </Select>
+            </ControlGroup>
+            <ControlGroup label="Severity" labelPosition="top">
+                <Select
+                    value={severityFilter}
+                    onChange={(e, { value }) => setSeverityFilter(value)}
+                >
+                    <Select.Option label="Any" value="" />
+                    <Select.Option label="High" value="high" />
+                    <Select.Option label="Medium" value="medium" />
+                    <Select.Option label="Low" value="low" />
+                </Select>
+            </ControlGroup>
+            <ControlGroup label="Host" labelPosition="top">
+                <Select
+                    value={hostFilter}
+                    onChange={(e, { value }) => setHostFilter(value)}
+                >
+                    <Select.Option label="All hosts" value="" />
+                    {hosts.map((h) => (
+                        <Select.Option
+                            key={h._key}
+                            label={h.hostname || h._key}
+                            value={h._key}
+                        />
+                    ))}
+                </Select>
+            </ControlGroup>
+            <Actions>{actions}</Actions>
+        </Toolbar>
+    );
+
+    const renderAggregateTable = (title, rows, keyField, opts) => {
+        opts = opts || {};
         if (!rows || !rows.length) {
             return (
                 <Message type="info" style={{ marginTop: 12 }}>
@@ -318,6 +383,9 @@ export default function CollectionDashboardApp() {
                 <Heading level={4} style={{ marginTop: 20 }}>{title}</Heading>
                 <Table>
                     <Table.Head>
+                        {opts.showBaseline ? (
+                            <Table.HeadCell>STIG</Table.HeadCell>
+                        ) : null}
                         <Table.HeadCell>{keyField}</Table.HeadCell>
                         <Table.HeadCell>Count</Table.HeadCell>
                         <Table.HeadCell>Hosts</Table.HeadCell>
@@ -325,7 +393,16 @@ export default function CollectionDashboardApp() {
                     </Table.Head>
                     <Table.Body>
                         {rows.map((row) => (
-                            <Table.Row key={(row[keyField] || "") + row.count}>
+                            <Table.Row
+                                key={
+                                    (row.baseline_id || "") +
+                                    (row[keyField] || "") +
+                                    row.count
+                                }
+                            >
+                                {opts.showBaseline ? (
+                                    <Table.Cell>{row.stig_id || "—"}</Table.Cell>
+                                ) : null}
                                 <Table.Cell>{row[keyField] || "—"}</Table.Cell>
                                 <Table.Cell>{row.count}</Table.Cell>
                                 <Table.Cell>{row.host_count}</Table.Cell>
@@ -483,50 +560,8 @@ export default function CollectionDashboardApp() {
 
                     {tab === "findings" ? (
                         <>
-                            <Toolbar style={{ marginTop: 12, marginBottom: 12 }}>
-                                <ControlGroup label="Status" labelPosition="top">
-                                    <Select
-                                        value={statusFilter}
-                                        onChange={(e, { value }) => setStatusFilter(value)}
-                                    >
-                                        <Select.Option label="Open (default)" value="open" />
-                                        <Select.Option
-                                            label="Open + Not reviewed"
-                                            value="open,not_reviewed"
-                                        />
-                                        <Select.Option
-                                            label="All statuses"
-                                            value="not_reviewed,open,not_a_finding,not_applicable"
-                                        />
-                                    </Select>
-                                </ControlGroup>
-                                <ControlGroup label="Severity" labelPosition="top">
-                                    <Select
-                                        value={severityFilter}
-                                        onChange={(e, { value }) => setSeverityFilter(value)}
-                                    >
-                                        <Select.Option label="Any" value="" />
-                                        <Select.Option label="High" value="high" />
-                                        <Select.Option label="Medium" value="medium" />
-                                        <Select.Option label="Low" value="low" />
-                                    </Select>
-                                </ControlGroup>
-                                <ControlGroup label="Host" labelPosition="top">
-                                    <Select
-                                        value={hostFilter}
-                                        onChange={(e, { value }) => setHostFilter(value)}
-                                    >
-                                        <Select.Option label="All hosts" value="" />
-                                        {hosts.map((h) => (
-                                            <Select.Option
-                                                key={h._key}
-                                                label={h.hostname || h._key}
-                                                value={h._key}
-                                            />
-                                        ))}
-                                    </Select>
-                                </ControlGroup>
-                                <Actions>
+                            {renderFindingsFilters(
+                                <>
                                     <Button onClick={() => loadFindings(collectionId)}>
                                         Refresh
                                     </Button>
@@ -545,8 +580,8 @@ export default function CollectionDashboardApp() {
                                     >
                                         POA&M XLSX
                                     </Button>
-                                </Actions>
-                            </Toolbar>
+                                </>
+                            )}
                             {findingsLoading ? <WaitSpinner /> : null}
                             {pagination ? (
                                 <Message type="info">
@@ -604,29 +639,29 @@ export default function CollectionDashboardApp() {
 
                     {tab === "aggregate" ? (
                         <>
-                            <Toolbar style={{ marginTop: 12, marginBottom: 12 }}>
-                                <Actions>
-                                    <Button onClick={() => loadAggregate(collectionId)}>
-                                        Refresh
-                                    </Button>
-                                </Actions>
-                            </Toolbar>
+                            {renderFindingsFilters(
+                                <Button onClick={() => loadAggregate(collectionId)}>
+                                    Refresh
+                                </Button>
+                            )}
                             {aggregateLoading ? <WaitSpinner /> : null}
                             {aggregate ? (
                                 <>
                                     <Message type="info">
-                                        Governance-open findings (status open, not accepted):{" "}
-                                        {aggregate.open_findings_total || 0}
+                                        Matching findings after filters (governance applies when
+                                        status includes open): {aggregate.open_findings_total || 0}
                                     </Message>
                                     {renderAggregateTable(
                                         "By group (V-ID)",
                                         aggregate.by_group_id,
-                                        "group_id"
+                                        "group_id",
+                                        { showBaseline: true }
                                     )}
                                     {renderAggregateTable(
                                         "By rule",
                                         aggregate.by_rule_id,
-                                        "rule_id"
+                                        "rule_id",
+                                        { showBaseline: true }
                                     )}
                                     {renderAggregateTable(
                                         "By CCI",

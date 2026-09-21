@@ -270,10 +270,21 @@ class StigRestHandler(PersistentServerConnectionApplication):
             except KeyError:
                 return _error("not found", status=404)
             if result.get("format") == "csv":
+                filename = result.get("filename") or "stig_poam.csv"
+                headers = [
+                    ("Content-Type", "text/csv; charset=utf-8"),
+                    (
+                        "Content-Disposition",
+                        f'attachment; filename="{filename}"',
+                    ),
+                ]
+                row_count = result.get("row_count")
+                if row_count is not None:
+                    headers.append(("X-Stig-Row-Count", str(row_count)))
                 return {
                     "payload": result.get("content") or "",
                     "status": 200,
-                    "headers": [("Content-Type", "text/csv; charset=utf-8")],
+                    "headers": headers,
                 }
             return _json_response(result)
 
