@@ -133,7 +133,7 @@
     margin-top: 8px;
     padding-top: 14px;
     border-top: 1px solid ${o.variables.borderColor};
-`),W=(O.default.div`
+`);O.default.div`
     padding: 48px 24px;
     text-align: center;
     color: ${o.variables.contentColorMuted};
@@ -197,7 +197,7 @@
         color: #fff;
         border-color: #1e3a5f;
     }
-`,{not_reviewed:"Not Reviewed",open:"Open",not_a_finding:"Not a Finding",not_applicable:"Not Applicable"}),V={not_reviewed:{bg:"#e8eaed",fg:"#3c444d"},open:{bg:"#f8d7da",fg:"#721c24"},not_a_finding:{bg:"#d4edda",fg:"#155724"},not_applicable:{bg:"#cce5ff",fg:"#004085"}},U=O.default.span`
+`;const W={not_reviewed:"Not Reviewed",open:"Open",not_a_finding:"Not a Finding",not_applicable:"Not Applicable"},V={not_reviewed:{bg:"#e8eaed",fg:"#3c444d"},open:{bg:"#f8d7da",fg:"#721c24"},not_a_finding:{bg:"#d4edda",fg:"#155724"},not_applicable:{bg:"#cce5ff",fg:"#004085"}},U=O.default.span`
     display: inline-block;
     max-width: 100%;
     padding: 2px 8px;

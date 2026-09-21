@@ -12,6 +12,7 @@ import zipfile
 import access
 import audit
 import kv_client
+import review_workflow
 import validation
 from exporters import ckl as ckl_export
 from exporters import cklb as cklb_export
@@ -120,7 +121,7 @@ def apply_review_seeds(
         if not seed:
             unmatched += 1
             continue
-        if is_ingest_locked(rec):
+        if is_ingest_locked(rec) or not review_workflow.is_ingest_mutable(rec):
             locked += 1
             continue
         patch = dict(rec)
@@ -242,6 +243,7 @@ def create_checklist(
             "comments": seed.get("comments") or "",
             "package_id": str(seed.get("package_id") or ""),
             "ingest_lock": False,
+            "workflow_state": "draft",
             "updated_at": ts,
             "updated_by": username,
         }
@@ -294,6 +296,7 @@ def ensure_review(
         "comments": seed.get("comments") or "",
         "package_id": str(seed.get("package_id") or ""),
         "ingest_lock": False,
+        "workflow_state": "draft",
         "updated_at": ts,
         "updated_by": username,
     }

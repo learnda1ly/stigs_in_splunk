@@ -61,11 +61,41 @@ class TestAggregateMetrics(unittest.TestCase):
         self.assertEqual(metrics["by_status"]["open"], 2)
         self.assertEqual(metrics["by_status"]["not_reviewed"], 1)
         self.assertEqual(metrics["completion"]["open_findings"], 2)
+        self.assertEqual(metrics["completion"]["open_findings_by_status"], 2)
         self.assertEqual(metrics["completion"]["valid"], 3)
         self.assertEqual(metrics["completion"]["percent_reviewed"], 75.0)
         self.assertEqual(metrics["by_severity"]["high"], 1)
         self.assertEqual(metrics["open_by_severity"]["high"], 1)
         self.assertEqual(metrics["open_by_severity"]["low"], 1)
+
+    def test_open_findings_exclude_accepted_workflow(self):
+        reviews = [
+            {
+                "status": "open",
+                "workflow_state": "accepted",
+                "baseline_id": "b1",
+                "rule_id": "r1",
+                "group_id": "V-1",
+            },
+            {
+                "status": "open",
+                "workflow_state": "submitted",
+                "baseline_id": "b1",
+                "rule_id": "r2",
+                "group_id": "V-2",
+            },
+        ]
+        severity_index = {
+            ("b1", "r1", "V-1"): "high",
+            ("b1", "r2", "V-2"): "low",
+        }
+        metrics = reporting_svc.aggregate_metrics(
+            reviews, severity_index, host_count=1, checklist_count=1
+        )
+        self.assertEqual(metrics["completion"]["open_findings"], 1)
+        self.assertEqual(metrics["completion"]["open_findings_by_status"], 2)
+        self.assertEqual(metrics["open_by_severity"].get("low"), 1)
+        self.assertNotIn("high", metrics["open_by_severity"])
 
     def test_review_severity_unknown_without_rule(self):
         review = {"baseline_id": "b1", "rule_id": "missing", "group_id": "V-9"}

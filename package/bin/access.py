@@ -296,6 +296,38 @@ def filter_checklists(
     return [r for r in records if checklist_allowed(r, access_ctx)]
 
 
+def user_can_accept_reviews(
+    collection_record: Dict[str, Any],
+    session: Dict[str, Any],
+    grants: Optional[List[Dict[str, Any]]] = None,
+) -> bool:
+    """Owner/manager accept-reject governance on submitted reviews.
+
+    Accept does not require workspace write. Besides ``stig_admin``, callers need
+    read access plus an **owner** or **manager** workspace grant, or a match on
+    ``review_accept_principals``. The Splunk ``stig_review_accept`` capability
+    does not grant accept on every readable workspace (pair it with explicit
+    principals or owner/manager grants per workspace).
+    """
+    if user_has_stig_admin(session):
+        return True
+    if not user_can_read_collection(collection_record, session, grants):
+        return False
+    ctx = resolve_workspace_access(collection_record, session, grants)
+    if ctx.grant_role in {"owner", "manager"}:
+        return True
+    accept_principals = parse_access_principals(
+        collection_record.get("review_accept_principals")
+    )
+    if not accept_principals:
+        return False
+    username = session.get("user") or ""
+    roles = user_roles(session)
+    return any(
+        _principal_matches(principal, username, roles) for principal in accept_principals
+    )
+
+
 def filter_collections_for_user(
     records: Iterable[Dict[str, Any]],
     session: Dict[str, Any],

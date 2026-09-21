@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+import access
 import audit
 import kv_client
+import review_workflow
 import validation
 from models import KV_STIG_REVIEWS, STATUSES, as_bool, kv_record, now_epoch, normalize_status
-from models import KV_STIG_CHECKLISTS
+from models import KV_STIG_CHECKLISTS, KV_STIG_COLLECTIONS
 from services import checklists as checklists_svc
 from services import collections as collections_svc
+from services import grants as grants_svc
 
 MAX_BATCH_REVIEWS = 500
 
@@ -34,6 +37,181 @@ def _annotate(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [validation.annotate_review(rec) for rec in records]
 
 
+def _workspace_for_checklist(
+    service, checklist_id: str, session: Dict[str, Any], write: bool = False
+) -> tuple:
+    checklist = checklists_svc.get_checklist(
+        service, checklist_id, session, write=write
+    )
+    if not checklist:
+        raise KeyError(checklist_id)
+    collection_id = checklist.get("stig_collection_id")
+    if not collection_id:
+        raise ValueError("checklist missing stig_collection_id")
+    rec, _ctx, grants = grants_svc.workspace_context(service, collection_id, session)
+    return rec, grants
+
+
+def _ensure_editable(existing: Dict[str, Any], session: Dict[str, Any]) -> None:
+    if review_workflow.is_editable(existing):
+        return
+    if access.user_has_stig_admin(session):
+        return
+    state = review_workflow.workflow_state(existing)
+    raise PermissionError(
+        f"review is not editable in workflow_state={state}; submit or accept/reject via workflow actions"
+    )
+
+
+def _apply_workflow_patch(
+    patch: Dict[str, Any],
+    action: str,
+    username: str,
+    reject_feedback: Optional[str] = None,
+) -> None:
+    ts = now_epoch()
+    next_state = review_workflow.transition(action, patch)
+    patch["workflow_state"] = next_state
+    if action == "submit":
+        patch["submitted_at"] = ts
+        patch["submitted_by"] = username
+    elif action == "accept":
+        patch["accepted_at"] = ts
+        patch["accepted_by"] = username
+    elif action == "reject":
+        patch["rejected_at"] = ts
+        patch["rejected_by"] = username
+        if reject_feedback is not None:
+            patch["reject_feedback"] = str(reject_feedback)
+    patch["updated_at"] = ts
+    patch["updated_by"] = username
+
+
+def _workflow_action(
+    service,
+    key: str,
+    action: str,
+    username: str,
+    session: Dict[str, Any],
+    reject_feedback: Optional[str] = None,
+) -> Dict[str, Any]:
+    coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
+    existing = kv_client.get_by_key(coll, key)
+    if not existing:
+        raise KeyError(key)
+    checklist_id = existing.get("checklist_id")
+    if not checklist_id:
+        raise ValueError("review missing checklist_id")
+    need_write = action == "submit"
+    workspace, grants = _workspace_for_checklist(
+        service, checklist_id, session, write=need_write
+    )
+
+    if action == "submit":
+        if not access.user_can_write_collection(workspace, session, grants):
+            raise PermissionError("stig_write required to submit reviews")
+    elif action in ("accept", "reject"):
+        if not access.user_can_accept_reviews(workspace, session, grants):
+            raise PermissionError("stig_review_accept or review owner required")
+    else:
+        raise ValueError(f"unknown workflow action: {action}")
+
+    patch = dict(existing)
+    _apply_workflow_patch(patch, action, username, reject_feedback=reject_feedback)
+    patch["valid"] = validation.persistable_valid(patch)
+    stored = kv_client.update_record(coll, key, kv_record(patch))
+    audit.log_event(
+        action,
+        "stig_review",
+        key,
+        username,
+        {"workflow_state": stored.get("workflow_state")},
+    )
+    return validation.annotate_review(stored)
+
+
+def submit_review(
+    service, key: str, username: str, session: Dict[str, Any]
+) -> Dict[str, Any]:
+    return _workflow_action(service, key, "submit", username, session)
+
+
+def accept_review(
+    service, key: str, username: str, session: Dict[str, Any]
+) -> Dict[str, Any]:
+    return _workflow_action(service, key, "accept", username, session)
+
+
+def reject_review(
+    service,
+    key: str,
+    username: str,
+    session: Dict[str, Any],
+    reject_feedback: Optional[str] = None,
+) -> Dict[str, Any]:
+    return _workflow_action(
+        service, key, "reject", username, session, reject_feedback=reject_feedback
+    )
+
+
+def batch_workflow(
+    service,
+    action: str,
+    review_ids: List[str],
+    username: str,
+    session: Dict[str, Any],
+    reject_feedback: Optional[str] = None,
+) -> Dict[str, Any]:
+    if not review_ids:
+        raise ValueError("review_ids must not be empty")
+    if len(review_ids) > MAX_BATCH_REVIEWS:
+        raise ValueError(f"batch exceeds maximum of {MAX_BATCH_REVIEWS} reviews")
+
+    updated: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
+    for rid in review_ids:
+        try:
+            if action == "submit":
+                updated.append(submit_review(service, rid, username, session))
+            elif action == "accept":
+                updated.append(accept_review(service, rid, username, session))
+            elif action == "reject":
+                updated.append(
+                    reject_review(
+                        service, rid, username, session, reject_feedback=reject_feedback
+                    )
+                )
+            else:
+                raise ValueError(f"unknown workflow action: {action}")
+        except PermissionError as exc:
+            errors.append(
+                {"_key": str(rid), "review_id": str(rid), "error": str(exc), "code": "forbidden"}
+            )
+        except KeyError:
+            errors.append(
+                {
+                    "_key": str(rid),
+                    "review_id": str(rid),
+                    "error": "not found",
+                    "code": "not_found",
+                }
+            )
+        except ValueError as exc:
+            errors.append(
+                {"_key": str(rid), "review_id": str(rid), "error": str(exc), "code": "invalid"}
+            )
+    return {
+        "action": action,
+        "updated": updated,
+        "errors": errors,
+        "summary": {
+            "total": len(review_ids),
+            "succeeded": len(updated),
+            "failed": len(errors),
+        },
+    }
+
+
 def list_reviews(
     service,
     session: Dict[str, Any],
@@ -43,6 +221,7 @@ def list_reviews(
     rule_id: Optional[str] = None,
     rule_version: Optional[str] = None,
     valid: Optional[Any] = None,
+    workflow_state: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
     query: Dict[str, Any] = {}
@@ -81,6 +260,13 @@ def list_reviews(
     want = _as_bool(valid)
     if want is not None:
         annotated = [r for r in annotated if bool(r.get("valid")) is want]
+    if workflow_state:
+        want_wf = review_workflow.normalize_workflow_state(workflow_state)
+        annotated = [
+            r
+            for r in annotated
+            if review_workflow.workflow_state(r) == want_wf
+        ]
     return annotated
 
 
@@ -105,9 +291,16 @@ def update_review(
     checklist_id = existing.get("checklist_id")
     if not checklist_id:
         raise ValueError("review missing checklist_id")
-    checklists_svc.get_checklist(service, checklist_id, session, write=True)
+    workspace, grants = _workspace_for_checklist(service, checklist_id, session, write=True)
+    if not access.user_can_write_collection(workspace, session, grants):
+        raise PermissionError("stig_write required")
+
+    content_keys = {"status", "finding_details", "comments", "package_id", "ingest_lock"}
+    if any(k in body for k in content_keys):
+        _ensure_editable(existing, session)
 
     patch = dict(existing)
+    patch["workflow_state"] = review_workflow.workflow_state(existing)
     if "status" in body:
         status = normalize_status(body["status"], source="internal") or normalize_status(
             body["status"], source="cklb"
@@ -225,10 +418,12 @@ def validate_checklist(
         if result["valid"]:
             valid_count += 1
         annotated.append(result)
+    workflow = review_workflow.counts_for_metrics(annotated)
     return {
         "checklist_id": checklist_id,
         "total": len(annotated),
         "valid": valid_count,
         "invalid": len(annotated) - valid_count,
+        "workflow": workflow,
         "reviews": annotated,
     }
