@@ -11,6 +11,7 @@ from models import KV_STIG_BASELINE_RULES, KV_STIG_CHECKLISTS, KV_STIG_HOSTS, KV
 from services import baselines as baselines_svc
 from services import checklists as checklists_svc
 from services import collections as collections_svc
+from services import grants as grants_svc
 from services import hosts as hosts_svc
 
 DEFAULT_FINDINGS_LIMIT = 500
@@ -22,7 +23,8 @@ def _require_read_collection(service, collection_id: str, session: Dict[str, Any
     rec = collections_svc.get_collection(service, collection_id)
     if not rec:
         raise KeyError(collection_id)
-    if not access.user_can_read_collection(rec, session):
+    grants = grants_svc.query_grants(service, collection_id)
+    if not access.user_can_read_collection(rec, session, grants):
         raise KeyError(collection_id)
     return rec
 

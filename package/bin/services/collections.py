@@ -34,7 +34,12 @@ def list_all_collections(service) -> List[Dict[str, Any]]:
 
 def list_collections(service, session: Dict[str, Any]) -> List[Dict[str, Any]]:
     ensure_default_collection(service, (session or {}).get("user") or "system")
-    return access.filter_collections_for_user(list_all_collections(service), session)
+    from services import grants as grants_svc
+
+    grouped = grants_svc.query_all_grants_grouped(service)
+    return access.filter_collections_for_user(
+        list_all_collections(service), session, grouped
+    )
 
 
 def find_collection_by_name(service, name: str) -> Optional[Dict[str, Any]]:

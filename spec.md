@@ -19,7 +19,7 @@ This document is the **authoritative requirements spec** for the Splunk app **`s
 | Baselines | Import from **XCCDF** (primary), **CKLB**, **CKL**; **deduplicate** identical revisions; multiple **revisions** allowed. |
 | Checklists | Create checklist = one host + one baseline + workspace; spawn one **review** per baseline rule. |
 | Export | Synthesize **CKLB** (JSON) and **CKL** (XML) from KV rows (no stored CKL/CKLB files). |
-| ACL | Workspace-scoped access via **`stig_collection.access_principals`** plus Splunk capabilities **`stig_read`**, **`stig_write`**, **`stig_admin`**. |
+| ACL | Workspace access via **`stig_collection_grants`** (owner/manager/member/restricted + optional host/baseline ACL) and legacy **`access_principals`**, plus Splunk capabilities **`stig_read`**, **`stig_write`**, **`stig_admin`**. |
 | Audit | Structured app logging for mutations (username + action + entity id). |
 | Packaging | Reproducible builds with [Splunk UCC](https://splunk.github.io/addonfactory-ucc-generator/) (`ucc-gen build` / `package`). |
 | Configuration UI | UCC-generated **Configuration** page: workspaces, baseline import/delete, editor/ingest settings. |
@@ -200,7 +200,20 @@ Define in `package/default/authorize.conf`:
 |------------|---------|
 | `stig_read` | GET via custom REST |
 | `stig_write` | POST / PATCH / PUT |
-| `stig_admin` | DELETE; manage `access_principals` |
+| `stig_admin` | DELETE; manage `access_principals` on workspaces (owners may also edit principals via grants) |
+
+**Grant roles** (KV `stig_collection_grants`, REST `/stig_collections/{id}/grants`):
+
+| Role | Read workspace | Write hosts/checklists/reviews | Manage grants | Edit workspace fields | Edit `access_principals` |
+|------|----------------|--------------------------------|---------------|----------------------|---------------------------|
+| **owner** | yes | yes (no `stig_write` required) | yes | yes | yes |
+| **manager** | yes | yes (no `stig_write` required) | yes | yes | no |
+| **member** | yes | requires **`stig_write`** | no | no | no |
+| **restricted** | yes (ACL-filtered rows) | requires **`stig_write`** + ACL scope | no | no | no |
+
+Legacy: principals listed in `access_principals` with no matching grant row behave as **member**. Empty `access_principals` ⇒ any user with STIG caps may read. Creating a grant syncs the principal into `access_principals` for backward-compatible readers.
+
+**ACL:** optional `acl_host_ids` and `acl_baseline_ids` JSON arrays on a grant. Non-empty lists filter visible hosts and checklists (and derived reviews/metrics). Label-based ACL is not implemented yet.
 
 Roles:
 
@@ -216,7 +229,7 @@ Map capabilities to HTTP methods in **each** `restmap.conf` stanza (see §7).
 https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 ```
 
-Resources: `stig_collections`, `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`.
+Resources: `stig_collections`, `stig_collection_grants` (nested under collections), `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`.
 
 Authentication: Splunk session or Basic Auth (`-u user:pass`). TLS verify often disabled in dev (`curl -k`).
 
@@ -327,6 +340,19 @@ Foreign keys are string `_key` values unless noted. Timestamps are **epoch secon
 | `is_default` | bool | Exactly one workspace is the import default. Checklist ingest with no `stig_collection_id` / `collectionId` uses it. |
 | `created_at`, `updated_at` | time | |
 | `created_by`, `updated_by` | string | Splunk username |
+
+### 7.1a `stig_collection_grants`
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `_key` | string | Grant id |
+| `stig_collection_id` | string | FK → workspace |
+| `principal` | string | `user:<name>` or `role:<name>` |
+| `grant_role` | string | `owner` \| `manager` \| `member` \| `restricted` |
+| `acl_host_ids` | string | JSON array of `stig_hosts._key`; empty ⇒ no host filter |
+| `acl_baseline_ids` | string | JSON array of `stig_baselines._key`; empty ⇒ no baseline filter |
+| `acl_labels` | string | Reserved; labels entity not implemented |
+| `created_at`, `updated_at`, `created_by`, `updated_by` | | |
 
 ### 7.2 `stig_hosts`
 
@@ -545,6 +571,19 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 Default `access_principals` on create: `["user:<creator>"]` if omitted. The Default holding workspace uses `[]` (any user with STIG caps).
 
 `POST /stig_imports` may omit `stig_collection_id`; the Default workspace is used. Move a host with `POST /stig_hosts/{id}` `{stig_collection_id}` (checklists follow the host).
+
+#### Grants (`/stig_collections/{id}/grants`)
+
+| Method | Path | Body | Response |
+|--------|------|------|----------|
+| GET | `/stig_collections/{id}/grants` | — | Array of grant records (requires workspace read) |
+| POST | `/stig_collections/{id}/grants` | `{principal, grant_role?, acl_host_ids?, acl_baseline_ids?}` | **201**; requires **owner** or **manager** |
+| GET | `/stig_collections/{id}/grants/{grantId}` | — | Grant or **404** |
+| PATCH/PUT | `/stig_collections/{id}/grants/{grantId}` | Partial grant JSON | Updated grant |
+| PUT/PATCH | `/stig_collections/{id}/grants/{grantId}/acl` | `{acl_host_ids?, acl_baseline_ids?}` | Updated grant ACL fields only |
+| DELETE | `/stig_collections/{id}/grants/{grantId}` | — | `{deleted: grantId}` |
+
+`principal` must be `user:<name>` or `role:<name>`. `grant_role` is one of `owner`, `manager`, `member`, `restricted`.
 
 ### 11.2 `stig_hosts`
 

@@ -24,6 +24,7 @@ from services import baseline_jobs as baseline_jobs_svc
 from services import checklists as checklists_svc
 from services import baseline_defaults as baseline_defaults_svc
 from services import collections as collections_svc
+from services import grants as grants_svc
 from services import hosts as hosts_svc
 from services import assignment as assignment_svc
 from services import imports as imports_svc
@@ -227,6 +228,11 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     return _error(str(exc), status=403)
             return _error("method not allowed", status=405)
 
+        if len(parts) >= 2 and parts[1] == "grants":
+            return self._collection_grants(
+                method, key, parts[2:], payload, service, session, username
+            )
+
         if len(parts) == 2 and parts[1] == "metrics":
             if method != "GET":
                 return _error("method not allowed", status=405)
@@ -248,14 +254,22 @@ class StigRestHandler(PersistentServerConnectionApplication):
 
         if method == "GET":
             rec = collections_svc.get_collection(service, key)
-            if not rec or not access.user_can_read_collection(rec, session):
+            grants = grants_svc.query_grants(service, key)
+            if not rec or not access.user_can_read_collection(rec, session, grants):
                 return _error("not found", status=404)
             return _json_response(rec)
         if method in ("PATCH", "POST", "PUT"):
             rec = collections_svc.get_collection(service, key)
-            if not rec or not access.user_can_write_collection(rec, session):
+            if not rec:
+                return _error("not found", status=404)
+            grants = grants_svc.query_grants(service, key)
+            ctx = access.resolve_workspace_access(rec, session, grants)
+            if not ctx.edit_collection and not ctx.edit_access_principals:
                 return _error("not found", status=404)
             body = _body_json(payload)
+            if "access_principals" in body and not ctx.edit_access_principals:
+                if not access.user_has_stig_admin(session):
+                    return _error("owner or stig_admin required to change access_principals", status=403)
             updated = collections_svc.update_collection(service, key, body, username)
             return _json_response(updated)
         if method == "DELETE":
@@ -263,6 +277,79 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error("stig_admin required", status=403)
             collections_svc.delete_collection(service, key, username)
             return _json_response({"deleted": key})
+        return _error("method not allowed", status=405)
+
+    def _collection_grants(
+        self,
+        method: str,
+        collection_id: str,
+        parts: List[str],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        if not parts:
+            if method == "GET":
+                try:
+                    rows = grants_svc.list_grants(service, collection_id, session)
+                    return _json_response(rows)
+                except KeyError:
+                    return _error("not found", status=404)
+            if method == "POST":
+                body = _body_json(payload)
+                try:
+                    rec = grants_svc.create_grant(
+                        service, collection_id, body, username, session
+                    )
+                    return _json_response(rec, status=201)
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            return _error("method not allowed", status=405)
+
+        grant_id = parts[0]
+        if len(parts) == 2 and parts[1] == "acl":
+            if method not in ("PUT", "PATCH", "POST"):
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            try:
+                rec = grants_svc.update_grant_acl(
+                    service, collection_id, grant_id, body, username, session
+                )
+                return _json_response(rec)
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+
+        if method == "GET":
+            rec = grants_svc.get_grant(service, collection_id, grant_id, session)
+            if not rec:
+                return _error("not found", status=404)
+            return _json_response(rec)
+        if method in ("PATCH", "PUT", "POST"):
+            body = _body_json(payload)
+            try:
+                rec = grants_svc.update_grant(
+                    service, collection_id, grant_id, body, username, session
+                )
+                return _json_response(rec)
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+        if method == "DELETE":
+            try:
+                grants_svc.delete_grant(
+                    service, collection_id, grant_id, username, session
+                )
+                return _json_response({"deleted": grant_id})
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
         return _error("method not allowed", status=405)
 
     def _findings(
