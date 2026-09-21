@@ -1,21 +1,15 @@
-# FEATURE_PARITY tracker
+# FEATURE_PARITY (iteration tracker)
 
-| # | Area | STIG Manager concept | Status | Notes |
-|---|------|----------------------|--------|-------|
-| 5 | Save vs submit vs accept/reject | Saved → Submitted → Accepted/Rejected | **done** | `workflow_state` on `stig_reviews`; REST `POST .../submit|accept|reject` and governance batch on `POST .../batch` (field batch unchanged); SplunkUI STIG Editor actions + batch on visible rows; accept via workspace **owner**/**manager** grants, `stig_review_accept`, or `review_accept_principals`. Classic Simple XML editor: **partial**. |
+The full STIG Manager gap backlog lives in **[docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md)**. Update that file when closing parity rows.
 
-## Workflow state machine
+## Row #5 — Save vs submit vs accept/reject (**done**)
 
-| State | Editable (assessor) | Next actions |
-|-------|---------------------|--------------|
-| `draft` | Yes (PATCH status, details, comments) | `submit` when valid |
-| `submitted` | No | `accept` or `reject` (owner/manager) |
-| `accepted` | No (admin bypass) | — |
-| `rejected` | N/A (reject sets `draft` + `reject_feedback`) | `submit` again when valid |
+| State | Editable (REST PATCH / ingest) | Actions |
+|-------|-------------------------------|---------|
+| `draft` | Yes | `submit` when valid |
+| `submitted` | No | `accept` / `reject` (read + owner/manager grant or `review_accept_principals`) |
+| `accepted` | No | — |
 
-Legacy rows without `workflow_state` are treated as `draft`.
+Reject returns to `draft` and stores optional `reject_feedback`. Legacy rows without `workflow_state` are treated as `draft`.
 
-## Metrics / search
-
-- **Open findings (governance):** `status=open` and `workflow_state` not `accepted` (see spec §12).
-- Checklist `validate` response includes a `workflow` summary block.
+**Open findings (governance):** `status=open` and `workflow_state` ≠ `accepted` (REST metrics, findings report, spec §12).

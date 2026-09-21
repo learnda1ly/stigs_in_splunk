@@ -67,8 +67,7 @@ export function reviewIsEditable(rev) {
     if (rev && typeof rev.workflow_editable === "boolean") {
         return rev.workflow_editable;
     }
-    const state = reviewWorkflowState(rev);
-    return state === "draft" || state === "rejected";
+    return reviewWorkflowState(rev) === "draft";
 }
 
 const WF_PALETTE = {

@@ -61,16 +61,14 @@ class ReviewWorkflowTransitionTests(unittest.TestCase):
 
 
 class ReviewAcceptAccessTests(unittest.TestCase):
-    def test_stig_review_accept_capability(self):
+    def test_stig_review_accept_alone_does_not_accept(self):
         workspace = {"access_principals": "[]"}
         session = {
             "user": "assessor",
             "roles": ["stig_user"],
-            "capabilities": {"stig_write": True},
+            "capabilities": {"stig_write": True, "stig_review_accept": True},
         }
         self.assertFalse(access.user_can_accept_reviews(workspace, session))
-        session["capabilities"]["stig_review_accept"] = True
-        self.assertTrue(access.user_can_accept_reviews(workspace, session))
 
     def test_review_accept_principals(self):
         workspace = {

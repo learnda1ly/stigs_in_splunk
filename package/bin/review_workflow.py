@@ -41,6 +41,16 @@ def is_editable(record: Dict[str, Any]) -> bool:
     return workflow_state(record) == "draft"
 
 
+def is_ingest_mutable(record: Dict[str, Any]) -> bool:
+    """HEC/import/reconcile may change review content only in draft (like REST PATCH)."""
+    return is_editable(record)
+
+
+def is_governance_open_finding(record: Dict[str, Any]) -> bool:
+    """Open assessor status that is not owner-accepted (spec §12 reporting)."""
+    return record.get("status") == "open" and workflow_state(record) != "accepted"
+
+
 def transition(action: str, record: Dict[str, Any]) -> str:
     current = workflow_state(record)
     if action == "reject":

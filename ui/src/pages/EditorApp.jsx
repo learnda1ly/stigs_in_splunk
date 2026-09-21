@@ -505,16 +505,22 @@ export default function EditorApp() {
             reject_feedback: action === "reject" ? rejectFeedback : undefined,
         })
             .then((result) => {
-                (result.reviews || []).forEach((updated) => {
+                (result.updated || result.reviews || []).forEach((updated) => {
                     applyWorkflowUpdate(updated._key, updated);
                 });
-                const errCount = (result.errors || []).length;
+                const summary = result.summary || {};
+                const succeeded = summary.succeeded != null
+                    ? summary.succeeded
+                    : (result.updated || []).length;
+                const errCount = summary.failed != null
+                    ? summary.failed
+                    : (result.errors || []).length;
                 setBanner({
                     type: errCount ? "warning" : "success",
                     text:
                         action +
                         " batch: " +
-                        (result.updated || 0) +
+                        succeeded +
                         " updated" +
                         (errCount ? ", " + errCount + " errors" : ""),
                 });

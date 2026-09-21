@@ -77,7 +77,7 @@ Rebuild UI bundles after changing `ui/src`:
 
 `./scripts/build_ucc.sh` runs that step unless `SKIP_UI_BUILD=1`.
 
-After install, open the app → **STIG Editor**. Use **Collection review** to work one rule across all hosts in a workspace (batch save). Manage workspaces under **Configuration**; import baselines and checklists under **Import**. Imports without a workspace go to **Default**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**. **Submit** sends a completed finding for owner **Accept** / **Reject** (workspace **owner** / **manager** grants, `stig_review_accept`, or `review_accept_principals`). See [FEATURE_PARITY.md](FEATURE_PARITY.md).
+After install, open the app → **STIG Editor**. Use **Collection review** to work one rule across all hosts in a workspace (batch save). Manage workspaces under **Configuration**; import baselines and checklists under **Import**. Imports without a workspace go to **Default**. Choose a workspace, then edit reviews in a split pane. Status saves immediately; finding details and comments require **Write**. **Submit** sends a completed finding for owner **Accept** / **Reject** (workspace **owner** / **manager** grants or `review_accept_principals`; `stig_review_accept` alone does not accept on every readable workspace). See [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md) and [FEATURE_PARITY.md](FEATURE_PARITY.md).
 
 Batch review field updates: `POST .../stig_reviews/batch` with `{ "reviews": [{ "_key": "...", "status": "open", ... }] }`. Batch governance: same path with `{ "action": "submit|accept|reject", "review_ids": ["..."] }`. Partial success is supported (per-row errors in the response).
 

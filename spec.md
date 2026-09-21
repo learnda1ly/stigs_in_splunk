@@ -446,7 +446,7 @@ Evaluation (`bin/access.py`):
 - **`stig_admin`** capability, or roles **`admin`** / **`sc_admin`:** full access to all workspaces.
 - **Read:** user matches a principal, OR list is empty (open read within cap holders).
 - **Write:** must pass read, plus **`stig_write`** capability (admin bypass).
-- **Accept/reject submitted reviews:** **`stig_review_accept`** capability, **`stig_admin`**, or a match on workspace **`review_accept_principals`** (`user:` / `role:` entries, same shape as `access_principals`).
+- **Accept/reject submitted reviews:** **`stig_admin`**, workspace grant role **owner** or **manager**, or a match on **`review_accept_principals`**. **`stig_review_accept`** does not imply accept on every readable workspace (use explicit principals or owner/manager grants).
 
 ### 8.2 Scope by entity
 
@@ -654,7 +654,7 @@ Requires **`stig_write`**.
 | POST | `/stig_reviews/{id}/submit` | Assessor submit (`stig_write` + workspace grant); review must be valid |
 | POST | `/stig_reviews/{id}/accept` | Owner/manager accept (`stig_review_accept`, grant role, or `review_accept_principals`) |
 | POST | `/stig_reviews/{id}/reject` | `{reject_feedback?}` — returns review to `draft` |
-| POST | `/stig_reviews/batch` | Field batch: `{reviews: [{_key, ...}]}` **or** governance: `{action, review_ids[], reject_feedback?}` |
+| POST | `/stig_reviews/batch` | Field batch: `{reviews: [{_key, ...}]}` **or** governance: `{action, review_ids[], reject_feedback?}` (mutually exclusive; max 500 ids). Both return `{updated: [...], errors: [...], summary: {total, succeeded, failed}}`; governance adds `action`. |
 
 Updates require workspace **write** access via parent checklist. Content PATCH is allowed only in `workflow_state=draft` (except `stig_admin`). Validate `status` against allowed set; accept internal or CKLB status strings on input. `ingest_lock=true` blocks HEC/reconcile from overwriting that finding. See **FEATURE_PARITY.md** for the state machine.
 

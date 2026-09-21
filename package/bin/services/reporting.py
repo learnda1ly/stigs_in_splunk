@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import access
 import kv_client
+import review_workflow
 import validation
 from models import KV_STIG_BASELINE_RULES, KV_STIG_CHECKLISTS, KV_STIG_HOSTS, KV_STIG_REVIEWS, STATUSES, now_epoch
 from services import baselines as baselines_svc
@@ -100,6 +101,8 @@ def aggregate_metrics(
     by_severity: Dict[str, int] = {}
     open_by_severity: Dict[str, int] = {}
     valid_count = 0
+    open_status_count = 0
+    open_governance_count = 0
     for review in reviews:
         status = review.get("status") or "not_reviewed"
         if status not in by_status:
@@ -108,7 +111,10 @@ def aggregate_metrics(
         sev = review_severity(review, severity_index)
         by_severity[sev] = by_severity.get(sev, 0) + 1
         if status == "open":
-            open_by_severity[sev] = open_by_severity.get(sev, 0) + 1
+            open_status_count += 1
+            if review_workflow.is_governance_open_finding(review):
+                open_governance_count += 1
+                open_by_severity[sev] = open_by_severity.get(sev, 0) + 1
         if validation.is_valid(review):
             valid_count += 1
 
@@ -116,6 +122,7 @@ def aggregate_metrics(
     not_reviewed = by_status.get("not_reviewed", 0)
     reviewed = total - not_reviewed
     percent = round((reviewed / total) * 100.0, 1) if total else 0.0
+    workflow = review_workflow.counts_for_metrics(reviews)
 
     return {
         "totals": {
@@ -128,8 +135,10 @@ def aggregate_metrics(
             "not_reviewed": not_reviewed,
             "percent_reviewed": percent,
             "valid": valid_count,
-            "open_findings": by_status.get("open", 0),
+            "open_findings": open_governance_count,
+            "open_findings_by_status": open_status_count,
         },
+        "workflow": workflow,
         "by_status": by_status,
         "by_severity": dict(sorted(by_severity.items())),
         "open_by_severity": dict(sorted(open_by_severity.items())),
@@ -246,6 +255,10 @@ def collection_findings(
         for review in kv_client.query_all(reviews_coll, {"checklist_id": checklist_id}):
             status = review.get("status") or "not_reviewed"
             if status not in status_filter:
+                continue
+            if status in OPEN_STATUSES and not review_workflow.is_governance_open_finding(
+                review
+            ):
                 continue
             if rule_id_filter and review.get("rule_id") != rule_id_filter:
                 continue

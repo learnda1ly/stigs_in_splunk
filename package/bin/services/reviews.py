@@ -102,7 +102,10 @@ def _workflow_action(
     checklist_id = existing.get("checklist_id")
     if not checklist_id:
         raise ValueError("review missing checklist_id")
-    workspace, grants = _workspace_for_checklist(service, checklist_id, session, write=True)
+    need_write = action == "submit"
+    workspace, grants = _workspace_for_checklist(
+        service, checklist_id, session, write=need_write
+    )
 
     if action == "submit":
         if not access.user_can_write_collection(workspace, session, grants):
@@ -159,25 +162,54 @@ def batch_workflow(
     session: Dict[str, Any],
     reject_feedback: Optional[str] = None,
 ) -> Dict[str, Any]:
-    results: List[Dict[str, Any]] = []
-    errors: List[Dict[str, str]] = []
+    if not review_ids:
+        raise ValueError("review_ids must not be empty")
+    if len(review_ids) > MAX_BATCH_REVIEWS:
+        raise ValueError(f"batch exceeds maximum of {MAX_BATCH_REVIEWS} reviews")
+
+    updated: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
     for rid in review_ids:
         try:
             if action == "submit":
-                results.append(submit_review(service, rid, username, session))
+                updated.append(submit_review(service, rid, username, session))
             elif action == "accept":
-                results.append(accept_review(service, rid, username, session))
+                updated.append(accept_review(service, rid, username, session))
             elif action == "reject":
-                results.append(
+                updated.append(
                     reject_review(
                         service, rid, username, session, reject_feedback=reject_feedback
                     )
                 )
             else:
                 raise ValueError(f"unknown workflow action: {action}")
-        except (KeyError, ValueError, PermissionError) as exc:
-            errors.append({"review_id": rid, "error": str(exc)})
-    return {"action": action, "updated": len(results), "errors": errors, "reviews": results}
+        except PermissionError as exc:
+            errors.append(
+                {"_key": str(rid), "review_id": str(rid), "error": str(exc), "code": "forbidden"}
+            )
+        except KeyError:
+            errors.append(
+                {
+                    "_key": str(rid),
+                    "review_id": str(rid),
+                    "error": "not found",
+                    "code": "not_found",
+                }
+            )
+        except ValueError as exc:
+            errors.append(
+                {"_key": str(rid), "review_id": str(rid), "error": str(exc), "code": "invalid"}
+            )
+    return {
+        "action": action,
+        "updated": updated,
+        "errors": errors,
+        "summary": {
+            "total": len(review_ids),
+            "succeeded": len(updated),
+            "failed": len(errors),
+        },
+    }
 
 
 def list_reviews(

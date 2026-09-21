@@ -741,7 +741,14 @@ class StigRestHandler(PersistentServerConnectionApplication):
         if parts == ["batch"] and method in ("POST", "PATCH", "PUT"):
             body = _body_json(payload)
             action = (body.get("action") or "").strip().lower()
+            has_field_batch = body.get("reviews") is not None or body.get("updates") is not None
             if action in ("submit", "accept", "reject"):
+                if has_field_batch:
+                    return _error(
+                        "batch body cannot combine action with reviews/updates; "
+                        "send governance (action + review_ids) or field batch (reviews) only",
+                        status=400,
+                    )
                 review_ids = body.get("review_ids") or body.get("ids") or []
                 if not isinstance(review_ids, list):
                     return _error("review_ids must be a list")

@@ -301,26 +301,31 @@ def user_can_accept_reviews(
     session: Dict[str, Any],
     grants: Optional[List[Dict[str, Any]]] = None,
 ) -> bool:
-    """Owner/manager accept-reject governance on submitted reviews."""
+    """Owner/manager accept-reject governance on submitted reviews.
+
+    Accept does not require workspace write. Besides ``stig_admin``, callers need
+    read access plus an **owner** or **manager** workspace grant, or a match on
+    ``review_accept_principals``. The Splunk ``stig_review_accept`` capability
+    does not grant accept on every readable workspace (pair it with explicit
+    principals or owner/manager grants per workspace).
+    """
     if user_has_stig_admin(session):
         return True
-    caps = session.get("capabilities") or {}
-    if caps.get("stig_review_accept") or "stig_review_accept" in user_roles(session):
-        if user_can_read_collection(collection_record, session, grants):
-            return True
+    if not user_can_read_collection(collection_record, session, grants):
+        return False
     ctx = resolve_workspace_access(collection_record, session, grants)
-    if ctx.can_read and ctx.grant_role in {"owner", "manager"}:
+    if ctx.grant_role in {"owner", "manager"}:
         return True
     accept_principals = parse_access_principals(
         collection_record.get("review_accept_principals")
     )
-    if accept_principals and user_can_read_collection(collection_record, session, grants):
-        username = session.get("user") or ""
-        roles = user_roles(session)
-        for principal in accept_principals:
-            if _principal_matches(principal, username, roles):
-                return True
-    return False
+    if not accept_principals:
+        return False
+    username = session.get("user") or ""
+    roles = user_roles(session)
+    return any(
+        _principal_matches(principal, username, roles) for principal in accept_principals
+    )
 
 
 def filter_collections_for_user(
