@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.2" id="xccdf_mil.disa.stig_benchmark_Splunk_Enterprise_STIG">
+  <status date="2026-01-01">accepted</status>
+  <title>Splunk Enterprise STIG (smoke fixture)</title>
+  <version>1</version>
+  <plain-text id="release-info">Release: 1 Benchmark Date: 01 Jan 2026</plain-text>
+  <Group id="V-990001">
+    <title>SRG-APP-000001</title>
+    <Rule id="xccdf_mil.disa.stig_rule_SV-990001" severity="medium">
+      <version>SPKL-00-000001</version>
+      <title>Splunk smoke rule</title>
+      <description>Discussion for Splunk simulator smoke test.</description>
+      <ident system="http://cyber.mil/cci">CCI-000366</ident>
+      <ident system="http://iase.disa.mil/stigs">V-990001</ident>
+      <ident system="http://iase.disa.mil/stigs">SV-990001</ident>
+      <fixtext fixref="F-1">Apply Splunk STIG fix.</fixtext>
+      <check system="C-990001">
+        <check-content>Verify Splunk configuration for smoke test.</check-content>
+      </check>
+    </Rule>
+  </Group>
+</Benchmark>
