@@ -17,6 +17,15 @@ const ROLE_OPTIONS = [
     { label: "Restricted (ACL-scoped)", value: "restricted" },
 ];
 
+function labelDisplay(labels, id) {
+    const row = (labels || []).find((l) => l._key === id);
+    if (!row) {
+        return id;
+    }
+    const name = (row.name || "").trim();
+    return name ? name + " (" + id + ")" : id;
+}
+
 function parseIdList(text) {
     const raw = (text || "").trim();
     if (!raw) {
@@ -232,7 +241,9 @@ export default function GrantsApp() {
                                             {(row.acl_baseline_ids || []).join(", ") || "—"}
                                         </Table.Cell>
                                         <Table.Cell>
-                                            {(row.acl_labels || []).join(", ") || "—"}
+                                            {(row.acl_labels || [])
+                                                .map((id) => labelDisplay(labels, id))
+                                                .join(", ") || "—"}
                                         </Table.Cell>
                                         <Table.Cell>
                                             <Button

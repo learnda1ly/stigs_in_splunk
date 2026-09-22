@@ -586,6 +586,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
                         service, collection_id, body, username, session
                     )
                     return _json_response(rec, status=201)
+                except ValueError as exc:
+                    return _error(str(exc), status=400)
                 except KeyError:
                     return _error("not found", status=404)
                 except PermissionError as exc:
