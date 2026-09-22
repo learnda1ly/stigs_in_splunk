@@ -25,9 +25,9 @@
         },
         "commonInformationModels": null,
         "license": {
-            "name": "Apache License 2.0",
-            "text": "./LICENSES/Apache License 2.0.txt",
-            "uri": "https://www.apache.org/licenses/LICENSE-2.0"
+            "name": "MIT License",
+            "text": "./LICENSES/MIT License.txt",
+            "uri": "https://opensource.org/licenses/MIT"
         },
         "privacyPolicy": {
             "name": null,

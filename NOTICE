@@ -1,0 +1,58 @@
+STIG in Splunk (stigs_in_splunk)
+================================
+
+This software is an independent, Splunk-native implementation of STIG checklist
+and review workflows. It is developed by Stephen Quinlan (learnda1ly) and is
+not affiliated with, endorsed by, or an official product of the U.S. Department
+of Defense, DISA, NUWCDIVNPT, NAVSEA Warfare Centers, or the STIG Manager
+project.
+
+STIG Manager (behavioral and UX reference only)
+-----------------------------------------------
+
+[STIG Manager](https://github.com/NUWCDIVNPT/stig-manager) by NUWCDIVNPT /
+NAVSEA Warfare Centers informed the *behavior and user experience* this project
+aims to support. **This repository is not a fork of STIG Manager** and does not
+include STIG Manager server, Node/Express, or ExtJS client source code.
+
+STIG Manager’s own licensing is dual: MIT for non-client components and
+GPL-3.0 for the ExtJS client. **This project does not ship the STIG Manager
+ExtJS client or other GPL-3.0 client code.**
+
+Documentation in this repo (for example `docs/FEATURE_PARITY.md` and
+`docs/watcher-hec.md`) may reference STIG Manager APIs and concepts for
+parity planning only.
+
+STIGMan Watcher (schema reference only)
+---------------------------------------
+
+[STIGMan Watcher](https://github.com/NUWCDIVNPT/stigman-watcher) event and
+ingest field shapes are used as a **compatibility reference** for HEC and
+checklist ingest (for example `source_product` values and review JSON fields).
+**Watcher source code is not copied into this repository.**
+
+Third-party software
+--------------------
+
+Dependencies retain their own licenses, including but not limited to:
+
+- Splunk Universal Configuration Console (UCC) tooling and generated app
+  scaffolding
+- SplunkUI / React and npm packages (see `ui/package-lock.json`)
+- Vendored Python libraries under `lib/` when present (for example Splunk SDK
+  for Python), each with its own license file
+
+DISA STIG content
+-----------------
+
+This repository does **not** distribute DISA STIG XML libraries or official
+STIG benchmark packages. Users must obtain STIG content from DISA under DISA’s
+terms. Small synthetic or truncated fixtures under `tests/fixtures/` exist only
+for automated tests and are not a STIG library distribution.
+
+Trademarks
+----------
+
+“STIG Manager”, “STIGMan”, and related names are used in this NOTICE and in
+documentation solely to describe interoperability and reference behavior.
+No trademark affiliation or sponsorship is claimed.
