@@ -1,6 +1,6 @@
 # STIG in Splunk — REST API index
 
-Machine-readable contract: **[openapi.yaml](openapi.yaml)** (OpenAPI 3.0.3).
+Machine-readable contract: **[openapi.yaml](openapi.yaml)** (OpenAPI 3.0.3). Scan/checklist automation (Evaluate-STIG, OpenSCAP): **[automation.md](automation.md)**.
 
 ## Base URLs
 

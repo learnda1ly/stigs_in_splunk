@@ -8,6 +8,8 @@ For a gap backlog vs [STIG Manager](https://github.com/NUWCDIVNPT/stig-manager) 
 
 REST contract (OpenAPI 3): [docs/openapi.yaml](docs/openapi.yaml) and [docs/api.md](docs/api.md).
 
+Automation (Evaluate-STIG / OpenSCAP → REST or HEC): [docs/automation.md](docs/automation.md).
+
 Watcher / HEC **`stig:finding`** event schema (STIGMan Watcher parity): [docs/watcher-hec.md](docs/watcher-hec.md).
 
 ## Build with Splunk UCC
