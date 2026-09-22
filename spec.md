@@ -162,7 +162,28 @@ The Splunk Web **Configuration** view is the UCC-generated page (`/app/stigs_in_
 
 **HEC token:** never an entity on Configuration. Token is read server-side from the `stig_findings` HTTP Event Collector input (`services/hec.py`).
 
-**Editor vim toggle:** the React editor may still `GET`/`POST` `/stig_settings` as a JSON adapter over `[general]`. That adapter must not accept or return `hec_token`.
+**Editor vim toggle:** the React editor may still `GET`/`PATCH` `/stig_settings` as a JSON adapter over `[general]`. That adapter must not accept or return `hec_token`.
+
+#### 4.3.1 App settings (`stigs_in_splunk_settings.conf` / `stig_settings`)
+
+STIG Manager’s `/op/configuration` maps to Splunk **UCC Configuration → Editor & ingest** plus persist **`/stig_settings`**. There is no separate app-settings KV collection in normal deployments; values live in **`local/stigs_in_splunk_settings.conf`** stanza **`[general]`** (UCC-generated handler `stigs_in_splunk_rh_settings.py`). If that stanza is missing (legacy PoC), `services/settings.py` falls back to KV **`stig_editor_settings`** on read/write.
+
+| Field | Type | Default | Who can change | Purpose |
+|-------|------|---------|----------------|---------|
+| `vim_mode` | bool | `false` | **UCC:** Splunk users with **write** on app configuration (`admin` / `sc_admin` per `metadata/default.meta`). **REST:** any user with **`stig_write`** (`POST`/`PATCH`/`PUT` `/stig_settings`; editor sends `vim_mode` only). | Enable vim-style keyboard layers in the STIG Editor (INSERT / field NORMAL / NAV). Per-browser badge can override until reload. |
+| `trust_event_collection_id` | bool | `false` | UCC (admins) or **`stig_write`** via `/stig_settings` | When **false** (default), HEC ingest resolves workspace via assignment rules, host×baseline overrides, then Default. When **true**, honor `collectionId` on the event **before** rules (legacy Watcher senders). See [watcher-hec.md](docs/watcher-hec.md). |
+| `ingest_index` | string | `stig` | UCC or **`stig_write`** | Target index for `stig:finding` events emitted by checklist import and server-side HEC posts (`services/hec.py`). |
+| `ingest_sourcetype` | string | `stig:finding` | UCC or **`stig_write`** | Sourcetype for those events; must match the `stig_findings` HEC input and the scheduled reconcile search. |
+| `hec_url` | string | `https://localhost:8088/services/collector/event` | UCC or **`stig_write`** | Server-side HEC collector URL used when applying imports (not exposed to browsers as a secret channel). |
+| `reconcile_earliest` | string | `-15m` | UCC or **`stig_write`** | SPL earliest time for `| stigkvreconcile` and `GET|POST /stig_imports/reconcile` (relative or absolute). Saved search **STIG reconcile findings to KV** also sets `dispatch.earliest_time = -15m`; align both when changing the window. |
+
+**Intentionally excluded (never stored in app settings):**
+
+| Field | Where it lives |
+|-------|----------------|
+| `hec_token` | Splunk HTTP Event Collector input stanza **`[http://stig_findings]`** in `inputs.conf` (read server-side by `services/hec.py::lookup_hec_token`). Never returned from `/stig_settings`, never written from REST bodies (stripped in `save_settings`). |
+
+**UCC admin REST (Configuration UI backend):** `GET|POST /servicesNS/nobody/stigs_in_splunk/stigs_in_splunk_settings/general` (Splunk Web proxies `stigs_in_splunk_settings` per `web.conf`). Field definitions and help text are authored in **`globalConfig.yaml`** tab `general`.
 
 **Workspace names** are unique (case-insensitive). The UCC table row id is the workspace `name`. Baseline table row id is `ucc_name` (set on import; falls back to `_key` for legacy rows).
 
@@ -229,7 +250,7 @@ Map capabilities to HTTP methods in **each** `restmap.conf` stanza (see §7).
 https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 ```
 
-Resources: `stig_collections`, `stig_collection_grants` (nested under collections), `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`.
+Resources: `stig_collections`, `stig_collection_grants` (nested under collections), `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_settings` (§4.3.1, §11.7).
 
 Authentication: Splunk session or Basic Auth (`-u user:pass`). TLS verify often disabled in dev (`curl -k`).
 
@@ -336,6 +357,7 @@ Foreign keys are string `_key` values unless noted. Timestamps are **epoch secon
 | `_key` | string | Server-generated |
 | `name` | string | Required on create |
 | `description` | string | Optional |
+| `metadata` | string | Optional JSON object string for arbitrary workspace key/value metadata (REST `GET/PATCH .../metadata`). |
 | `access_principals` | string | JSON array string, e.g. `["user:alice","role:stig_admin"]`. Empty/missing ⇒ readable by all authenticated users with caps. |
 | `is_default` | bool | Exactly one workspace is the import default. Checklist ingest with no `stig_collection_id` / `collectionId` uses it. |
 | `created_at`, `updated_at` | time | |
@@ -591,10 +613,12 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 | GET | `/stig_collections/{id}/poam` | `format?` (`json`, `csv`, `xlsx`) | POA&M-style export for governance-open findings. |
 | POST/PUT | `/stig_collections/{id}/archive/ckl` | Query or JSON `host_id?`, `baseline_id?` | Zip archive of all CKL checklists in the workspace (grant ACL applied). **400** when no checklists match. **404** when workspace hidden. Response JSON: `{filename, format, count, files, content_base64, stig_collection_id, filters}`. Zip entry names: `{hostname}_{stig_id}_{version}.ckl`. |
 | POST/PUT | `/stig_collections/{id}/archive/cklb` | Same filters as CKL archive | Same as CKL archive with `.cklb` entries. |
+| POST/PUT | `/stig_collections/{src}/export-to/{dst}` | JSON `{host_ids: [string]}` | Bulk transfer hosts from `src` to `dst` workspace. Checklists follow each host (host row updated before checklists; single-host rollback on checklist failure). Rejects move when destination already has same hostname (case-insensitive), per-host `error`: `destination_hostname_collision`. **403** without write on either workspace (checked before the loop); **404** when workspace missing/hidden; **400** when `host_ids` empty or `src` equals `dst`. Per-host `results` (`moved`, `skipped`, `error`); `summary` counts. Hosts are processed in order with **no request-level rollback**—successful moves stay committed if later ids fail. **201** when `summary.moved > 0` (even if some hosts failed/skipped), else **200**. Audit: `transfer` on `stig_host` per successful move. |
+| POST/PUT | `/stig_collections/{id}/clone` | JSON `{name?, description?, access_principals?, copy_hosts?, copy_checklists?, copy_reviews?, copy_grants?, copy_labels?, copy_metadata?, copy_baseline_defaults?, copy_review_requirements?, options?}` | Clone workspace to a new `stig_collection`. Requires workspace **read** on source and **`stig_write`** (or admin) to create destination. **201** with `{stig_collection_id, stig_collection, source_stig_collection_id, options, summary, id_map}`; optional `options_coerced` when dependent flags were adjusted. **400** for contradictory explicit flags (e.g. `copy_reviews` true with `copy_hosts` false) or `copy_grants` without `copy_hosts`/`copy_labels` when source grants use `acl_host_ids`/`acl_labels`. Grant ACL ids are remapped 1:1; empty remaps never widen restricted scope. **Global baselines are not copied** (checklists keep `baseline_id` references). On failure after destination create, rolls back with cascade delete; audit `clone_rollback_failed` if rollback fails. Audit: `clone` on destination workspace; `create` on each cloned host. **Defaults** when flags omitted: `copy_hosts`, `copy_checklists`, `copy_reviews`, `copy_labels`, `copy_metadata`, `copy_baseline_defaults`, `copy_review_requirements` = **true**; `copy_grants` = **false**. Implicit coupling: `copy_hosts` false forces checklists/reviews off (listed in `options_coerced`). Optional `name` defaults to `{source name} (clone)` with numeric suffix if taken. STIG Manager aliases: `options.grants`, `options.stigMappings` (`withReviews` / `withoutReviews`). |
 
 Default `access_principals` on create: `["user:<creator>"]` if omitted. The Default holding workspace uses `[]` (any user with STIG caps).
 
-`POST /stig_imports` may omit `stig_collection_id`; the Default workspace is used. Move a host with `POST /stig_hosts/{id}` `{stig_collection_id}` (checklists follow the host).
+`POST /stig_imports` may omit `stig_collection_id`; the Default workspace is used. Move a host with `PATCH /stig_hosts/{id}` `{stig_collection_id}` (checklists follow the host; reviews stay keyed by `checklist_id`). Bulk move: `POST /stig_collections/{src}/export-to/{dst}` with JSON `{host_ids: [...]}` — requires workspace **write** on source and destination; returns per-host `results` and `summary`; emits audit `transfer` per moved host. On move, `label_ids` are kept only when the label exists in the destination workspace; grants are not copied.
 
 #### Grants (`/stig_collections/{id}/grants`)
 
@@ -619,6 +643,7 @@ Default `access_principals` on create: `["user:<creator>"]` if omitted. The Defa
 | GET | `/stig_hosts/{id}/checklists` | — | Checklists for this host (respects grants/ACL) |
 | POST | `/stig_hosts/{id}/stigs` | — | `{baseline_id}` **or** `{stig_id}` (workspace default / catalog resolution). Creates checklist + spawns reviews; **200** + `"created": false` when already assigned (idempotent). **201** + `"created": true` on first assign. |
 | DELETE | `/stig_hosts/{id}/stigs/{baselineIdOrStigId}` | — | Removes **one** checklist: path segment is baseline KV `_key` **or** logical `stig_id` resolved like POST assign (workspace default → catalog). Does **not** delete other revision checklists for the same `stig_id`; pass each revision’s baseline `_key` to remove multiples. Requires workspace **write**. |
+| GET/PATCH | `/stig_hosts/{id}/metadata` | Optional asset metadata (`metadata` JSON on host). **GET** returns `{stig_host_id, metadata}` (empty object when unset). Respects workspace read and restricted grant `acl_host_ids` / `acl_labels` (same as host GET — out-of-scope host → **404**). **PATCH** requires workspace **write**; body `{metadata: {...}}` shallow-merges keys (set a key to JSON `null` to remove). `{replace: true, metadata: {...}}` replaces the entire object. `{clear: true}` removes all keys. Top-level `"metadata": null` returns **400** (use `clear: true` to wipe). Values must be JSON-serializable; non-object `metadata` returns **400**. Audit event `stig_host_metadata` on successful PATCH. |
 | PATCH/DELETE | `/stig_hosts/{id}` | — | PATCH fields optional; DELETE requires **stig_admin** |
 
 DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
@@ -628,14 +653,18 @@ DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 | Method | Path | Notes |
 |--------|------|--------|
 | GET | `/stig_baselines` | List all baseline headers |
+| GET | `/stig_baselines/hierarchy` | Benchmark-centric library: groups catalog rows by `stig_id` with per-revision metadata (`version`, `release_info`, `content_fingerprint`, `rule_count`, `imported_at`, …) |
+| GET | `/stig_baselines/by_stig/{stigId}` | One benchmark entry from hierarchy (404 when unknown) |
+| GET | `/stig_baselines/rule/{ruleKey}` | Stable rule detail by KV `_key` on `stig_baseline_rules` (includes parent baseline summary) |
+| GET | `/stig_baselines/{id}/rules/{ruleRef}` | Rule in baseline context. `ruleRef` may be the rule KV `_key`, composite `group_id\|rule_id` (V-id\|SV-id), or SV-id via `rule_id` / `rule_id_src`. A bare V-id is not accepted (avoids first-row scans). Optional query `group_id` disambiguates duplicate SV-ids in one baseline. Ambiguous matches return **404**. |
 | POST | `/stig_baselines/import` | Query `format` (`xccdf` \| `cklb` \| `ckl` \| `zip`), `source_uri`; raw body. Zip walks nested archives and imports only `*Manual-xccdf.xml` STIG baselines. |
 | GET | `/stig_baselines/rules/{ruleRef}` | Rules matching `ruleRef` across all imported baselines (`rule_id`, `rule_id_src`, `rule_version`, or `group_id`; DISA `xccdf_mil.disa.stig_rule_` prefix stripped). Query `stig_id?` optional. **404** when no matches. |
 | GET | `/stig_baselines/ccis/{cci}` | Rules whose imported `ccis` JSON array contains the CCI (normalized to `CCI-…`). Query `stig_id?` optional. **200** with empty `matches` when none. |
 | GET | `/stig_baselines/groups/{groupId}` | Rules with `group_id` (V-id) across baselines. Query `stig_id?` optional. |
-| GET | `/stig_baselines/rule/{ruleKey}` | One `stig_baseline_rules` row by KV `_key` plus baseline pointer. **404** when missing. |
 | GET | `/stig_baselines/{id}/rules` | All rules for baseline |
+| GET/POST | `/stig_baselines/gc_orphan_rules` | Admin orphan rule GC. **GET** and default **POST** are dry-run reports (`orphan_count`, `orphans[]`, `skipped_no_key_count`). Destructive delete when **POST** with `dry_run=false` or `confirm=true` (query or JSON). Removes only deletable `stig_baseline_rules` rows (requires KV `_key`); orphans without `_key` are listed but skipped. Does **not** cascade to checklists or reviews. Audits only when `deleted_count > 0`. Requires **stig_admin** in handler (`restmap` admits GET/POST with read/write capabilities). |
 
-**Reserved path literals:** The first segment after `/stig_baselines/` cannot be used as a baseline KV `_key` for `GET /stig_baselines/{id}` when it equals `import`, `jobs`, `rules`, `ccis`, `groups`, or `rule` (those paths are routed to catalog/import handlers). UCC `ucc_name` values should avoid these tokens.
+**Reserved path literals:** The first segment after `/stig_baselines/` cannot be used as a baseline KV `_key` for `GET /stig_baselines/{id}` when it equals `import`, `jobs`, `gc_orphan_rules`, `hierarchy`, `by_stig`, `rules`, `ccis`, `groups`, or `rule` (those paths are routed to catalog/import handlers). UCC `ucc_name` values should avoid these tokens.
 | DELETE | `/stig_baselines/{id}` | Remove baseline + rules (UCC Configuration table or persist REST). |
 
 UCC Configuration **Baselines** tab is the management UI: list, import (including zip-of-zips), delete.
@@ -655,10 +684,11 @@ Import responses:
 | GET | `/stig_checklists/{id}/export` | Query `format=cklb|ckl` |
 | POST/PUT | `/stig_checklists/export_bulk` | JSON `{checklist_ids?, stig_collection_id?, format, host_id?, baseline_id?}` | Zip of multiple checklists. Either `checklist_ids` **or** `stig_collection_id` (workspace-scoped, optional host/baseline filters). Workspace-scoped calls use the same read ACL as archive export: missing or unreadable workspace → **404** (not **403**). **400** when filters match no checklists. Same zip/filename rules as collection archive. |
 | POST/PUT | `/stig_checklists/{id}/upgrade` | `{baseline_id}` — same `stig_id`, newer revision; merge reviews when `check_content_hash` matches |
-| POST | `/stig_imports` | Query `format=ckl|cklb|zip|xccdf-results`, `source_uri`, `stig_collection_id`; raw body (see §11.4.1) |
-| POST | `/stig_collections/{id}/imports` | JSON `{files: [{source_uri, format?, content\|content_base64}]}` **or** raw zip body (`format=zip` query or PK magic). Batch CKL/CKLB collection import builder; workspace **write** required. |
+| POST | `/stig_imports` | Query `format=ckl\|cklb\|zip\|xccdf-results-zip\|xccdf-results`, `source_uri`, `stig_collection_id`; raw body (see §11.4.1) |
+| POST | `/stig_collections/{id}/imports` | JSON `{files: [{source_uri, format?, content\|content_base64}]}` **or** raw zip body (`format=zip` query or PK magic). Batch CKL/CKLB/XCCDF-results collection import; workspace **write** required. |
 | GET/POST/DELETE | `/stig_collections/{id}/baseline_defaults` | Workspace default `baseline_id` per `stig_id` (`default_baseline_map` on collection) |
 | GET/PATCH | `/stig_collections/{id}/review_requirements` | Workspace review validation policy (`review_requirements` JSON on collection). **GET** returns `{stig_collection_id, review_requirements, defaults}`. **PATCH** body `{review_requirements: {...}}` or flat policy fields; requires workspace **write**. |
+| GET/PATCH | `/stig_collections/{id}/metadata` | Optional workspace metadata (`metadata` JSON on collection). **GET** returns `{stig_collection_id, metadata}` (empty object when unset). **PATCH** requires workspace **write**; body `{metadata: {...}}` shallow-merges keys (set a key to JSON `null` to remove). `{replace: true, metadata: {...}}` replaces the entire object. `{clear: true}` removes all keys. Top-level `"metadata": null` returns **400** (use `clear: true` to wipe). Values must be JSON-serializable; non-object `metadata` returns **400**. |
 | POST/PUT | `/stig_collections/{id}/upgrade_checklists` | `{baseline_id, from_baseline_id?, stig_id?}` — bulk upgrade matching checklists in workspace |
 
 POST validates: host belongs to workspace; baseline exists; baseline has rules.
@@ -669,11 +699,13 @@ POST validates: host belongs to workspace; baseline exists; baseline has rules.
 
 ### 11.4.1 Checklist file import and HEC ingest
 
-`POST /stig_imports` parses one `.ckl`, `.cklb`, zip archive of checklists, or XCCDF `TestResult` scan file. CKL/CKLB use the same shape as [STIG Manager Watcher](https://github.com/NUWCDIVNPT/stigman-watcher) (`reviewsFromCkl` / `reviewsFromCklb`). XCCDF results map `rule-result@result` to Watcher `result` values (`pass`, `fail`, `notapplicable`, `notchecked`), then:
+`POST /stig_imports` parses one `.ckl`, `.cklb`, zip archive (checklists and/or XCCDF results), or a single XCCDF `TestResult` scan file. CKL/CKLB use the same shape as [STIG Manager Watcher](https://github.com/NUWCDIVNPT/stigman-watcher) (`reviewsFromCkl` / `reviewsFromCklb`). XCCDF results map `rule-result@result` to Watcher `result` values (`pass`, `fail`, `notapplicable`, `notchecked`).
 
-**Collection import builder:** `POST /stig_collections/{id}/imports` accepts a JSON `files` array (CKL/CKLB only) and returns `{stig_collection_id, results[], summary}`. Each result row includes `status` (`ok` \| `error`), host/checklist metadata, and `created` when the host or checklist row was new. Duplicate host+baseline imports update existing checklists (same idempotent apply path as single-file import). Zip uploads walk nested archives for `.ckl`/`.cklb` members (max 500 files; total uncompressed cap documented in `checklist_zip.py`). HTTP status: **201** when `summary.created > 0` and `summary.failed == 0`; otherwise **200** (all updates, or any per-file failure). **Gap vs STIG Manager:** no multi-file XCCDF **results** archive ingest — only per-file `format=xccdf-results` or HEC streaming.
+**Zip archives (`format=zip`):** nested zips supported; members are `.ckl`/`.cklb` and/or XCCDF result XML (`*-results.xml`, `*_results.xml`, or XML containing `TestResult` + `rule-result`). Manual STIG benchmark XML, SRG/SCAP source data streams, and OCIL are skipped. Caps: 500 members per archive, per-member and total uncompressed limits in `checklist_zip.py` / `xccdf_results_zip.py`. **`format=xccdf-results-zip`** accepts only XCCDF result members (errors when none). Mixed checklist + results archives are processed in one batch with per-file `ok`/`error` rows.
 
-Then for all formats:
+**Collection import builder:** `POST /stig_collections/{id}/imports` accepts JSON `files[]` (`ckl`, `cklb`, or `xccdf-results` per row) and returns `{stig_collection_id, results[], summary}`. Zip body uses the same walker as `format=zip`. HTTP status: **201** when `summary.created > 0` and `summary.failed == 0`; otherwise **200**. **Not supported:** full SCAP source data stream bundle parsing (only discrete OpenSCAP/Evaluate-STIG `TestResult` XML files in zip).
+
+For all formats:
 
 1. Emits one **fat** `stig:finding` JSON event per rule to **HEC** (`index=stig`, `sourcetype=stig:finding`). Each event includes Watcher review fields **and** asset `target_data`, STIG metadata, and the rule body (title, check content, fix text, CCIs, hashes) so a CKL/CKLB can be synthesized later from the index + KV.
 2. Applies the same events to KV current state (host, baseline, checklist, reviews).
@@ -732,13 +764,28 @@ Each finding row includes: `hostname`, `host_id`, `baseline_id`, `baseline_title
 
 SplunkUI **Collection dashboard** (`stig_collection_dashboard_ui`) loads metrics, findings, **aggregated open findings** (by group, rule, CCI), **unreviewed** rules/assets reports, and **POA&M** CSV/XLSX export for governance-open rows. Optional Simple XML dashboard: `stig_collection_metrics_lookup`.
 
+### 11.7 `stig_settings` (app configuration adapter)
+
+JSON adapter over **`stigs_in_splunk_settings.conf`** `[general]` (see §4.3.1). STIG Manager migrators can treat this as the Splunk-shaped **`/op/configuration`** surface for editor + ingest (not workspace catalog).
+
+| Method | Path | Capability | Body | Response |
+|--------|------|------------|------|----------|
+| GET | `/stig_settings` | **`stig_read`** | — | Public settings object (no `hec_token`). |
+| POST / PATCH / PUT | `/stig_settings` | **`stig_write`** | Partial JSON; any §4.3.1 field except `hec_token` | Updated public object. Unmentioned fields are preserved. `hec_token` in the body is ignored. |
+
+**GET response fields:** `_key` (always `general`), `vim_mode`, `trust_event_collection_id`, `ingest_index`, `ingest_sourcetype`, `hec_url`, `reconcile_earliest`, `updated_at`, `updated_by`. Missing conf values use defaults from `models.py`.
+
+**Typical callers:** STIG Editor (`vim_mode` only), classic **Editor shortcuts** view, automation scripts with **`stig_write`**. Full-form edits should use the UCC **Configuration** page so Splunk audits conf changes.
+
 ---
 
 ## 12. Splunk Search (reporting)
 
 **Do not** rely on `| rest .../storage/collections/data/...` for reviews: that endpoint returns a **flat JSON array**, not Splunk REST `entry[]`, so typical `rest` + `spath` patterns return **zero rows**.
 
-**Do** use kvstore lookups from `transforms.conf` with app context **`stigs_in_splunk`**:
+**Do** use kvstore lookups from `transforms.conf` with app context **`stigs_in_splunk`**.
+
+**ACL note:** KV `inputlookup` stanzas (including `stig_collections`) return rows for **all** workspaces in the collection. They are **not** filtered by workspace grants or REST `access_principals`. Any Splunk user who can run searches against this app can read lookup fields (for example workspace `name` and `metadata`). Use persist **`/stig_*` REST** when grant-scoped access is required.
 
 All review rows:
 
@@ -776,6 +823,15 @@ One baseline’s rules:
 ```
 
 Enrich with checklist/host via `lookup` on `stig_checklists` / custom fields as needed.
+
+Workspace metadata (REST `GET/PATCH .../metadata` stores JSON in KV; lookup exposes the raw string column):
+
+```spl
+| inputlookup stig_collections
+| eval metadata=coalesce(metadata, "{}")
+| search metadata="*moderate*"
+| table _key name description metadata
+```
 
 ---
 
@@ -879,7 +935,7 @@ curl $AUTH "$BASE/stig_checklists/CHECKLIST_ID/export?format=cklb"
 
 | Limitation | Detail |
 |------------|--------|
-| Orphan data | Failed imports before KV `_key` fix may leave orphan `stig_baseline_rules` or empty baselines; no automatic GC. |
+| Orphan data | Failed imports before KV `_key` fix may leave orphan `stig_baseline_rules` or empty baselines; no automatic GC. Admins can report and delete orphan **rules** via `GET/POST /stig_baselines/gc_orphan_rules` (does not remove empty baseline headers or checklist/review rows). |
 | No baseline dedup for legacy rows | Missing `content_fingerprint` until re-import. |
 | Global baselines | All workspaces share baseline catalog. |
 | Collection delete | Blocked when children exist unless `?cascade=true`; cascades workspace hosts/checklists/reviews/grants/assignment rows; baselines stay global. UCC Configuration delete only allows empty workspaces. |

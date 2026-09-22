@@ -1,0 +1,10 @@
+<dashboard version="1.1" script="stig_transfer_ui.js" isDashboard="false">
+  <label>Transfer assets</label>
+  <row>
+    <panel>
+      <html>
+        <div id="stig-ui-root"/>
+      </html>
+    </panel>
+  </row>
+</dashboard>

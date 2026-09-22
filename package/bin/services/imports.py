@@ -6,7 +6,9 @@ import base64
 from typing import Any, Dict, List
 
 import audit
-from importers.checklist_zip import checklist_format, list_checklist_files
+from importers.checklist_zip import checklist_format
+from importers.import_archive_zip import list_archive_import_members
+from importers.xccdf_results_zip import list_xccdf_results_files
 from importers.events import events_from_parsed
 from importers.ingest import detect_format, parse_ingest
 from services import apply as apply_svc
@@ -16,6 +18,16 @@ from services import hec as hec_svc
 from services import settings as settings_svc
 
 MAX_BATCH_FILES = 500
+
+_BATCH_FORMATS = frozenset(
+    {
+        "ckl",
+        "cklb",
+        "xccdf-results",
+        "xccdf_results",
+        "xccdfresults",
+    }
+)
 
 
 def _collection_name(service, session: Dict[str, Any], collection_id: str) -> str:
@@ -67,6 +79,7 @@ def _public_import_row(rec: Dict[str, Any], *, status: str = "ok", error: str = 
     ]
     row["stats"] = rec.get("stats") or {}
     row["finding_count"] = int(rec.get("finding_count") or 0)
+    row["locked"] = int(rec.get("locked") or 0)
     row["created"] = _entry_created(rec)
     errors = rec.get("errors") or []
     if errors:
@@ -215,8 +228,10 @@ def import_checklist_batch(
             fmt = (entry.get("format") or "").strip().lower()
             if not fmt:
                 fmt = detect_format(source_uri, body)
-            if fmt not in {"ckl", "cklb"}:
-                raise ValueError("format must be ckl or cklb for collection import builder")
+            if fmt not in _BATCH_FORMATS:
+                raise ValueError(
+                    "format must be ckl, cklb, or xccdf-results for batch import"
+                )
             rec = import_checklist_file(
                 service,
                 body,
@@ -255,6 +270,36 @@ def import_checklist_batch(
     }
 
 
+def import_xccdf_results_zip(
+    service,
+    session: Dict[str, Any],
+    username: str,
+    collection_id: str,
+    body: bytes,
+    source_uri: str = "",
+) -> Dict[str, Any]:
+    if not body:
+        raise ValueError("empty zip body")
+    members = list_xccdf_results_files(body, source_prefix=source_uri or "archive.zip")
+    if not members:
+        raise ValueError(
+            "zip contains no XCCDF TestResult files "
+            "(expected *-results.xml or XML with rule-result elements)"
+        )
+    entries = [
+        {"source_uri": path, "format": "xccdf-results", "content": raw}
+        for path, raw in members
+    ]
+    batch = import_checklist_batch(service, session, username, collection_id, entries)
+    batch["archive"] = {
+        "source_uri": source_uri or "archive.zip",
+        "member_count": len(members),
+        "results_members": len(members),
+        "checklist_members": 0,
+    }
+    return batch
+
+
 def import_checklist_zip(
     service,
     session: Dict[str, Any],
@@ -265,21 +310,27 @@ def import_checklist_zip(
 ) -> Dict[str, Any]:
     if not body:
         raise ValueError("empty zip body")
-    members = list_checklist_files(body, source_prefix=source_uri or "archive.zip")
+    prefix = source_uri or "archive.zip"
+    members = list_archive_import_members(
+        body,
+        source_prefix=prefix,
+        include_checklists=True,
+        include_xccdf_results=True,
+    )
     if not members:
-        raise ValueError("zip contains no .ckl or .cklb checklist files")
-    entries = []
-    for path, raw in members:
-        entries.append(
-            {
-                "source_uri": path,
-                "format": checklist_format(path),
-                "content": raw,
-            }
+        raise ValueError(
+            "zip contains no .ckl/.cklb checklists or XCCDF TestResult XML files"
         )
+    checklist_count = sum(1 for m in members if m.format in {"ckl", "cklb"})
+    results_count = sum(1 for m in members if m.format == "xccdf-results")
+    entries = [
+        {"source_uri": m.path, "format": m.format, "content": m.content} for m in members
+    ]
     batch = import_checklist_batch(service, session, username, collection_id, entries)
     batch["archive"] = {
-        "source_uri": source_uri or "archive.zip",
+        "source_uri": prefix,
         "member_count": len(members),
+        "checklist_members": checklist_count,
+        "results_members": results_count,
     }
     return batch

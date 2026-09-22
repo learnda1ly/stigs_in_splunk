@@ -6,6 +6,8 @@ See [spec.md](spec.md) for the full build specification.
 
 For a gap backlog vs [STIG Manager](https://github.com/NUWCDIVNPT/stig-manager) (reference only), see [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md).
 
+REST contract (OpenAPI 3): [docs/openapi.yaml](docs/openapi.yaml) and [docs/api.md](docs/api.md).
+
 Watcher / HEC **`stig:finding`** event schema (STIGMan Watcher parity): [docs/watcher-hec.md](docs/watcher-hec.md).
 
 ## Build with Splunk UCC
@@ -65,9 +67,11 @@ Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
 
 - **STIG Editor** — workspace + host filters, finding list, status, details, comments
 - **Collection review** — one baseline rule across all hosts in a workspace (batch save)
+- **STIG library** — browse imported benchmarks grouped by `stig_id`, revision metadata, and rule detail (`GET /stig_baselines/hierarchy` and related persist paths). The SplunkUI table shows the first **200** rules per revision; use `GET /stig_baselines/{id}/rules` for the full list.
 - **Import** — checklists (`.ckl` / `.cklb` / `.zip` archive → HEC and KV; multi-file queue in UI) and STIG baselines (single XCCDF, CKL/CKLB, or a DISA product/quarterly zip via chunked persist REST `/stig_baselines/jobs`) on one page with **Checklists** and **Baselines** sections
 - **Export** — CKL / CKLB download; bulk zip by selection or workspace archive (`POST /stig_collections/{id}/archive/ckl|cklb`)
-- **Configuration** — UCC-generated page for workspaces and editor/HEC settings. A **Default** workspace is created automatically; checklist imports with no workspace go there until you move the host. The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
+- **Asset labels** — workspace label catalog (create/rename/delete) and host assignment (per-host toggles and bulk assign/remove); **Workspace grants** shows label names when picking ACL scope
+- **Configuration** — UCC-generated page for workspaces and **Editor & ingest** settings (`stigs_in_splunk_settings.conf` `[general]`). A **Default** workspace is created automatically; checklist imports with no workspace go there until you move the host. The HEC token stays on the Splunk `stig_findings` input and is never stored in app settings or returned to the browser. Field reference: [spec.md §4.3.1](spec.md#431-app-settings-stigs_in_splunk_settingsconf--stig_settings).
 
 Classic Simple XML + jQuery views remain under the **Classic** nav menu.
 
@@ -93,7 +97,22 @@ Assign `stig_user` or `stig_admin`, or grant capabilities `stig_read`, `stig_wri
 https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 ```
 
-Resources: `stig_collections` (including `/{id}/grants`, `/{id}/baseline_defaults`, `/{id}/review_requirements`, `/{id}/metrics`, `/{id}/findings`), `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_assignment_rules`.
+**API contract:** [docs/openapi.yaml](docs/openapi.yaml) (OpenAPI 3) and [docs/api.md](docs/api.md). `info.version` tracks `package/app.manifest`; update the YAML when persist routes change in `package/bin/stig_rest_handler.py`.
+
+Resources: `stig_collections` (including `/{id}/grants`, `/{id}/baseline_defaults`, `/{id}/review_requirements`, `/{id}/metadata`, `/{id}/metrics`, `/{id}/findings`), `stig_hosts` (including `/{id}/metadata` for asset JSON metadata), `stig_baselines` (including `/hierarchy`, `/by_stig/{stigId}`, `/rule/{ruleKey}`, `/{id}/rules/{ruleRef}`), `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_assignment_rules`, `stig_settings` (app configuration JSON adapter; see [spec.md §11.7](spec.md#117-stig_settings-app-configuration-adapter)).
+
+### App configuration (`stig_settings`)
+
+| Setting | Default | Notes |
+|---------|---------|--------|
+| `vim_mode` | `false` | Vim-style editor shortcuts |
+| `trust_event_collection_id` | `false` | Honor HEC `collectionId` before assignment rules |
+| `ingest_index` | `stig` | Index for `stig:finding` HEC posts |
+| `ingest_sourcetype` | `stig:finding` | Must match HEC input + reconcile search |
+| `hec_url` | `https://localhost:8088/services/collector/event` | Server-side collector URL |
+| `reconcile_earliest` | `-15m` | Window for `\| stigkvreconcile` |
+
+Edit via **Configuration → Editor & ingest** (Splunk admins) or `GET` / `POST` / `PATCH` / `PUT` `/stig_settings` (`stig_read` / `stig_write`). **`hec_token` is not a setting** — configure the token on the `stig_findings` HEC input only.
 
 **Delete workspace:** `DELETE /stig_collections/{id}` requires **stig_admin**. If the workspace still has hosts, checklists, grants, or assignment rows, the API returns **409** unless you pass `?cascade=true` (or JSON `{"cascade": true}`), which removes those workspace-scoped rows and leaves **global baselines** unchanged. The UCC **Workspaces** tab only deletes empty workspaces (Splunk’s table delete confirm); use REST for cascade.
 
@@ -130,7 +149,7 @@ curl -k -u admin:changeme -X POST \
   -d '{"files":[{"source_uri":"web-01.ckl","format":"ckl","content":"..."}]}'
 ```
 
-Zip archive of checklists (nested zips supported, `.ckl`/`.cklb` only):
+Zip archive of checklists and/or XCCDF scan results (nested zips supported):
 
 ```bash
 curl -k -u admin:changeme -X POST \
@@ -138,9 +157,17 @@ curl -k -u admin:changeme -X POST \
   --data-binary @hosts.zip
 ```
 
-**Not supported in the collection builder:** multi-file XCCDF **results** archives (STIG Manager automation bundle). Use single-file `format=xccdf-results` or HEC below.
+XCCDF-only results archive (skips `.ckl`/`.cklb` members):
 
-XCCDF scan results (`TestResult` with `rule-result` children). Import the matching Manual STIG baseline first (or set a workspace default revision):
+```bash
+curl -k -u admin:changeme -X POST \
+  "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_imports?format=xccdf-results-zip&stig_collection_id=COLLECTION_ID&source_uri=scan-results.zip" \
+  --data-binary @scan-results.zip
+```
+
+Supported archive shape: one XML file per host scan with an XCCDF 1.2 `TestResult` root (or embedded `TestResult`) and `rule-result` children — typical OpenSCAP `*-results.xml` or Evaluate-STIG output. **Not supported:** ingesting full SCAP source data stream bundles as a single parsed artifact (import Manual STIG baselines separately).
+
+Single-file XCCDF scan results. Import the matching Manual STIG baseline first (or set a workspace default revision):
 
 ```bash
 curl -k -u admin:changeme -X POST \
@@ -221,7 +248,7 @@ export SPLUNK_PASSWORD='your-admin-password'
 
 ## Search
 
-Use `| inputlookup stig_reviews` (and related stanzas in `package/default/transforms.conf`) with app context **stigs_in_splunk**. See spec.md §12.
+Use `| inputlookup stig_reviews` (and related stanzas in `package/default/transforms.conf`, including `stig_collections` for workspace `metadata`) with app context **stigs_in_splunk**. Lookups are **not** grant-filtered—REST `/stig_*` enforces workspace ACL. See [spec.md §12](spec.md#12-splunk-search-reporting).
 
 ## Collection metrics and findings report
 
@@ -240,3 +267,9 @@ REST (requires `stig_read` and workspace access):
 For ad-hoc Splunk exports without REST, pipe open findings to `| outputcsv` after the governance filter in spec.md §12 (`status=open NOT workflow_state=accepted`).
 
 See spec.md §11.6 for query parameters and response fields.
+
+## License and attribution
+
+This project is licensed under the [MIT License](LICENSE). Attribution and third-party notices are in [NOTICE](NOTICE).
+
+`stigs_in_splunk` is an independent Splunk-native implementation. [STIG Manager](https://github.com/NUWCDIVNPT/stig-manager) informed behavior and UX goals as a **reference only**—this repo is **not** a fork, not affiliated with NUWCDIVNPT/NAVSEA/STIG Manager, and does not include STIG Manager’s ExtJS client or other GPL-3.0 client code. Feature parity tracking: [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md).

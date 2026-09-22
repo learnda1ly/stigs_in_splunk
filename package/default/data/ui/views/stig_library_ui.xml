@@ -1,0 +1,10 @@
+<dashboard version="1.1" theme="dark" isVisible="true" script="stig_library_ui.js" stylesheet="stig_editor.css">
+  <label>STIG library</label>
+  <row>
+    <panel>
+      <html>
+        <div id="stig-ui-root"></div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

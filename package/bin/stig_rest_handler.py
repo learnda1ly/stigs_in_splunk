@@ -20,13 +20,18 @@ import access
 import kv_client
 from importers.ingest import detect_format
 from services import baselines as baselines_svc
+from services import baseline_library as baseline_library_svc
 from services import baseline_jobs as baseline_jobs_svc
 from services import checklists as checklists_svc
 from services import baseline_defaults as baseline_defaults_svc
 from services import review_requirements as review_requirements_svc
+from services import collection_metadata as collection_metadata_svc
+from services import collection_clone as collection_clone_svc
+from services import collection_transfer as collection_transfer_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
 from services import labels as labels_svc
+from services import host_metadata as host_metadata_svc
 from services import hosts as hosts_svc
 from services import assignment as assignment_svc
 from services import imports as imports_svc
@@ -265,6 +270,34 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     return _error(str(exc), status=403)
             return _error("method not allowed", status=405)
 
+        if len(parts) >= 2 and parts[1] == "metadata":
+            if method == "GET" and len(parts) == 2:
+                try:
+                    return _json_response(
+                        collection_metadata_svc.get_metadata(service, key, session)
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+                except ValueError as exc:
+                    return _error(str(exc), status=400)
+            if method in ("POST", "PUT", "PATCH") and len(parts) == 2:
+                body = _body_json(payload)
+                try:
+                    return _json_response(
+                        collection_metadata_svc.patch_metadata(
+                            service, key, body, username, session
+                        )
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+                except ValueError as exc:
+                    return _error(str(exc), status=400)
+            return _error("method not allowed", status=405)
+
         if len(parts) >= 2 and parts[1] == "grants":
             return self._collection_grants(
                 method, key, parts[2:], payload, service, session, username
@@ -274,6 +307,40 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return self._collection_labels(
                 method, key, parts[2:], payload, service, session, username
             )
+
+        if len(parts) == 2 and parts[1] == "clone":
+            if method not in ("POST", "PUT"):
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            try:
+                result = collection_clone_svc.clone_collection(
+                    service, key, body, username, session
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+            return _json_response(result, status=201)
+
+        if len(parts) == 3 and parts[1] == "export-to":
+            if method not in ("POST", "PUT"):
+                return _error("method not allowed", status=405)
+            dest_id = parts[2]
+            body = _body_json(payload)
+            try:
+                result = collection_transfer_svc.export_hosts_to_collection(
+                    service, key, dest_id, body, username, session
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+            status = 201 if int((result.get("summary") or {}).get("moved") or 0) else 200
+            return _json_response(result, status=status)
 
         if len(parts) == 2 and parts[1] == "upgrade_checklists":
             if method not in ("POST", "PUT"):
@@ -585,6 +652,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
                         service, collection_id, body, username, session
                     )
                     return _json_response(rec, status=201)
+                except ValueError as exc:
+                    return _error(str(exc), status=400)
                 except KeyError:
                     return _error("not found", status=404)
                 except PermissionError as exc:
@@ -682,6 +751,33 @@ class StigRestHandler(PersistentServerConnectionApplication):
         key = parts[0]
         if len(parts) >= 2:
             sub = parts[1]
+            if sub == "metadata":
+                if method == "GET" and len(parts) == 2:
+                    try:
+                        return _json_response(
+                            host_metadata_svc.get_metadata(service, key, session)
+                        )
+                    except KeyError:
+                        return _error("not found", status=404)
+                    except PermissionError as exc:
+                        return _error(str(exc), status=403)
+                    except ValueError as exc:
+                        return _error(str(exc), status=400)
+                if method in ("POST", "PUT", "PATCH") and len(parts) == 2:
+                    body = _body_json(payload)
+                    try:
+                        return _json_response(
+                            host_metadata_svc.patch_metadata(
+                                service, key, body, username, session
+                            )
+                        )
+                    except KeyError:
+                        return _error("not found", status=404)
+                    except PermissionError as exc:
+                        return _error(str(exc), status=403)
+                    except ValueError as exc:
+                        return _error(str(exc), status=400)
+                return _error("method not allowed", status=405)
             if sub == "checklists" and method == "GET":
                 try:
                     rows = checklists_svc.list_checklists_for_host(
@@ -728,7 +824,16 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return _json_response(rec)
         if method in ("PATCH", "POST", "PUT"):
             body = _body_json(payload)
-            updated = hosts_svc.update_host(service, key, body, username, session)
+            try:
+                updated = hosts_svc.update_host(
+                    service, key, body, username, session
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
             return _json_response(updated)
         if method == "DELETE":
             if not access.user_has_stig_admin(session):
@@ -863,6 +968,34 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 method, parts[1:], query, payload, service, username
             )
 
+        if parts == ["gc_orphan_rules"]:
+            if method not in ("GET", "POST"):
+                return _error("method not allowed", status=405)
+            if not access.user_has_stig_admin(session):
+                return _error("stig_admin required", status=403)
+            body = _body_json(payload)
+            execute = False
+            if method == "POST":
+                execute = baselines_svc.parse_orphan_gc_execute_flag(query, body)
+            report = baselines_svc.gc_orphan_baseline_rules(
+                service, username, execute=execute
+            )
+            return _json_response(report)
+
+        if parts == ["hierarchy"]:
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            return _json_response(baseline_library_svc.list_hierarchy(service))
+
+        if len(parts) >= 2 and parts[0] == "by_stig":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            stig_id = "/".join(parts[1:])
+            entry = baseline_library_svc.get_benchmark(service, stig_id)
+            if not entry:
+                return _error("not found", status=404)
+            return _json_response(entry)
+
         if len(parts) == 2 and parts[0] == "rules":
             if method != "GET":
                 return _error("method not allowed", status=405)
@@ -919,11 +1052,25 @@ class StigRestHandler(PersistentServerConnectionApplication):
         if len(parts) == 2 and parts[0] == "rule":
             if method != "GET":
                 return _error("method not allowed", status=405)
-            rule_key = parts[1]
-            match = baselines_svc.get_catalog_rule_reference(service, rule_key)
-            if not match:
+            detail = baseline_library_svc.get_rule_by_key(service, parts[1])
+            if not detail:
                 return _error("not found", status=404)
-            return _json_response(match)
+            return _json_response(detail)
+
+        if len(parts) == 3 and parts[1] == "rules":
+            baseline_id = parts[0]
+            rule_ref = parts[2]
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            detail = baseline_library_svc.get_baseline_rule(
+                service,
+                baseline_id,
+                rule_ref,
+                group_id=str(query.get("group_id") or ""),
+            )
+            if not detail:
+                return _error("not found", status=404)
+            return _json_response(detail)
 
         if len(parts) == 2 and parts[1] == "rules":
             baseline_id = parts[0]
@@ -1254,14 +1401,23 @@ class StigRestHandler(PersistentServerConnectionApplication):
         if not body:
             return _error("empty import body")
         fmt = (query.get("format") or detect_format(source_uri, body)).lower()
-        if fmt == "zip":
+        if fmt in {
+            "zip",
+            "xccdf-results-zip",
+            "xccdf_results_zip",
+            "xccdfresultszip",
+        }:
             try:
                 cid = collection_id
                 if not cid:
                     cid = imports_svc.resolve_import_workspace(
                         service, session, username, ""
                     )
-                rec = imports_svc.import_checklist_zip(
+                if fmt == "zip":
+                    importer = imports_svc.import_checklist_zip
+                else:
+                    importer = imports_svc.import_xccdf_results_zip
+                rec = importer(
                     service,
                     session,
                     username,
@@ -1277,7 +1433,9 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error(str(exc), status=400)
             return _json_response(rec, status=_batch_import_http_status(rec))
         if fmt not in {"ckl", "cklb", "xccdf-results", "xccdf_results", "xccdfresults"}:
-            return _error("format must be ckl, cklb, zip, or xccdf-results")
+            return _error(
+                "format must be ckl, cklb, zip, xccdf-results-zip, or xccdf-results"
+            )
         rec = imports_svc.import_checklist_file(
             service,
             body,

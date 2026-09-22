@@ -281,7 +281,9 @@ class TestBaselineReferenceRest(unittest.TestCase):
     def test_get_rule_key_200_and_404(self):
         ok = self._dispatch("GET", "stig_baselines/rule/rule_a")
         self.assertEqual(ok["status"], 200)
-        self.assertEqual(json.loads(ok["payload"])["rule_key"], "rule_a")
+        body = json.loads(ok["payload"])
+        self.assertEqual(body.get("baseline_id"), "base_v1")
+        self.assertEqual((body.get("rule") or {}).get("_key"), "rule_a")
         missing = self._dispatch("GET", "stig_baselines/rule/no-such-key")
         self.assertEqual(missing["status"], 404)
 

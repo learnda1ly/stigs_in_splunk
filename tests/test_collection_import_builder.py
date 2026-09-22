@@ -70,7 +70,7 @@ class TestChecklistZip(unittest.TestCase):
         with self.assertRaises(ValueError):
             checklist_zip.list_checklist_files(buf.getvalue())
 
-    @patch.object(checklist_zip, "MAX_CHECKLIST_FILES", 1)
+    @patch("importers.import_archive_zip.MAX_ARCHIVE_IMPORT_FILES", 1)
     def test_max_checklist_files_boundary(self):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
@@ -274,23 +274,30 @@ class TestImportBatchService(unittest.TestCase):
         self.assertFalse(out["results"][0]["created"])
         self.assertEqual(out["summary"]["updated"], 1)
 
-    @patch.object(imports_svc, "import_checklist_batch")
-    @patch("services.imports.list_checklist_files")
-    def test_import_checklist_zip_expands_members(self, mock_list, mock_batch):
-        mock_list.return_value = [("bundle/a.ckl", b"<x/>")]
-        mock_batch.return_value = {
-            "stig_collection_id": "col1",
-            "results": [],
-            "summary": {"total": 1, "succeeded": 1, "failed": 0, "created": 1, "updated": 0},
-        }
-        out = imports_svc.import_checklist_zip(
-            MagicMock(),
-            _session(),
-            "alice",
-            "col1",
-            b"PK",
-            source_uri="bundle.zip",
-        )
+    def test_import_checklist_zip_expands_members(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("bundle/a.ckl", b"<CHECKLIST/>")
+        with patch.object(imports_svc, "import_checklist_batch") as mock_batch:
+            mock_batch.return_value = {
+                "stig_collection_id": "col1",
+                "results": [],
+                "summary": {
+                    "total": 1,
+                    "succeeded": 1,
+                    "failed": 0,
+                    "created": 1,
+                    "updated": 0,
+                },
+            }
+            out = imports_svc.import_checklist_zip(
+                MagicMock(),
+                _session(),
+                "alice",
+                "col1",
+                buf.getvalue(),
+                source_uri="bundle.zip",
+            )
         self.assertEqual(out["archive"]["member_count"], 1)
         mock_batch.assert_called_once()
 

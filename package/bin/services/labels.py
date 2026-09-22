@@ -6,7 +6,16 @@ from typing import Any, Dict, List, Optional, Set
 
 import audit
 import kv_client
-from models import KV_STIG_HOSTS, KV_STIG_LABELS, dumps_json, kv_record, new_id, now_epoch, parse_json_field
+from models import (
+    KV_STIG_COLLECTION_GRANTS,
+    KV_STIG_HOSTS,
+    KV_STIG_LABELS,
+    dumps_json,
+    kv_record,
+    new_id,
+    now_epoch,
+    parse_json_field,
+)
 from services import grants as grants_svc
 
 
@@ -153,6 +162,27 @@ def update_label(
     return _public_label(stored)
 
 
+def _prune_label_from_grants(
+    service, collection_id: str, label_id: str, username: str
+) -> int:
+    grants_coll = kv_client.get_collection(service, KV_STIG_COLLECTION_GRANTS)
+    ts = now_epoch()
+    pruned = 0
+    for grant in kv_client.query_all(
+        grants_coll, {"stig_collection_id": collection_id}
+    ):
+        acl = _normalize_label_ids(grant.get("acl_labels"))
+        if label_id not in acl:
+            continue
+        patch = dict(grant)
+        patch["acl_labels"] = dumps_json([x for x in acl if x != label_id])
+        patch["updated_at"] = ts
+        patch["updated_by"] = username
+        kv_client.update_record(grants_coll, grant["_key"], kv_record(patch))
+        pruned += 1
+    return pruned
+
+
 def delete_label(
     service,
     collection_id: str,
@@ -177,6 +207,7 @@ def delete_label(
         patch["updated_at"] = ts
         patch["updated_by"] = username
         kv_client.update_record(hosts_coll, host["_key"], kv_record(patch))
+    _prune_label_from_grants(service, collection_id, label_id, username)
     audit.log_event("delete", "stig_label", label_id, username)
 
 

@@ -1,43 +1,1140 @@
 openapi: 3.0.3
 info:
-  title: stigs_in_splunk persist REST (catalog reference)
-  version: 1.0.0
+  title: STIG in Splunk persist REST API
+  version: 0.1.0
   description: |
-    Partial OpenAPI for baseline catalog reference endpoints added for STIG Manager parity.
-    Full API is documented in spec.md.
+    Splunk custom **persist** REST surface for the `stigs_in_splunk` app (KV-backed STIG workspaces,
+    checklists, and reviews). Paths mirror `restmap.conf` `match` values under the Splunk namespace
+    `servicesNS/nobody/stigs_in_splunk`.
+
+    **Not** the STIG Manager OpenAPI (`stig-manager.yaml`). Resource names are Splunk-shaped (`stig_*`).
+
+    **Versioning:** `info.version` tracks the app release (`package/app.manifest`, `globalConfig.yaml`).
+    URL paths are not version-prefixed. Update this file when `package/bin/stig_rest_handler.py` changes.
+
+    **Auth:** Splunk session or HTTP Basic on the management port; Splunk Web uses session + CSRF form key.
+    No parallel OIDC or OAuth scopes in this app.
+
+    **Errors:** Most failures return JSON `{"error": "<message>"}` with an appropriate HTTP status.
+    Successful JSON bodies are returned directly (Splunk persist `output_modes=json`).
+
+    **Capabilities:** See `package/default/authorize.conf` and per-route `capability.*` in `restmap.conf`.
+    Workspace grants may return **404** instead of **403** to avoid leaking collection existence.
+
+  contact:
+    name: stigs_in_splunk
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
 servers:
   - url: https://{host}:8089/servicesNS/nobody/stigs_in_splunk
+    description: Splunk management port (curl, automation)
     variables:
       host:
         default: localhost
+  - url: https://{host}/{locale}/splunkd/__raw/servicesNS/nobody/stigs_in_splunk
+    description: Splunk Web proxy (browser UI)
+    variables:
+      host:
+        default: localhost
+      locale:
+        default: en-US
+
+tags:
+  - name: Collections
+    description: Workspaces (`stig_collections`)
+  - name: Collection grants
+  - name: Collection labels
+  - name: Collection reporting
+  - name: Hosts
+    description: Assets (`stig_hosts`)
+  - name: Baselines
+    description: STIG library (`stig_baselines`)
+  - name: Baseline jobs
+  - name: Checklists
+  - name: Reviews
+  - name: Imports
+  - name: Findings
+  - name: Settings
+  - name: Assignment
+    description: HEC routing rules and preview
+  - name: UCC baselines
+    description: Configuration table adapter (`stigs_in_splunk_baseline`)
+
+security:
+  - splunkBasicAuth: []
+  - splunkSessionCookie: []
+
 paths:
+  /stig_collections:
+    get:
+      tags: [Collections]
+      summary: List workspaces
+      operationId: listCollections
+      responses:
+        "200":
+          description: Array of workspace records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Collection"
+    post:
+      tags: [Collections]
+      summary: Create workspace
+      operationId: createCollection
+      x-splunk-capability: stig_write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionCreate"
+      responses:
+        "201":
+          description: Created workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Collection"
+
+  /stig_collections/{collectionId}:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collections]
+      summary: Get workspace
+      operationId: getCollection
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Collection"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Collections]
+      summary: Update workspace
+      operationId: patchCollection
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionUpdate"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Collection"
+    put:
+      tags: [Collections]
+      summary: Update workspace (alias)
+      operationId: putCollection
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionUpdate"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Collection"
+    post:
+      tags: [Collections]
+      summary: Update workspace (alias)
+      operationId: postCollection
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionUpdate"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Collection"
+    delete:
+      tags: [Collections]
+      summary: Delete workspace
+      operationId: deleteCollection
+      x-splunk-capability: stig_admin
+      parameters:
+        - name: cascade
+          in: query
+          schema:
+            type: boolean
+          description: When true, delete child hosts, checklists, grants, etc.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cascade:
+                  type: boolean
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+        "409":
+          description: Children exist; pass cascade=true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CascadeRequiredError"
+
+  /stig_collections/{collectionId}/metadata:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collections]
+      summary: Get workspace metadata JSON
+      operationId: getCollectionMetadata
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataDocument"
+    patch:
+      tags: [Collections]
+      summary: Patch workspace metadata
+      operationId: patchCollectionMetadata
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetadataPatch"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataDocument"
+
+  /stig_collections/{collectionId}/clone:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    post:
+      tags: [Collections]
+      summary: Clone workspace
+      operationId: cloneCollection
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionCloneRequest"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/export-to/{destCollectionId}:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+      - name: destCollectionId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [Collections]
+      summary: Bulk transfer hosts to another workspace
+      operationId: transferHostsToCollection
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                host_ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Transfer finished; no hosts moved (`summary.moved` is 0)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionTransferResult"
+        "201":
+          description: At least one host moved to the destination workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionTransferResult"
+
+  /stig_collections/{collectionId}/baseline_defaults:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collections]
+      summary: List default baseline per STIG id
+      operationId: listBaselineDefaults
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      tags: [Collections]
+      summary: Set default baseline for a STIG id
+      operationId: setBaselineDefault
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [baseline_id]
+              properties:
+                stig_id:
+                  type: string
+                benchmark_id:
+                  type: string
+                  description: Alias for stig_id
+                baseline_id:
+                  type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/baseline_defaults/{stigId}:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+      - name: stigId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      tags: [Collections]
+      summary: Remove default baseline for a STIG id
+      operationId: deleteBaselineDefault
+      x-splunk-capability: stig_write
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/review_requirements:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collections]
+      summary: Get review validation policy
+      operationId: getReviewRequirements
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      tags: [Collections]
+      summary: Update review validation policy
+      operationId: patchReviewRequirements
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/upgrade_checklists:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    post:
+      tags: [Collections]
+      summary: Bulk upgrade checklists to a newer baseline revision
+      operationId: upgradeCollectionChecklists
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                baseline_id:
+                  type: string
+                from_baseline_id:
+                  type: string
+                stig_id:
+                  type: string
+                benchmark_id:
+                  type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/metrics:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collection reporting]
+      summary: Workspace dashboard metrics
+      operationId: getCollectionMetrics
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/findings:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collection reporting]
+      summary: Paginated governance-open findings
+      operationId: getCollectionFindings
+      parameters:
+        - $ref: "#/components/parameters/paginationOffset"
+        - $ref: "#/components/parameters/paginationLimit"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/findings/aggregate:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collection reporting]
+      summary: Aggregate open findings by group, rule, or CCI
+      operationId: aggregateCollectionFindings
+      parameters:
+        - name: group_by
+          in: query
+          schema:
+            type: string
+            example: group_id,rule_id,cci
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/unreviewed/rules:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collection reporting]
+      summary: Unreviewed rule counts
+      operationId: getUnreviewedRules
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/unreviewed/assets:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collection reporting]
+      summary: Unreviewed counts per host
+      operationId: getUnreviewedAssets
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/poam:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collection reporting]
+      summary: POA&M export
+      operationId: getCollectionPoam
+      parameters:
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [json, csv, xlsx]
+            default: json
+      responses:
+        "200":
+          description: JSON object, or CSV/XLSX attachment when format is csv/xlsx
+          content:
+            application/json:
+              schema:
+                type: object
+            text/csv:
+              schema:
+                type: string
+
+  /stig_collections/{collectionId}/imports:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    post:
+      tags: [Imports]
+      summary: Collection import builder (batch files or checklist zip)
+      operationId: importToCollection
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionImportBatch"
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+            description: Zip body with format=zip (query or JSON hint)
+      responses:
+        "200":
+          description: |
+            Batch or zip import finished without new host/checklist rows, with partial
+            per-file failures (`summary.failed` > 0), or idempotent updates only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportBatchResult"
+        "201":
+          description: At least one imported file created a new host or checklist (`summary.created` > 0)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportBatchResult"
+
+  /stig_collections/{collectionId}/archive/{format}:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+      - name: format
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [ckl, cklb]
+    post:
+      tags: [Checklists]
+      summary: Export workspace checklists as zip archive
+      operationId: exportCollectionArchive
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: string
+                baseline_id:
+                  type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/grants:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collection grants]
+      summary: List grants
+      operationId: listGrants
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      tags: [Collection grants]
+      summary: Create grant
+      operationId: createGrant
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/grants/{grantId}:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+      - $ref: "#/components/parameters/grantId"
+    get:
+      tags: [Collection grants]
+      summary: Get grant
+      operationId: getGrant
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      tags: [Collection grants]
+      summary: Update grant
+      operationId: patchGrant
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    delete:
+      tags: [Collection grants]
+      summary: Delete grant
+      operationId: deleteGrant
+      x-splunk-capability: stig_write
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/grants/{grantId}/acl:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+      - $ref: "#/components/parameters/grantId"
+    put:
+      tags: [Collection grants]
+      summary: Set restricted grant ACL filters
+      operationId: putGrantAcl
+      x-splunk-capability: stig_write
+      requestBody:
+        $ref: "#/components/requestBodies/GrantAclBody"
+      responses:
+        "200":
+          description: Updated grant ACL
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      tags: [Collection grants]
+      summary: Set restricted grant ACL filters (alias)
+      operationId: patchGrantAcl
+      x-splunk-capability: stig_write
+      requestBody:
+        $ref: "#/components/requestBodies/GrantAclBody"
+      responses:
+        "200":
+          description: Updated grant ACL
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      tags: [Collection grants]
+      summary: Set restricted grant ACL filters (alias)
+      operationId: postGrantAcl
+      x-splunk-capability: stig_write
+      requestBody:
+        $ref: "#/components/requestBodies/GrantAclBody"
+      responses:
+        "200":
+          description: Updated grant ACL
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/labels:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collection labels]
+      summary: List labels
+      operationId: listLabels
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      tags: [Collection labels]
+      summary: Create label
+      operationId: createLabel
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/labels/{labelId}:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+      - name: labelId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Collection labels]
+      summary: Get label
+      operationId: getLabel
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      tags: [Collection labels]
+      summary: Update label
+      operationId: patchLabel
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    delete:
+      tags: [Collection labels]
+      summary: Delete label
+      operationId: deleteLabel
+      x-splunk-capability: stig_write
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/labels/{labelId}/assets:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+      - name: labelId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [Collection labels]
+      summary: Assign label to hosts
+      operationId: assignLabelToHosts
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                host_ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_findings:
+    get:
+      tags: [Findings]
+      summary: Workspace findings (alias of collection findings)
+      operationId: listFindings
+      parameters:
+        - name: stig_collection_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/paginationOffset"
+        - $ref: "#/components/parameters/paginationLimit"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /stig_hosts:
+    get:
+      tags: [Hosts]
+      summary: List hosts
+      operationId: listHosts
+      parameters:
+        - name: stig_collection_id
+          in: query
+          schema:
+            type: string
+        - name: label_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Host"
+    post:
+      tags: [Hosts]
+      summary: Create host
+      operationId: createHost
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HostCreate"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Host"
+
+  /stig_hosts/{hostId}:
+    parameters:
+      - $ref: "#/components/parameters/hostId"
+    get:
+      tags: [Hosts]
+      summary: Get host
+      operationId: getHost
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Host"
+    patch:
+      tags: [Hosts]
+      summary: Update host (including move workspace via stig_collection_id)
+      operationId: patchHost
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HostUpdate"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Host"
+    delete:
+      tags: [Hosts]
+      summary: Delete host
+      operationId: deleteHost
+      x-splunk-capability: stig_admin
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: string
+
+  /stig_hosts/{hostId}/metadata:
+    parameters:
+      - $ref: "#/components/parameters/hostId"
+    get:
+      tags: [Hosts]
+      summary: Get host metadata JSON
+      operationId: getHostMetadata
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataDocument"
+    patch:
+      tags: [Hosts]
+      summary: Patch host metadata
+      operationId: patchHostMetadata
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetadataPatch"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataDocument"
+
+  /stig_hosts/{hostId}/checklists:
+    parameters:
+      - $ref: "#/components/parameters/hostId"
+    get:
+      tags: [Hosts]
+      summary: List checklists for host
+      operationId: listHostChecklists
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Checklist"
+
+  /stig_hosts/{hostId}/stigs:
+    parameters:
+      - $ref: "#/components/parameters/hostId"
+    post:
+      tags: [Hosts]
+      summary: Assign baseline to host (create checklist)
+      operationId: assignStigToHost
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                baseline_id:
+                  type: string
+                stig_id:
+                  type: string
+      responses:
+        "200":
+          description: Checklist already existed (idempotent assign)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Checklist"
+                  - type: object
+                    properties:
+                      created:
+                        type: boolean
+                        enum: [false]
+        "201":
+          description: New checklist created for host + baseline
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Checklist"
+                  - type: object
+                    properties:
+                      created:
+                        type: boolean
+                        enum: [true]
+
+  /stig_hosts/{hostId}/stigs/{baselineRef}:
+    parameters:
+      - $ref: "#/components/parameters/hostId"
+      - name: baselineRef
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Baseline KV `_key` or STIG id
+    delete:
+      tags: [Hosts]
+      summary: Unassign STIG from host
+      operationId: unassignStigFromHost
+      x-splunk-capability: stig_write
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_baselines:
+    get:
+      tags: [Baselines]
+      summary: List baselines in catalog
+      operationId: listBaselines
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Baseline"
+
+  /stig_baselines/import:
+    post:
+      tags: [Baselines]
+      summary: Import baseline from XCCDF, CKL, or CKLB body
+      operationId: importBaseline
+      x-splunk-capability: stig_write
+      parameters:
+        - name: format
+          in: query
+          schema:
+            type: string
+            default: xccdf
+            enum: [xccdf, ckl, cklb]
+        - name: source_uri
+          in: query
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              type: string
+              format: binary
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Import succeeded; baseline deduplicated (no new KV row)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineImportResult"
+        "201":
+          description: Import created at least one new baseline record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineImportResult"
+
+  /stig_baselines/hierarchy:
+    get:
+      tags: [Baselines]
+      summary: Benchmark-centric library hierarchy
+      operationId: getBaselineHierarchy
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_baselines/by_stig/{stigId}:
+    get:
+      tags: [Baselines]
+      summary: Get benchmark entry and revisions for a STIG id
+      operationId: getBaselineByStigId
+      parameters:
+        - name: stigId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: May contain slashes; matched as path suffix
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /stig_baselines/rules/{ruleRef}:
     get:
-      summary: Find rules by id across baselines
+      tags: [Baselines]
+      summary: Find rules by id across all baselines
+      operationId: findCatalogRulesByRef
       parameters:
         - name: ruleRef
           in: path
           required: true
           schema:
             type: string
-          description: SV-id, EX rule version, group V-id, or full DISA XCCDF rule id
         - name: stig_id
           in: query
           schema:
             type: string
-          description: Optional logical STIG id filter
       responses:
         "200":
-          description: One or more matching rules
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/BaselineRuleRefList"
         "404":
-          description: No matching rules
+          $ref: "#/components/responses/NotFound"
+
   /stig_baselines/ccis/{cci}:
     get:
-      summary: Find rules by CCI across baselines
+      tags: [Baselines]
+      summary: Find rules by CCI across all baselines
+      operationId: findCatalogRulesByCci
       parameters:
         - name: cci
           in: path
@@ -50,14 +1147,16 @@ paths:
             type: string
       responses:
         "200":
-          description: Zero or more matches
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/BaselineCciRefList"
+
   /stig_baselines/groups/{groupId}:
     get:
-      summary: Find rules by group V-id across baselines
+      tags: [Baselines]
+      summary: Find rules by group V-id across all baselines
+      operationId: findCatalogRulesByGroupId
       parameters:
         - name: groupId
           in: path
@@ -70,14 +1169,16 @@ paths:
             type: string
       responses:
         "200":
-          description: Zero or more matches
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/BaselineGroupRefList"
+
   /stig_baselines/rule/{ruleKey}:
     get:
-      summary: Get one baseline rule by KV key
+      tags: [Baselines]
+      summary: Get rule detail by stable rule key
+      operationId: getRuleByKey
       parameters:
         - name: ruleKey
           in: path
@@ -86,15 +1187,1383 @@ paths:
             type: string
       responses:
         "200":
-          description: Rule with baseline pointer
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BaselineRuleMatch"
-        "404":
-          description: Unknown rule key
+                type: object
+
+  /stig_baselines/{baselineId}:
+    parameters:
+      - $ref: "#/components/parameters/baselineId"
+    get:
+      tags: [Baselines]
+      summary: Get baseline record
+      operationId: getBaseline
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Baseline"
+    delete:
+      tags: [Baselines]
+      summary: Delete baseline and rules
+      operationId: deleteBaseline
+      x-splunk-capability: stig_admin
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_baselines/{baselineId}/rules:
+    parameters:
+      - $ref: "#/components/parameters/baselineId"
+    get:
+      tags: [Baselines]
+      summary: List all rules for baseline
+      operationId: listBaselineRules
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /stig_baselines/{baselineId}/rules/{ruleRef}:
+    parameters:
+      - $ref: "#/components/parameters/baselineId"
+      - name: ruleRef
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: group_id
+        in: query
+        schema:
+          type: string
+    get:
+      tags: [Baselines]
+      summary: Get one rule for baseline
+      operationId: getBaselineRule
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_baselines/gc_orphan_rules:
+    get:
+      tags: [Baselines]
+      summary: Dry-run report of orphan baseline rules (admin)
+      description: |
+        Lists `stig_baseline_rules` rows whose `baseline_id` is missing from
+        `stig_baselines`. Always dry-run; does not delete. Handler requires
+        `stig_admin` (Splunk `restmap.conf` admits GET with `stig_read`; without
+        admin capability the handler returns **403**).
+      operationId: reportOrphanBaselineRules
+      x-splunk-capability: stig_admin
+      responses:
+        "200":
+          description: Orphan rule report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrphanBaselineRulesGcResult"
+        "403":
+          description: stig_admin required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [Baselines]
+      summary: Report or delete orphan baseline rules (admin)
+      description: |
+        Default is dry-run (same shape as GET). Set query or JSON `dry_run=false`
+        or `confirm=true` to delete orphan rules only. Does not cascade to
+        checklists or reviews. Audit runs only when at least one row is deleted.
+        Orphans without a KV `_key` are counted in `orphan_count` but skipped
+        (`skipped_no_key_count`); handler requires `stig_admin` while Splunk
+        `restmap.conf` admits POST with `stig_write`.
+      operationId: gcOrphanBaselineRules
+      x-splunk-capability: stig_admin
+      parameters:
+        - name: dry_run
+          in: query
+          schema:
+            type: boolean
+            default: true
+        - name: confirm
+          in: query
+          schema:
+            type: boolean
+            default: false
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dry_run:
+                  type: boolean
+                  default: true
+                confirm:
+                  type: boolean
+                  default: false
+      responses:
+        "200":
+          description: Dry-run report or delete result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrphanBaselineRulesGcResult"
+        "403":
+          description: stig_admin required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /stig_baselines/jobs:
+    post:
+      tags: [Baseline jobs]
+      summary: Create chunked DISA library zip upload job
+      operationId: createBaselineJob
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filename, size]
+              properties:
+                filename:
+                  type: string
+                size:
+                  type: integer
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_baselines/jobs/{jobId}:
+    parameters:
+      - $ref: "#/components/parameters/jobId"
+    get:
+      tags: [Baseline jobs]
+      summary: Get job status
+      operationId: getBaselineJob
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    delete:
+      tags: [Baseline jobs]
+      summary: Delete job
+      operationId: deleteBaselineJob
+      x-splunk-capability: stig_write
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      tags: [Baseline jobs]
+      summary: Chunk, finalize, or import member from job zip
+      operationId: postBaselineJobAction
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/BaselineJobChunk"
+                - $ref: "#/components/schemas/BaselineJobFinalize"
+                - $ref: "#/components/schemas/BaselineJobImportMember"
+      responses:
+        "200":
+          description: |
+            Chunk appended, job finalized, or `action=import` deduplicated an existing baseline.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineJobActionResult"
+        "201":
+          description: action=import created a new baseline from a zip member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineJobActionResult"
+
+  /stig_checklists:
+    get:
+      tags: [Checklists]
+      summary: List checklists
+      operationId: listChecklists
+      parameters:
+        - name: stig_collection_id
+          in: query
+          schema:
+            type: string
+        - name: summary
+          in: query
+          schema:
+            type: boolean
+          description: When true, return summary rows instead of full records
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Checklist"
+    post:
+      tags: [Checklists]
+      summary: Create checklist
+      operationId: createChecklist
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checklist"
+
+  /stig_checklists/summary:
+    get:
+      tags: [Checklists]
+      summary: Summarize checklists (alias path)
+      operationId: summarizeChecklistsPath
+      parameters:
+        - name: stig_collection_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_checklists/export_bulk:
+    post:
+      tags: [Checklists]
+      summary: Bulk export checklists to zip
+      operationId: exportChecklistsBulk
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                checklist_ids:
+                  type: array
+                  items:
+                    type: string
+                ids:
+                  type: array
+                  items:
+                    type: string
+                stig_collection_id:
+                  type: string
+                format:
+                  type: string
+                  enum: [ckl, cklb]
+                host_id:
+                  type: string
+                baseline_id:
+                  type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_checklists/{checklistId}:
+    parameters:
+      - $ref: "#/components/parameters/checklistId"
+    get:
+      tags: [Checklists]
+      summary: Get checklist
+      operationId: getChecklist
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checklist"
+    patch:
+      tags: [Checklists]
+      summary: Update checklist
+      operationId: patchChecklist
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checklist"
+    delete:
+      tags: [Checklists]
+      summary: Delete checklist
+      operationId: deleteChecklist
+      x-splunk-capability: stig_admin
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_checklists/{checklistId}/upgrade:
+    parameters:
+      - $ref: "#/components/parameters/checklistId"
+    post:
+      tags: [Checklists]
+      summary: Upgrade checklist to newer baseline revision
+      operationId: upgradeChecklist
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                baseline_id:
+                  type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_checklists/{checklistId}/validate:
+    parameters:
+      - $ref: "#/components/parameters/checklistId"
+    get:
+      tags: [Checklists]
+      summary: Validate checklist (dry run)
+      operationId: validateChecklistGet
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      tags: [Checklists]
+      summary: Validate checklist and persist fixes
+      operationId: validateChecklistPost
+      x-splunk-capability: stig_write
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_checklists/{checklistId}/export:
+    parameters:
+      - $ref: "#/components/parameters/checklistId"
+    get:
+      tags: [Checklists]
+      summary: Export single checklist CKL or CKLB
+      operationId: exportChecklist
+      parameters:
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [ckl, cklb]
+            default: cklb
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: string
+            application/xml:
+              schema:
+                type: string
+
+  /stig_reviews:
+    get:
+      tags: [Reviews]
+      summary: List reviews
+      operationId: listReviews
+      parameters:
+        - name: checklist_id
+          in: query
+          schema:
+            type: string
+        - name: stig_collection_id
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+        - name: rule_version
+          in: query
+          schema:
+            type: string
+        - name: valid
+          in: query
+          schema:
+            type: string
+        - name: workflow_state
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Review"
+
+  /stig_reviews/batch:
+    post:
+      tags: [Reviews]
+      summary: Batch field update or governance action
+      operationId: batchReviews
+      x-splunk-capability: stig_write
+      description: |
+        Either `{ "reviews": [...] }` / `{ "updates": [...] }` for field patches (max 500 rows),
+        or `{ "action": "submit|accept|reject", "review_ids": [...] }` for workflow — not both.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewBatchRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_reviews/{reviewId}:
+    parameters:
+      - $ref: "#/components/parameters/reviewId"
+    get:
+      tags: [Reviews]
+      summary: Get review
+      operationId: getReview
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+    patch:
+      tags: [Reviews]
+      summary: Update review fields
+      operationId: patchReview
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+
+  /stig_reviews/{reviewId}/submit:
+    parameters:
+      - $ref: "#/components/parameters/reviewId"
+    post:
+      tags: [Reviews]
+      summary: Submit review for acceptance
+      operationId: submitReview
+      x-splunk-capability: stig_write
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+
+  /stig_reviews/{reviewId}/accept:
+    parameters:
+      - $ref: "#/components/parameters/reviewId"
+    post:
+      tags: [Reviews]
+      summary: Accept submitted review
+      operationId: acceptReview
+      x-splunk-capability: stig_write
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+
+  /stig_reviews/{reviewId}/reject:
+    parameters:
+      - $ref: "#/components/parameters/reviewId"
+    post:
+      tags: [Reviews]
+      summary: Reject submitted review
+      operationId: rejectReview
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reject_feedback:
+                  type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+
+  /stig_imports:
+    post:
+      tags: [Imports]
+      summary: Import checklist, scan results, or zip archive
+      operationId: importFile
+      x-splunk-capability: stig_write
+      parameters:
+        - name: format
+          in: query
+          schema:
+            type: string
+            description: |
+              `ckl`, `cklb`, `zip`, `xccdf-results`, `xccdf-results-zip` (and underscore variants).
+              Auto-detected from `source_uri` when omitted.
+        - name: stig_collection_id
+          in: query
+          schema:
+            type: string
+        - name: source_uri
+          in: query
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: |
+            Checklist ingest updated existing host/checklist in place, zip/xccdf-results-zip
+            batch finished without new rows or with partial failures, or reconcile-style replay.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ChecklistFileImportResult"
+                  - $ref: "#/components/schemas/ImportBatchResult"
+        "201":
+          description: Ingest created a new host or checklist row
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ChecklistFileImportResult"
+                  - $ref: "#/components/schemas/ImportBatchResult"
+
+  /stig_imports/reconcile:
+    get:
+      tags: [Imports]
+      summary: Reconcile KV from indexed stig:finding events
+      operationId: reconcileImportsGet
+      x-splunk-capability: stig_read
+      parameters:
+        - name: earliest
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      tags: [Imports]
+      summary: Reconcile KV from indexed stig:finding events
+      operationId: reconcileImportsPost
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                earliest:
+                  type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_settings:
+    get:
+      tags: [Settings]
+      summary: Get editor settings
+      operationId: getSettings
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      tags: [Settings]
+      summary: Update editor settings
+      operationId: patchSettings
+      x-splunk-capability: stig_write
+      requestBody:
+        $ref: "#/components/requestBodies/SettingsBody"
+      responses:
+        "200":
+          description: Saved settings (HEC token is never returned)
+          content:
+            application/json:
+              schema:
+                type: object
+    put:
+      tags: [Settings]
+      summary: Update editor settings (alias)
+      operationId: putSettings
+      x-splunk-capability: stig_write
+      requestBody:
+        $ref: "#/components/requestBodies/SettingsBody"
+      responses:
+        "200":
+          description: Saved settings (HEC token is never returned)
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      tags: [Settings]
+      summary: Update editor settings (alias)
+      operationId: postSettings
+      x-splunk-capability: stig_write
+      requestBody:
+        $ref: "#/components/requestBodies/SettingsBody"
+      responses:
+        "200":
+          description: Saved settings (HEC token is never returned)
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_assignment_rules:
+    get:
+      tags: [Assignment]
+      summary: List HEC assignment rules
+      operationId: listAssignmentRules
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      tags: [Assignment]
+      summary: Create assignment rule
+      operationId: createAssignmentRule
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_assignment_rules/{ruleId}:
+    parameters:
+      - name: ruleId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Assignment]
+      summary: Get assignment rule
+      operationId: getAssignmentRule
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      tags: [Assignment]
+      summary: Update assignment rule
+      operationId: patchAssignmentRule
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    delete:
+      tags: [Assignment]
+      summary: Delete assignment rule
+      operationId: deleteAssignmentRule
+      x-splunk-capability: stig_admin
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_host_baseline_assignments:
+    get:
+      tags: [Assignment]
+      summary: List host/baseline overrides
+      operationId: listHostBaselineAssignments
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      tags: [Assignment]
+      summary: Create override
+      operationId: createHostBaselineAssignment
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_host_baseline_assignments/{assignmentId}:
+    parameters:
+      - name: assignmentId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Assignment]
+      summary: Get override
+      operationId: getHostBaselineAssignment
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      tags: [Assignment]
+      summary: Update override
+      operationId: patchHostBaselineAssignment
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    delete:
+      tags: [Assignment]
+      summary: Delete override
+      operationId: deleteHostBaselineAssignment
+      x-splunk-capability: stig_admin
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_assignment/preview:
+    get:
+      tags: [Assignment]
+      summary: Preview HEC event workspace resolution
+      operationId: previewAssignmentGet
+      parameters:
+        - name: event
+          in: query
+          schema:
+            type: string
+          description: JSON-encoded finding event
+        - name: forced_collection_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      tags: [Assignment]
+      summary: Preview HEC event workspace resolution
+      operationId: previewAssignmentPost
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event]
+              properties:
+                event:
+                  type: object
+                forced_collection_id:
+                  type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stigs_in_splunk_baseline:
+    get:
+      tags: [UCC baselines]
+      summary: List baselines (UCC Configuration table shape)
+      operationId: listUccBaselines
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entry:
+                    type: array
+                    items:
+                      type: object
+    post:
+      tags: [UCC baselines]
+      summary: Rejected — use Import UI or /stig_baselines/jobs
+      operationId: createUccBaselineRejected
+      responses:
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /stigs_in_splunk_baseline/{uccName}:
+    parameters:
+      - name: uccName
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [UCC baselines]
+      summary: Get one UCC baseline entry
+      operationId: getUccBaseline
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    delete:
+      tags: [UCC baselines]
+      summary: Delete baseline by UCC name
+      operationId: deleteUccBaseline
+      x-splunk-capability: stig_admin
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
 components:
+  requestBodies:
+    GrantAclBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              host_ids:
+                type: array
+                items:
+                  type: string
+              baseline_ids:
+                type: array
+                items:
+                  type: string
+              label_ids:
+                type: array
+                items:
+                  type: string
+    SettingsBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+
+  securitySchemes:
+    splunkBasicAuth:
+      type: http
+      scheme: basic
+      description: Splunk management port (`curl -u user:pass`)
+    splunkSessionCookie:
+      type: apiKey
+      in: cookie
+      name: splunkd_8089
+      description: Splunk Web session; include `X-Splunk-Form-Key` on mutating requests
+
+  parameters:
+    collectionId:
+      name: collectionId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Workspace KV `_key`
+    hostId:
+      name: hostId
+      in: path
+      required: true
+      schema:
+        type: string
+    baselineId:
+      name: baselineId
+      in: path
+      required: true
+      schema:
+        type: string
+    checklistId:
+      name: checklistId
+      in: path
+      required: true
+      schema:
+        type: string
+    reviewId:
+      name: reviewId
+      in: path
+      required: true
+      schema:
+        type: string
+    grantId:
+      name: grantId
+      in: path
+      required: true
+      schema:
+        type: string
+    jobId:
+      name: jobId
+      in: path
+      required: true
+      schema:
+        type: string
+    paginationOffset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+    paginationLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+
+  responses:
+    NotFound:
+      description: Not found (or hidden by ACL)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
   schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    CascadeRequiredError:
+      type: object
+      properties:
+        error:
+          type: string
+        cascade_required:
+          type: boolean
+        children:
+          type: object
+
+    MetadataDocument:
+      type: object
+      additionalProperties: true
+
+    MetadataPatch:
+      type: object
+      description: Merge/replace/clear per service implementation (see spec.md)
+      additionalProperties: true
+
+    Collection:
+      type: object
+      properties:
+        _key:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        metadata:
+          type: object
+        default_baseline_map:
+          type: object
+      additionalProperties: true
+
+    CollectionCreate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    CollectionUpdate:
+      type: object
+      additionalProperties: true
+
+    CollectionCloneRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        copy_hosts:
+          type: boolean
+        copy_checklists:
+          type: boolean
+        copy_reviews:
+          type: boolean
+        copy_grants:
+          type: boolean
+        copy_labels:
+          type: boolean
+        copy_metadata:
+          type: boolean
+        copy_baseline_defaults:
+          type: boolean
+        copy_review_requirements:
+          type: boolean
+
+    CollectionImportBatch:
+      type: object
+      properties:
+        files:
+          type: array
+          items:
+            type: object
+            properties:
+              source_uri:
+                type: string
+              format:
+                type: string
+              content:
+                type: string
+                description: File body (CKL/CKLB text)
+
+    Host:
+      type: object
+      properties:
+        _key:
+          type: string
+        hostname:
+          type: string
+        stig_collection_id:
+          type: string
+        label_ids:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+      additionalProperties: true
+
+    HostCreate:
+      type: object
+      required: [hostname, stig_collection_id]
+      properties:
+        hostname:
+          type: string
+        stig_collection_id:
+          type: string
+
+    HostUpdate:
+      type: object
+      additionalProperties: true
+
+    Baseline:
+      type: object
+      properties:
+        _key:
+          type: string
+        stig_id:
+          type: string
+        title:
+          type: string
+        version:
+          type: string
+        release_info:
+          type: string
+        rule_count:
+          type: integer
+        content_fingerprint:
+          type: string
+      additionalProperties: true
+
+    BaselineImportResult:
+      type: object
+      properties:
+        imported:
+          type: integer
+        created:
+          type: integer
+        deduplicated:
+          type: integer
+        baselines:
+          type: array
+          items:
+            $ref: "#/components/schemas/Baseline"
+
+    OrphanBaselineRulesGcResult:
+      type: object
+      required: [dry_run, orphan_count, orphans, deleted_count, skipped_no_key_count]
+      properties:
+        dry_run:
+          type: boolean
+        orphan_count:
+          type: integer
+        deleted_count:
+          type: integer
+        skipped_no_key_count:
+          type: integer
+          description: Orphans lacking KV `_key`; reported on dry-run and execute, not deleted
+        orphans:
+          type: array
+          items:
+            type: object
+            properties:
+              _key:
+                type: string
+              baseline_id:
+                type: string
+              rule_id:
+                type: string
+              group_id:
+                type: string
+
+    BaselineJobChunk:
+      type: object
+      required: [action, offset, data]
+      properties:
+        action:
+          type: string
+          enum: [chunk]
+        offset:
+          type: integer
+        data:
+          type: string
+          description: Base64-encoded zip bytes
+
+    BaselineJobFinalize:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [finalize]
+
+    BaselineJobImportMember:
+      type: object
+      required: [action, path]
+      properties:
+        action:
+          type: string
+          enum: [import]
+        path:
+          type: string
+          description: Member path inside uploaded zip
+
+    Checklist:
+      type: object
+      properties:
+        _key:
+          type: string
+        stig_host_id:
+          type: string
+        baseline_id:
+          type: string
+        stig_collection_id:
+          type: string
+      additionalProperties: true
+
+    Review:
+      type: object
+      properties:
+        _key:
+          type: string
+        checklist_id:
+          type: string
+        rule_id:
+          type: string
+        status:
+          type: string
+        workflow_state:
+          type: string
+        ingest_lock:
+          type: boolean
+      additionalProperties: true
+
+    ReviewBatchRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [submit, accept, reject]
+        review_ids:
+          type: array
+          items:
+            type: string
+        reject_feedback:
+          type: string
+        reviews:
+          type: array
+          items:
+            type: object
+        updates:
+          type: array
+          items:
+            type: object
+
+    ImportBatchResult:
+      type: object
+      description: Batch or zip import summary from imports services
+      properties:
+        summary:
+          type: object
+          properties:
+            created:
+              type: integer
+            failed:
+              type: integer
+            updated:
+              type: integer
+        results:
+          type: array
+          items:
+            type: object
+      additionalProperties: true
+
+    ChecklistFileImportResult:
+      type: object
+      description: Single-file CKL/CKLB/xccdf-results ingest response
+      properties:
+        host:
+          type: object
+          properties:
+            created:
+              type: boolean
+        checklists:
+          type: array
+          items:
+            type: object
+            properties:
+              created:
+                type: boolean
+      additionalProperties: true
+
+    CollectionTransferResult:
+      type: object
+      properties:
+        summary:
+          type: object
+          properties:
+            moved:
+              type: integer
+      additionalProperties: true
+
     BaselinePointer:
       type: object
       properties:
@@ -110,6 +2579,7 @@ components:
           type: string
         content_fingerprint:
           type: string
+
     BaselineRuleMatch:
       type: object
       properties:
@@ -137,6 +2607,7 @@ components:
           type: string
         baseline:
           $ref: "#/components/schemas/BaselinePointer"
+
     BaselineRuleRefList:
       type: object
       properties:
@@ -151,6 +2622,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BaselineRuleMatch"
+
     BaselineCciRefList:
       type: object
       properties:
@@ -165,6 +2637,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BaselineRuleMatch"
+
     BaselineGroupRefList:
       type: object
       properties:
@@ -179,3 +2652,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BaselineRuleMatch"
+
+    BaselineJobActionResult:
+      type: object
+      properties:
+        action:
+          type: string
+        created:
+          type: boolean
+        deduplicated:
+          type: boolean
+      additionalProperties: true

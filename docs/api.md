@@ -1,12 +1,59 @@
-# STIG in Splunk — persist REST (catalog reference)
+# STIG in Splunk — REST API index
 
-Base URL (management port):
+Machine-readable contract: **[openapi.yaml](openapi.yaml)** (OpenAPI 3.0.3).
 
-`https://<host>:8089/servicesNS/nobody/stigs_in_splunk`
+## Base URLs
 
-Authentication: Splunk session key (`Authorization: Bearer <token>`) or equivalent; same as other `stig_*` resources.
+| Client | URL pattern |
+|--------|-------------|
+| Management / automation (`curl`, SDK) | `https://<host>:8089/servicesNS/nobody/stigs_in_splunk` |
+| Splunk Web (browser, same-origin) | `https://<host>/<locale>/splunkd/__raw/servicesNS/nobody/stigs_in_splunk` |
 
-Full resource list: [spec.md](../spec.md) §11.
+Paths in the OpenAPI document are relative to that base (e.g. `GET /stig_collections`).
+
+## Authentication
+
+Splunk platform auth only — no app-level OIDC.
+
+- **Management port:** HTTP Basic (`-u user:pass`) or a valid Splunk session token.
+- **Splunk Web UI:** session cookie plus `X-Splunk-Form-Key` (CSRF) on `POST`/`PATCH`/`PUT`/`DELETE`, as in `ui/src/api.js`.
+
+Unauthenticated requests receive **401** with `{"error":"authentication required"}`.
+
+## Capabilities
+
+`package/default/restmap.conf` maps Splunk capabilities to HTTP methods:
+
+| Capability | Typical methods |
+|------------|-----------------|
+| `stig_read` | `GET` |
+| `stig_write` | `POST`, `PATCH`, `PUT` |
+| `stig_admin` | `DELETE` (and some admin-only writes) |
+
+Grant-based workspace ACLs further restrict which collections, hosts, and reviews a user can see or change.
+
+## Versioning
+
+- **App / contract version** follows `package/app.manifest` → `info.id.version` and `globalConfig.yaml` → `meta.version` (currently **0.1.0**).
+- **`docs/openapi.yaml`** is updated in the same PR when persist routes change in `package/bin/stig_rest_handler.py`. There is no separate API version prefix in URLs.
+- Breaking REST changes should bump the app minor version and be called out in release notes.
+
+## Resource map (quick)
+
+| Prefix | Purpose |
+|--------|---------|
+| `/stig_collections` | Workspaces; subpaths for grants, labels, metrics, findings, POA&M, imports, clone, transfer, metadata, … |
+| `/stig_hosts` | Assets; `/metadata`, `/checklists`, `/stigs` |
+| `/stig_baselines` | STIG library; `/import`, `/jobs`, `/gc_orphan_rules`, `/hierarchy`, `/by_stig/{stigId}`, cross-catalog `/rules`, `/ccis`, `/groups`, `/rule/{key}`, `/{id}/rules`, `/{id}/rules/{ruleRef}` |
+| `/stig_checklists` | Checklists; export, upgrade, validate, `export_bulk` |
+| `/stig_reviews` | Reviews; workflow actions; `/batch` |
+| `/stig_imports` | File ingest and `/reconcile` |
+| `/stig_findings` | Workspace findings (`stig_collection_id` query) |
+| `/stig_settings` | Editor / ingest settings (no HEC token in responses) |
+| `/stig_assignment_rules`, `/stig_host_baseline_assignments`, `/stig_assignment/preview` | HEC routing |
+| `/stigs_in_splunk_baseline` | UCC Configuration table adapter (list/delete baselines) |
+
+Implementation source of truth: `package/bin/stig_rest_handler.py` and `package/default/restmap.conf`.
 
 ## Baseline catalog reference (CCI / group / rule)
 
@@ -19,38 +66,9 @@ Global baseline rules live in KV `stig_baseline_rules`. These endpoints search *
 | GET | `/stig_baselines/rules/{ruleRef}` | Match `rule_id`, `rule_id_src`, `rule_version`, or `group_id`. Optional query `stig_id`. **404** if no matches. |
 | GET | `/stig_baselines/ccis/{cci}` | Rules referencing CCI (e.g. `CCI-000366`). Optional `stig_id`. **200** with `matches: []` when none. |
 | GET | `/stig_baselines/groups/{groupId}` | Rules with V-id `group_id`. Optional `stig_id`. |
-| GET | `/stig_baselines/rule/{ruleKey}` | Single rule by KV `_key` (`rule_key` in assignment APIs). **404** if missing. |
 
-### Response shape (list endpoints)
+List responses include `match_count` and `matches[]` with `rule_key`, identity fields, parsed `ccis`, and a `baseline` pointer object. `GET /stig_baselines/rule/{ruleKey}` (library browse) returns baseline-scoped rule detail — see OpenAPI.
 
-```json
-{
-  "rule_ref": "SV-000001",
-  "stig_id": null,
-  "match_count": 2,
-  "matches": [
-    {
-      "rule_key": "…",
-      "group_id": "V-000001",
-      "rule_id": "SV-000001",
-      "rule_version": "EX-00-000001",
-      "severity": "high",
-      "rule_title": "…",
-      "ccis": ["CCI-000366"],
-      "check_content_hash": "…",
-      "baseline": {
-        "baseline_id": "…",
-        "stig_id": "Example_STIG",
-        "version": "1",
-        "title": "…",
-        "benchmark_date": "…",
-        "content_fingerprint": "…"
-      }
-    }
-  ]
-}
-```
+## Gaps vs STIG Manager OpenAPI
 
-`GET /stig_baselines/rule/{ruleKey}` returns one object in the same `matches[]` field shape (without the list wrapper).
-
-OpenAPI fragment: [openapi.yaml](./openapi.yaml).
+This contract documents **Splunk persist** resources (`stig_*`), not STIG Manager URL literals. User admin, OAuth scopes, async job APIs beyond baseline chunk upload, and SSE live state are out of scope or **n/a** on Splunk — see [FEATURE_PARITY.md](FEATURE_PARITY.md).

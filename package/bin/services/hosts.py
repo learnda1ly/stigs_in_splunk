@@ -157,6 +157,121 @@ def create_host(service, body: Dict[str, Any], username: str, session: Dict[str,
     return _public_host(stored)
 
 
+def _destination_hostname_taken(
+    service,
+    session: Dict[str, Any],
+    dest_collection_id: str,
+    hostname: str,
+    host_key: str,
+) -> bool:
+    want = (hostname or "").strip()
+    if not want:
+        return False
+    other = find_host_by_hostname(service, session, dest_collection_id, want)
+    return bool(other and other.get("_key") != host_key)
+
+
+def _move_host_checklists(
+    service,
+    host_key: str,
+    dest_collection: str,
+    username: str,
+    updated_at: int,
+) -> int:
+    cl_coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
+    moved = 0
+    snapshots: Dict[str, Dict[str, Any]] = {}
+    updated_keys: List[str] = []
+    try:
+        for rec in kv_client.query_all(cl_coll, {"host_id": host_key}):
+            snapshots[rec["_key"]] = dict(rec)
+            cl_patch = dict(rec)
+            cl_patch["stig_collection_id"] = dest_collection
+            cl_patch["updated_at"] = updated_at
+            cl_patch["updated_by"] = username
+            kv_client.update_record(cl_coll, rec["_key"], kv_record(cl_patch))
+            updated_keys.append(rec["_key"])
+            moved += 1
+        return moved
+    except Exception:
+        for cl_key in updated_keys:
+            kv_client.update_record(
+                cl_coll, cl_key, kv_record(snapshots[cl_key])
+            )
+        raise
+
+
+def transfer_host_to_collection(
+    service,
+    host_key: str,
+    source_collection_id: str,
+    dest_collection_id: str,
+    username: str,
+    session: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Move one host and its checklists; enforce source membership and write ACL."""
+    coll = kv_client.get_collection(service, KV_STIG_HOSTS)
+    existing = kv_client.get_by_key(coll, host_key)
+    if not existing:
+        raise KeyError(host_key)
+    current = existing.get("stig_collection_id") or ""
+    if current != source_collection_id:
+        raise ValueError("host_not_in_source_workspace")
+    if dest_collection_id == current:
+        return {
+            **_public_host(existing),
+            "checklists_moved": 0,
+        }
+    _require_collection_access(service, current, session, write=True)
+    _require_collection_access(service, dest_collection_id, session, write=True)
+
+    hostname = (existing.get("hostname") or "").strip()
+    if _destination_hostname_taken(
+        service, session, dest_collection_id, hostname, host_key
+    ):
+        raise ValueError("destination_hostname_collision")
+
+    patch = dict(existing)
+    patch["stig_collection_id"] = dest_collection_id
+    sanitized = labels_svc.sanitize_label_ids_for_workspace(
+        service,
+        dest_collection_id,
+        _normalize_label_ids(patch.get("label_ids")),
+    )
+    patch["label_ids"] = dumps_json(sanitized)
+    ts = now_epoch()
+    patch["updated_at"] = ts
+    patch["updated_by"] = username
+    prior_host = dict(existing)
+    stored = kv_client.update_record(coll, host_key, kv_record(patch))
+    try:
+        checklists_moved = _move_host_checklists(
+            service, host_key, dest_collection_id, username, ts
+        )
+    except Exception:
+        rollback = dict(prior_host)
+        rollback["updated_at"] = ts
+        rollback["updated_by"] = username
+        kv_client.update_record(coll, host_key, kv_record(rollback))
+        raise
+    audit.log_event(
+        "transfer",
+        "stig_host",
+        host_key,
+        username,
+        {
+            "from_stig_collection_id": current,
+            "to_stig_collection_id": dest_collection_id,
+            "hostname": stored.get("hostname"),
+            "checklists_moved": checklists_moved,
+            "label_ids": _normalize_label_ids(stored.get("label_ids")),
+        },
+    )
+    out = _public_host(stored)
+    out["checklists_moved"] = checklists_moved
+    return out
+
+
 def update_host(
     service, key: str, body: Dict[str, Any], username: str, session: Dict[str, Any]
 ) -> Dict[str, Any]:
@@ -166,17 +281,70 @@ def update_host(
         raise KeyError(key)
     _require_collection_access(service, existing["stig_collection_id"], session, write=True)
 
-    patch = dict(existing)
     dest_collection = body.get("stig_collection_id")
     moving = bool(
         dest_collection and dest_collection != existing.get("stig_collection_id")
     )
     if moving:
-        _require_collection_access(service, dest_collection, session, write=True)
+        transfer_host_to_collection(
+            service,
+            key,
+            existing.get("stig_collection_id") or "",
+            dest_collection,
+            username,
+            session,
+        )
+        current = kv_client.get_by_key(coll, key) or existing
+        patch = dict(current)
         patch["stig_collection_id"] = dest_collection
-    workspace_for_labels = (
-        dest_collection if moving else existing.get("stig_collection_id") or ""
-    )
+        for field in (
+            "hostname",
+            "ip_address",
+            "fqdn",
+            "mac_address",
+            "role",
+            "asset_type",
+            "tech_area",
+            "web_or_database",
+        ):
+            if field in body:
+                patch[field] = body[field]
+        if "metadata" in body:
+            val = body["metadata"]
+            patch["metadata"] = dumps_json(val) if isinstance(val, dict) else val
+        if "label_ids" in body:
+            label_ids = _normalize_label_ids(body.get("label_ids"))
+            labels_svc.validate_label_ids(service, dest_collection, label_ids)
+            patch["label_ids"] = dumps_json(label_ids)
+            patch["updated_at"] = now_epoch()
+            patch["updated_by"] = username
+            stored = kv_client.update_record(coll, key, kv_record(patch))
+            audit.log_event("update", "stig_host", key, username, body)
+            return _public_host(stored)
+        if any(
+            field in body
+            for field in (
+                "hostname",
+                "ip_address",
+                "fqdn",
+                "mac_address",
+                "role",
+                "asset_type",
+                "tech_area",
+                "web_or_database",
+                "metadata",
+            )
+        ):
+            patch["updated_at"] = now_epoch()
+            patch["updated_by"] = username
+            stored = kv_client.update_record(coll, key, kv_record(patch))
+            audit.log_event("update", "stig_host", key, username, body)
+            return _public_host(stored)
+        final = kv_client.get_by_key(coll, key)
+        return _public_host(final or patch)
+
+    patch = dict(existing)
+    workspace_for_labels = existing.get("stig_collection_id") or ""
     for field in (
         "hostname",
         "ip_address",
@@ -196,24 +364,9 @@ def update_host(
         label_ids = _normalize_label_ids(body.get("label_ids"))
         labels_svc.validate_label_ids(service, workspace_for_labels, label_ids)
         patch["label_ids"] = dumps_json(label_ids)
-    elif moving:
-        sanitized = labels_svc.sanitize_label_ids_for_workspace(
-            service,
-            workspace_for_labels,
-            _normalize_label_ids(patch.get("label_ids")),
-        )
-        patch["label_ids"] = dumps_json(sanitized)
     patch["updated_at"] = now_epoch()
     patch["updated_by"] = username
     stored = kv_client.update_record(coll, key, kv_record(patch))
-    if moving:
-        cl_coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
-        for rec in kv_client.query_all(cl_coll, {"host_id": key}):
-            cl_patch = dict(rec)
-            cl_patch["stig_collection_id"] = dest_collection
-            cl_patch["updated_at"] = patch["updated_at"]
-            cl_patch["updated_by"] = username
-            kv_client.update_record(cl_coll, rec["_key"], kv_record(cl_patch))
     audit.log_event("update", "stig_host", key, username, body)
     return _public_host(stored)
 
