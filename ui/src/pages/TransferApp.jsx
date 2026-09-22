@@ -6,6 +6,7 @@ import Message from "@splunk/react-ui/Message";
 import Select from "@splunk/react-ui/Select";
 import Switch from "@splunk/react-ui/Switch";
 import Table from "@splunk/react-ui/Table";
+import Text from "@splunk/react-ui/Text";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
 import { apiFetch, apiGet, defaultWorkspaceId, workspaceLabel } from "../api";
 import {
@@ -28,6 +29,9 @@ export default function TransferApp() {
     const [info, setInfo] = useState("");
     const [resultRows, setResultRows] = useState([]);
     const [selectedHostIds, setSelectedHostIds] = useState({});
+    const [cloneName, setCloneName] = useState("");
+    const [cloneCopyReviews, setCloneCopyReviews] = useState(true);
+    const [cloneCopyGrants, setCloneCopyGrants] = useState(false);
 
     const destOptions = useMemo(
         () => (workspaces || []).filter((ws) => ws && ws._key !== sourceId),
@@ -95,6 +99,66 @@ export default function TransferApp() {
             });
         }
         setSelectedHostIds(next);
+    }
+
+    async function runClone() {
+        setError("");
+        setInfo("");
+        if (!sourceId) {
+            setError("Choose a source workspace to clone.");
+            return;
+        }
+        const src =
+            (workspaces || []).find((w) => w._key === sourceId) || {};
+        const defaultName =
+            ((src.name || sourceId) + " (clone)").trim();
+        const name = (cloneName || defaultName).trim();
+        if (
+            !window.confirm(
+                'Clone workspace "' +
+                    workspaceLabel(src) +
+                    '" to new workspace "' +
+                    name +
+                    '"?'
+            )
+        ) {
+            return;
+        }
+        setBusy(true);
+        try {
+            const result = await apiFetch(
+                "stig_collections/" + sourceId + "/clone",
+                {
+                    method: "POST",
+                    body: {
+                        name,
+                        copy_reviews: cloneCopyReviews,
+                        copy_grants: cloneCopyGrants,
+                    },
+                }
+            );
+            const summary = (result && result.summary) || {};
+            const colls = await apiGet("stig_collections");
+            setWorkspaces(colls || []);
+            setInfo(
+                "Cloned workspace " +
+                    name +
+                    " (" +
+                    (result.stig_collection_id || "") +
+                    "): " +
+                    Number(summary.hosts || 0) +
+                    " hosts, " +
+                    Number(summary.checklists || 0) +
+                    " checklists, " +
+                    Number(summary.reviews || 0) +
+                    " reviews."
+            );
+            setCloneName("");
+        } catch (err) {
+            setError(String(err.message || err));
+        } finally {
+            setBusy(false);
+        }
     }
 
     async function runTransfer() {
@@ -205,6 +269,42 @@ export default function TransferApp() {
                         </Table>
                     </>
                 ) : null}
+                <Heading level={3}>Clone workspace</Heading>
+                <p>
+                    Create a new workspace from the source. Requires read access on
+                    the source and stig_write. Global STIG baselines are shared,
+                    not duplicated.
+                </p>
+                <Toolbar>
+                    <ControlGroup label="New workspace name">
+                        <Text
+                            value={cloneName}
+                            onChange={(e, { value }) => setCloneName(value)}
+                            placeholder="Defaults to “(source name) (clone)”"
+                        />
+                    </ControlGroup>
+                    <ControlGroup label="Copy reviews">
+                        <Switch
+                            selected={cloneCopyReviews}
+                            onClick={() =>
+                                setCloneCopyReviews((v) => !v)
+                            }
+                        />
+                    </ControlGroup>
+                    <ControlGroup label="Copy grants">
+                        <Switch
+                            selected={cloneCopyGrants}
+                            onClick={() => setCloneCopyGrants((v) => !v)}
+                        />
+                    </ControlGroup>
+                    <Button
+                        label="Clone workspace"
+                        appearance="secondary"
+                        disabled={busy || !sourceId}
+                        onClick={runClone}
+                    />
+                </Toolbar>
+                <Heading level={3}>Transfer hosts</Heading>
                 <p>
                     Move hosts and their checklists to another workspace. You need
                     write access on both workspaces. Workspace grants are not

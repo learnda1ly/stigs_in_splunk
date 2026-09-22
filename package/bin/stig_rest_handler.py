@@ -26,6 +26,7 @@ from services import checklists as checklists_svc
 from services import baseline_defaults as baseline_defaults_svc
 from services import review_requirements as review_requirements_svc
 from services import collection_metadata as collection_metadata_svc
+from services import collection_clone as collection_clone_svc
 from services import collection_transfer as collection_transfer_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
@@ -305,6 +306,22 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return self._collection_labels(
                 method, key, parts[2:], payload, service, session, username
             )
+
+        if len(parts) == 2 and parts[1] == "clone":
+            if method not in ("POST", "PUT"):
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            try:
+                result = collection_clone_svc.clone_collection(
+                    service, key, body, username, session
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+            return _json_response(result, status=201)
 
         if len(parts) == 3 and parts[1] == "export-to":
             if method not in ("POST", "PUT"):
