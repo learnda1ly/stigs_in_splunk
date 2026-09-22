@@ -600,7 +600,11 @@ Default `access_principals` on create: `["user:<creator>"]` if omitted. The Defa
 |--------|------|-------|------|
 | GET | `/stig_hosts` | `stig_collection_id?` | — |
 | POST | `/stig_hosts` | — | `{stig_collection_id, hostname, ip_address?, ...}` |
-| GET/PATCH/DELETE | `/stig_hosts/{id}` | — | PATCH fields optional |
+| GET | `/stig_hosts/{id}` | — | Host document |
+| GET | `/stig_hosts/{id}/checklists` | — | Checklists for this host (respects grants/ACL) |
+| POST | `/stig_hosts/{id}/stigs` | — | `{baseline_id}` **or** `{stig_id}` (workspace default / catalog resolution). Creates checklist + spawns reviews; **200** + `"created": false` when already assigned (idempotent). **201** + `"created": true` on first assign. |
+| DELETE | `/stig_hosts/{id}/stigs/{baselineIdOrStigId}` | — | Removes **one** checklist: path segment is baseline KV `_key` **or** logical `stig_id` resolved like POST assign (workspace default → catalog). Does **not** delete other revision checklists for the same `stig_id`; pass each revision’s baseline `_key` to remove multiples. Requires workspace **write**. |
+| PATCH/DELETE | `/stig_hosts/{id}` | — | PATCH fields optional; DELETE requires **stig_admin** |
 
 DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 
@@ -625,7 +629,7 @@ Import responses:
 | Method | Path | Notes |
 |--------|------|--------|
 | GET | `/stig_checklists` | Query `stig_collection_id?` |
-| POST | `/stig_checklists` | `{stig_collection_id, host_id, baseline_id, title?, mode?, target_data?}` → spawns reviews |
+| POST | `/stig_checklists` | `{stig_collection_id, host_id, baseline_id?, stig_id?, title?, mode?, target_data?}` → spawns reviews. Duplicate host+baseline → **400**. Prefer **`POST /stig_hosts/{id}/stigs`** for idempotent assign. |
 | GET/PATCH/DELETE | `/stig_checklists/{id}` | DELETE cascades reviews |
 | GET | `/stig_checklists/{id}/export` | Query `format=cklb|ckl` |
 | POST/PUT | `/stig_checklists/{id}/upgrade` | `{baseline_id}` — same `stig_id`, newer revision; merge reviews when `check_content_hash` matches |
