@@ -68,10 +68,10 @@ In addition to the review body, each indexed finding carries **asset + STIG + wo
 |-------|----------|------|-------|
 | `assetName` | yes | string | Hostname / asset name (CKL `HOST_NAME`, CKLB `target_data.host_name`). |
 | `benchmarkId` | yes | string | Logical STIG id (e.g. `RHEL_9_STIG`), not the KV baseline `_key`. `xccdf_mil.disa.stig_benchmark_*` prefixes are stripped on ingest. |
-| `collectionId` | no | string | Workspace KV `_key`. Aliases: `stig_collection_id`, `collection_id`. Used when **Trust event collection id** is enabled; otherwise assignment rules / default workspace apply. |
-| `collectionName` | no | string | Display name; stored under host `metadata.ingest`. |
+| `collectionId` | no | string | Workspace KV `_key`. Aliases (only when `collectionId` is absent): `stig_collection_id`, `collection_id`, `stigCollectionId`. A non-empty canonical `collectionId` is never overwritten by aliases (safe for **Trust event collection id**). Used when trust is enabled; otherwise assignment rules / default workspace apply. |
+| `collectionName` | no | string | Display name; stored under host `metadata.ingest`. Aliases: `collection_name`, `stig_collection_name`. |
 | `revisionStr` | no | string | DISA revision string `VxRy` when known. |
-| `sourceRef` | no | string | Source file URI or scan id. Aliases: `source_ref`, `source_uri`. HEC `source` defaults to this or app name. |
+| `sourceRef` | no | string | Source file URI or scan id. Aliases (when `sourceRef` absent): `source_ref`, `source_uri`, `sourceURI`. HEC `source` defaults to this or app name. |
 | `source_product` | no | string | e.g. `stigman-watcher`, `evaluate-stig`, `stigs_in_splunk`. |
 | `package_id` | no | string | Evaluate-STIG package id (CKLB `package_id`). Alias: `packageId`. Copied to KV `stig_reviews.package_id`. |
 | `time` | no | number | Epoch seconds on the finding (HEC event time). |
@@ -91,6 +91,8 @@ Optional Splunk-only hints (ignored by Watcher, safe on HEC):
 - **`rule`** — Full rule body (`rule_title`, `check_content`, `fix_text`, `ccis`, `check_content_hash`, …). See `EXPORT_RULE_FIELDS` in `events.py`.
 
 Slim senders may omit `asset` / `stig` / `rule` if the baseline already exists in the global catalog (or workspace default resolves it). Otherwise apply fails with `no baseline for … and event has no rule body`.
+
+**DISA XCCDF id prefixes:** `normalize_finding_event()` strips `xccdf_mil.disa.stig_benchmark_` from `benchmarkId` / `stig.stig_id` and `xccdf_mil.disa.stig_rule_` from `ruleId` / `rule.rule_id` / `rule.rule_id_src`. Watcher and CKL/CKLB senders use plain `V-…` **groupId** values (not XCCDF-prefixed); `groupId` / `rule.group_id` are trimmed but not prefix-stripped.
 
 ---
 

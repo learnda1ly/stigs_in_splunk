@@ -25,6 +25,37 @@ class TestWatcherHecSchema(unittest.TestCase):
         )
         self.assertEqual(event["collectionId"], "coll-alias")
 
+    def test_collection_id_precedence_over_aliases(self):
+        event = normalize_finding_event(
+            {
+                "collectionId": "canonical-coll",
+                "stig_collection_id": "should-not-win",
+                "collection_id": "also-ignored",
+                "assetName": "h1",
+                "benchmarkId": "Example_STIG",
+                "ruleId": "SV-1",
+                "result": "pass",
+            }
+        )
+        self.assertEqual(event["collectionId"], "canonical-coll")
+
+    def test_hec_envelope_unwrap_then_aliases(self):
+        event = normalize_finding_event(
+            {
+                "time": 1710000001,
+                "event": {
+                    "stig_collection_id": "coll-wrapped",
+                    "assetName": "h1",
+                    "benchmarkId": "Example_STIG",
+                    "ruleId": "SV-1",
+                    "result": "pass",
+                    "sourceURI": "wrapped/host.ckl",
+                },
+            }
+        )
+        self.assertEqual(event["collectionId"], "coll-wrapped")
+        self.assertEqual(event["sourceRef"], "wrapped/host.ckl")
+
     def test_source_ref_aliases(self):
         event = normalize_finding_event(
             {
