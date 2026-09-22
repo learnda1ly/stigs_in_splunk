@@ -8,7 +8,14 @@ import Search from "@splunk/react-ui/Search";
 import Select from "@splunk/react-ui/Select";
 import Switch from "@splunk/react-ui/Switch";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
-import { apiGet, apiPatch, defaultWorkspaceId, viewUrl, workspaceLabel } from "../api";
+import {
+    apiFetch,
+    apiGet,
+    apiPatch,
+    defaultWorkspaceId,
+    viewUrl,
+    workspaceLabel,
+} from "../api";
 import {
     Actions,
     Body,
@@ -47,6 +54,29 @@ import { loadVimSetting, persistVimSetting } from "../vim/settings";
 import { VimGlobalStyle } from "../vim/styles";
 import { useEditorKeys } from "../vim/useEditorKeys";
 
+function parseDisVersion(version) {
+    const text = String(version || "").trim().replace(/\s+/g, "");
+    const match = text.match(/^v?(\d+)r(\d+)$/i);
+    if (!match) {
+        return null;
+    }
+    return [parseInt(match[1], 10), parseInt(match[2], 10)];
+}
+
+function baselineIsNewer(candidate, current) {
+    if (!candidate || !current || candidate._key === current._key) {
+        return false;
+    }
+    const cVer = parseDisVersion(candidate.version);
+    const curVer = parseDisVersion(current.version);
+    if (cVer && curVer) {
+        return cVer[0] > curVer[0] || (cVer[0] === curVer[0] && cVer[1] > curVer[1]);
+    }
+    const cImp = Number(candidate.imported_at || 0);
+    const curImp = Number(current.imported_at || 0);
+    return cImp > curImp;
+}
+
 function lookupRule(rulesByKey, rev) {
     return (
         rulesByKey[rev.rule_id] ||
@@ -62,6 +92,9 @@ export default function EditorApp() {
     const [hostId, setHostId] = useState("");
     const [moveTo, setMoveTo] = useState("");
     const [checklists, setChecklists] = useState([]);
+    const [allBaselines, setAllBaselines] = useState([]);
+    const [upgradeChecklistId, setUpgradeChecklistId] = useState("");
+    const [upgradeBaselineId, setUpgradeBaselineId] = useState("");
     const [rulesByKey, setRulesByKey] = useState({});
     const [items, setItems] = useState([]);
     const [selectedKey, setSelectedKey] = useState("");
@@ -110,6 +143,64 @@ export default function EditorApp() {
     useEffect(() => {
         loadCollections();
     }, [loadCollections]);
+
+    useEffect(() => {
+        apiGet("stig_baselines")
+            .then((data) => setAllBaselines(Array.isArray(data) ? data : []))
+            .catch(() => {
+                /* baselines optional until import */
+            });
+    }, []);
+
+    const hostChecklists = useMemo(() => {
+        if (!hostId) {
+            return [];
+        }
+        return checklists.filter((cl) => cl.host_id === hostId);
+    }, [hostId, checklists]);
+
+    const activeUpgradeChecklist = useMemo(() => {
+        if (!hostChecklists.length) {
+            return null;
+        }
+        if (upgradeChecklistId) {
+            return hostChecklists.find((cl) => cl._key === upgradeChecklistId) || hostChecklists[0];
+        }
+        return hostChecklists[0];
+    }, [hostChecklists, upgradeChecklistId]);
+
+    const upgradeBaselineOptions = useMemo(() => {
+        const cl = activeUpgradeChecklist;
+        if (!cl) {
+            return [];
+        }
+        const current = allBaselines.find((b) => b._key === cl.baseline_id) || {};
+        const stigKey = String(current.stig_id || "").toLowerCase();
+        if (!stigKey) {
+            return [];
+        }
+        return allBaselines.filter(
+            (b) =>
+                b._key !== cl.baseline_id &&
+                String(b.stig_id || "").toLowerCase() === stigKey &&
+                baselineIsNewer(b, current)
+        );
+    }, [activeUpgradeChecklist, allBaselines]);
+
+    useEffect(() => {
+        if (!activeUpgradeChecklist) {
+            setUpgradeChecklistId("");
+            setUpgradeBaselineId("");
+            return;
+        }
+        setUpgradeChecklistId(activeUpgradeChecklist._key);
+        if (
+            upgradeBaselineId &&
+            !upgradeBaselineOptions.some((b) => b._key === upgradeBaselineId)
+        ) {
+            setUpgradeBaselineId("");
+        }
+    }, [activeUpgradeChecklist, upgradeBaselineOptions, upgradeBaselineId]);
 
     const mergeRules = (rules, prev) => {
         const next = { ...prev };
@@ -853,6 +944,115 @@ export default function EditorApp() {
                             ))}
                         </Select>
                     </ControlGroup>
+                    {hostChecklists.length ? (
+                        <>
+                            {hostChecklists.length > 1 ? (
+                                <ControlGroup label="Checklist" labelPosition="top">
+                                    <Select
+                                        value={upgradeChecklistId || activeUpgradeChecklist._key}
+                                        onChange={(e, { value }) => setUpgradeChecklistId(value)}
+                                        filter
+                                        disabled={busy}
+                                    >
+                                        {hostChecklists.map((cl) => (
+                                            <Select.Option
+                                                key={cl._key}
+                                                label={cl.title || cl._key}
+                                                value={cl._key}
+                                            />
+                                        ))}
+                                    </Select>
+                                </ControlGroup>
+                            ) : null}
+                            <ControlGroup label="Upgrade revision" labelPosition="top">
+                                <Select
+                                    value={upgradeBaselineId}
+                                    onChange={(e, { value }) => setUpgradeBaselineId(value)}
+                                    placeholder={
+                                        upgradeBaselineOptions.length
+                                            ? "Newer baseline"
+                                            : "Import newer revision first"
+                                    }
+                                    filter
+                                    disabled={busy || !upgradeBaselineOptions.length}
+                                >
+                                    {upgradeBaselineOptions.map((b) => (
+                                        <Select.Option
+                                            key={b._key}
+                                            label={
+                                                (b.version || b._key) +
+                                                (b.title ? " · " + b.title : "")
+                                            }
+                                            value={b._key}
+                                        />
+                                    ))}
+                                </Select>
+                            </ControlGroup>
+                            <Button
+                                appearance="secondary"
+                                disabled={busy || !upgradeBaselineId || !activeUpgradeChecklist}
+                                onClick={() => {
+                                    const clId = activeUpgradeChecklist._key;
+                                    const fromBl =
+                                        allBaselines.find(
+                                            (b) => b._key === activeUpgradeChecklist.baseline_id
+                                        ) || {};
+                                    const toBl =
+                                        allBaselines.find((b) => b._key === upgradeBaselineId) ||
+                                        {};
+                                    const fromLabel =
+                                        (fromBl.version || fromBl._key || "?") +
+                                        (fromBl.title ? " · " + fromBl.title : "");
+                                    const toLabel =
+                                        (toBl.version || toBl._key || "?") +
+                                        (toBl.title ? " · " + toBl.title : "");
+                                    const confirmMsg =
+                                        "Upgrade checklist \"" +
+                                        (activeUpgradeChecklist.title || clId) +
+                                        "\" from " +
+                                        fromLabel +
+                                        " to " +
+                                        toLabel +
+                                        "?\n\nMatching check content keeps review state. " +
+                                        "Changed rules reset editable drafts (including comments). " +
+                                        "Removed rules delete reviews. This cannot be undone automatically.";
+                                    if (!window.confirm(confirmMsg)) {
+                                        return;
+                                    }
+                                    setBusy(true);
+                                    apiFetch("stig_checklists/" + clId + "/upgrade", {
+                                        method: "POST",
+                                        body: { baseline_id: upgradeBaselineId },
+                                    })
+                                        .then((result) => {
+                                            setBanner({
+                                                type: "success",
+                                                text:
+                                                    "Upgraded checklist: " +
+                                                    (result.merged || 0) +
+                                                    " merged, " +
+                                                    (result.reset || 0) +
+                                                    " reset for re-review, " +
+                                                    (result.added || 0) +
+                                                    " new rules.",
+                                            });
+                                            onCollection(collectionId);
+                                            if (hostId) {
+                                                onHost(hostId);
+                                            }
+                                        })
+                                        .catch((err) =>
+                                            setBanner({
+                                                type: "error",
+                                                text: "Upgrade failed: " + err.message,
+                                            })
+                                        )
+                                        .finally(() => setBusy(false));
+                                }}
+                                label="Upgrade"
+                            />
+                        </>
+                    ) : null}
                     {hostId ? (
                         <ControlGroup label="Move host" labelPosition="top">
                             <Select

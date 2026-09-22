@@ -31,6 +31,7 @@ from services import imports as imports_svc
 from services import reconcile as reconcile_svc
 from services import reporting as reporting_svc
 from services import reviews as reviews_svc
+from services import revision_upgrade as revision_upgrade_svc
 from services import settings as settings_svc
 
 logger = logging.getLogger("stigs_in_splunk.rest")
@@ -232,6 +233,31 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return self._collection_grants(
                 method, key, parts[2:], payload, service, session, username
             )
+
+        if len(parts) == 2 and parts[1] == "upgrade_checklists":
+            if method not in ("POST", "PUT"):
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            try:
+                return _json_response(
+                    revision_upgrade_svc.upgrade_collection_checklists(
+                        service,
+                        key,
+                        body.get("baseline_id") or "",
+                        username,
+                        session,
+                        from_baseline_id=body.get("from_baseline_id") or "",
+                        stig_id=body.get("stig_id")
+                        or body.get("benchmark_id")
+                        or "",
+                    )
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
 
         if len(parts) == 2 and parts[1] == "metrics":
             if method != "GET":
@@ -679,6 +705,28 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     service, session, query.get("stig_collection_id")
                 )
             )
+
+        if len(parts) == 2 and parts[1] == "upgrade":
+            checklist_id = parts[0]
+            if method not in ("POST", "PUT"):
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            try:
+                return _json_response(
+                    revision_upgrade_svc.upgrade_checklist(
+                        service,
+                        checklist_id,
+                        body.get("baseline_id") or "",
+                        username,
+                        session,
+                    )
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
 
         if len(parts) == 2 and parts[1] == "validate":
             checklist_id = parts[0]
