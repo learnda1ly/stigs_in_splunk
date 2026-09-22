@@ -374,6 +374,56 @@ paths:
               schema:
                 type: object
 
+  /stig_collections/{collectionId}/review_aging:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collections]
+      summary: Get review aging policy
+      operationId: getReviewAging
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      tags: [Collections]
+      summary: Update review aging policy
+      operationId: patchReviewAging
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/review_aging/stale:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collections, Reviews]
+      summary: List stale reviews for a workspace
+      operationId: listStaleReviews
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 500
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
   /stig_collections/{collectionId}/review-history:
     parameters:
       - $ref: "#/components/parameters/collectionId"
@@ -1897,6 +1947,50 @@ paths:
                 oneOf:
                   - $ref: "#/components/schemas/ChecklistFileImportResult"
                   - $ref: "#/components/schemas/ImportBatchResult"
+
+  /stig_imports/review_aging_report:
+    get:
+      tags: [Imports, Collections, Reviews]
+      summary: Stale reviews across grant-visible workspaces with aging enabled
+      description: >
+        Same grant ACL as listing workspaces (`stig_collections`). Only workspaces
+        the caller may read are scanned. Response `items` are capped by `limit`
+        (default 2000); `stale_count` is the full total and `truncated` indicates
+        when more rows exist. Invoked by `| stigkvreviewaging` using the search
+        runner session key.
+      operationId: reviewAgingReportGet
+      x-splunk-capability: stig_read
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 2000
+            maximum: 2000
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      tags: [Imports, Collections, Reviews]
+      summary: Stale reviews across grant-visible workspaces with aging enabled
+      operationId: reviewAgingReportPost
+      x-splunk-capability: stig_read
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 2000
+            maximum: 2000
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
 
   /stig_imports/reconcile:
     get:

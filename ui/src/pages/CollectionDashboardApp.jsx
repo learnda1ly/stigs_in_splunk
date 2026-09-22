@@ -129,6 +129,8 @@ export default function CollectionDashboardApp() {
     const [unreviewedRules, setUnreviewedRules] = useState(null);
     const [unreviewedLoading, setUnreviewedLoading] = useState(false);
     const [poamLoading, setPoamLoading] = useState(false);
+    const [reviewAging, setReviewAging] = useState(null);
+    const [staleSummary, setStaleSummary] = useState(null);
     const [banner, setBanner] = useState(null);
 
     useEffect(() => {
@@ -147,10 +149,24 @@ export default function CollectionDashboardApp() {
         }
         setLoading(true);
         setBanner(null);
-        apiFetch("stig_collections/" + cid + "/metrics")
-            .then((data) => setMetrics(data))
+        Promise.all([
+            apiFetch("stig_collections/" + cid + "/metrics"),
+            apiFetch("stig_collections/" + cid + "/review_aging"),
+            apiFetch("stig_collections/" + cid + "/review_aging/stale", {
+                query: { limit: 5 },
+            }),
+        ])
+            .then(([metricsData, agingData, staleData]) => {
+                setMetrics(metricsData);
+                setReviewAging(
+                    (agingData && agingData.review_aging) || null
+                );
+                setStaleSummary(staleData || null);
+            })
             .catch((err) => {
                 setMetrics(null);
+                setReviewAging(null);
+                setStaleSummary(null);
                 setBanner({ type: "error", message: String(err.message || err) });
             })
             .finally(() => setLoading(false));
@@ -579,6 +595,63 @@ export default function CollectionDashboardApp() {
                                             <MetricLabel>Reviews</MetricLabel>
                                         </MetricCard>
                                     </MetricGrid>
+                                    {reviewAging ? (
+                                        <>
+                                            <Heading level={4}>Review aging</Heading>
+                                            <Message type="info">
+                                                {reviewAging.enabled
+                                                    ? "Enabled — stale after " +
+                                                      (reviewAging.stale_after_hours
+                                                          ? reviewAging.stale_after_hours +
+                                                            " hour(s)"
+                                                          : (reviewAging.stale_after_days ||
+                                                                90) +
+                                                            " day(s)") +
+                                                      ". Stale count: " +
+                                                      ((staleSummary &&
+                                                          staleSummary.stale_count) ||
+                                                          0) +
+                                                      "."
+                                                    : "Disabled — enable via PATCH /stig_collections/{id}/review_aging."}
+                                            </Message>
+                                            {reviewAging.enabled &&
+                                            staleSummary &&
+                                            Array.isArray(staleSummary.items) &&
+                                            staleSummary.items.length ? (
+                                                <Table style={{ marginTop: 12 }}>
+                                                    <Table.Head>
+                                                        <Table.HeadCell>Host</Table.HeadCell>
+                                                        <Table.HeadCell>Rule</Table.HeadCell>
+                                                        <Table.HeadCell>Status</Table.HeadCell>
+                                                        <Table.HeadCell>Age (days)</Table.HeadCell>
+                                                    </Table.Head>
+                                                    <Table.Body>
+                                                        {staleSummary.items.map((row) => (
+                                                            <Table.Row key={row._key}>
+                                                                <Table.Cell>
+                                                                    {row.hostname || "—"}
+                                                                </Table.Cell>
+                                                                <Table.Cell>
+                                                                    {row.rule_id || row.group_id || "—"}
+                                                                </Table.Cell>
+                                                                <Table.Cell>
+                                                                    <StatusChip status={row.status} />
+                                                                </Table.Cell>
+                                                                <Table.Cell>
+                                                                    {row.aging_age_seconds != null
+                                                                        ? Math.floor(
+                                                                              row.aging_age_seconds /
+                                                                                  86400
+                                                                          )
+                                                                        : "—"}
+                                                                </Table.Cell>
+                                                            </Table.Row>
+                                                        ))}
+                                                    </Table.Body>
+                                                </Table>
+                                            ) : null}
+                                        </>
+                                    ) : null}
                                     <Heading level={4}>By status</Heading>
                                     <Table>
                                         <Table.Head>
