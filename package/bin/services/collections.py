@@ -21,6 +21,7 @@ from models import (
     new_id,
     now_epoch,
 )
+from services import review_history as review_history_svc
 
 
 class CollectionDeleteBlockedError(ValueError):
@@ -143,6 +144,7 @@ def _cascade_delete_workspace_children(
         "hosts": 0,
         "checklists": 0,
         "reviews": 0,
+        "review_history": 0,
         "grants": 0,
         "assignment_rules": 0,
         "assignment_overrides": 0,
@@ -184,6 +186,10 @@ def _cascade_delete_workspace_children(
     for review in kv_client.query_all(reviews_coll, {"stig_collection_id": collection_id}):
         kv_client.delete_record(reviews_coll, review["_key"])
         removed["reviews"] += 1
+
+    removed["review_history"] = review_history_svc.delete_history_for_collection(
+        service, collection_id
+    )
 
     return removed
 

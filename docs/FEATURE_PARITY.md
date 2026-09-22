@@ -69,9 +69,9 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count (approx.) |
 |--------|-----------------|
-| done | 35 |
+| done | 36 |
 | partial | 7 |
-| missing | 13 |
+| missing | 12 |
 | n/a | 8 |
 
 Priorities are suggestions for **this** Splunk port; adjust per your deployment (e.g. heavy automation → bump XCCDF results).
@@ -131,7 +131,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Review detail & comments | API: review body fields | **done** | `finding_details`, `comments`; `valid` / `validation_errors` from workspace `review_requirements`. | Required-field policy configurable per workspace (see Collection review requirements). | P0 | — |
 | Save vs submit vs accept/reject | UI: Submit, Accept, Reject with feedback | **done** | `workflow_state` on `stig_reviews`; REST submit/accept/reject + governance batch; STIG Editor + Collection review UIs; owner/manager grants + `review_accept_principals`; ingest skips non-draft rows; metrics use governance open findings. | Optional workflow fields on `stig_reviews` + UI actions; owner-only accept/reject. | P1 | L |
 | Collection review requirements | UI: Collection Settings `(?)` | **done** | KV `review_requirements` JSON on `stig_collections`; REST `GET/PATCH .../review_requirements`; SplunkUI **Review requirements**; server validation on review PATCH/submit; Editor + Collection review read policy. Default preserves legacy “details or comments” rule. | Workspace settings for required fields, min comment length, etc. | P1 | M |
-| Review history | API: `/collections/{id}/review-history`, stats | **missing** | Only `updated_at` / `updated_by` on review. | History collection or indexed audit; UI timeline per rule. | P2 | L |
+| Review history | API: `/collections/{id}/review-history`, stats | **done** | KV `stig_review_history` append-only rows on REST PATCH/submit/accept/reject/batch, checklist ingest apply, and baseline upgrade when assessor fields change; `GET /stig_reviews/{id}/history` and `GET /stig_collections/{id}/review-history` (filters + pagination); STIG Editor **Review history** timeline. Splunk audit log (`stigs_in_splunk.audit`) remains separate. **Gap:** no cross-workspace stats subpath; HEC/reconcile still skips history when ingest does not mutate KV (locked/non-draft rows). | History collection or indexed audit; UI timeline per rule. | P2 | L |
 | Review aging rules | API: `/collections/{id}/tasks/review-aging/config` | **missing** | — | Scheduled search or KV flags for stale reviews; optional notifications. | P2 | M |
 | Cross-asset review resources (drag-drop) | UI: Review Resources panel | **missing** | — | Show other hosts’ same rule review in editor sidebar; copy action. | P2 | M |
 | Bulk review update | API: `POST .../reviews` batch, `postReviewBatch` | **done** | `POST /stig_reviews/batch` (partial success, max 500 rows). | `POST /stig_reviews/batch` with cap checks. | P1 | M |
@@ -218,7 +218,8 @@ OpenAPI **tags** (approximate operation counts from `stig-manager.yaml`): Collec
 | `stig_hosts` | Asset CRUD, move workspace, **assign STIG** (`POST .../stigs`), list host checklists |
 | `stig_baselines` | List, import, rules, delete, `jobs` chunk import; **orphan rule GC** (`/gc_orphan_rules`); **library browse** (`/hierarchy`, `/by_stig/{stigId}`, `/rule/{ruleKey}`, `/{id}/rules/{ruleRef}`); **catalog ref** (`/rules/{ruleRef}`, `/ccis/{cci}`, `/groups/{groupId}`) |
 | `stig_checklists` | CRUD, export, `export_bulk` (by `checklist_ids` or `stig_collection_id` + filters) |
-| `stig_reviews` | List, get, patch (`ingest_lock`), batch (`/batch`) |
+| `stig_reviews` | List, get, patch (`ingest_lock`), batch (`/batch`); **`/{id}/history`** per-review timeline |
+| `stig_review_history` | Append-only KV (via service layer); queried through review/collection history GET routes |
 | `stig_imports` | CKL/CKLB ingest, zip archive, reconcile |
 | `stig_collections/{id}/imports` | Collection import builder batch (`files[]`) or zip body |
 | `stig_settings` | Editor settings adapter |

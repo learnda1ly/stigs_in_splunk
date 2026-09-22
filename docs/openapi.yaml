@@ -374,6 +374,60 @@ paths:
               schema:
                 type: object
 
+  /stig_collections/{collectionId}/review-history:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collections, Reviews]
+      summary: List review change history for a workspace
+      operationId: listCollectionReviewHistory
+      parameters:
+        - name: host_id
+          in: query
+          schema:
+            type: string
+        - name: baseline_id
+          in: query
+          schema:
+            type: string
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+        - name: review_id
+          in: query
+          schema:
+            type: string
+        - name: since
+          in: query
+          schema:
+            type: number
+          description: Minimum `created_at` epoch (alias `created_after`)
+        - name: until
+          in: query
+          schema:
+            type: number
+          description: Maximum `created_at` epoch (alias `created_before`)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewHistoryListResponse"
+        "404":
+          description: Unknown workspace or no read access
+
   /stig_collections/{collectionId}/upgrade_checklists:
     parameters:
       - $ref: "#/components/parameters/collectionId"
@@ -1759,6 +1813,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/Review"
 
+  /stig_reviews/{reviewId}/history:
+    parameters:
+      - $ref: "#/components/parameters/reviewId"
+    get:
+      tags: [Reviews]
+      summary: Timeline of changes for one review
+      operationId: getReviewHistory
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: number
+        - name: until
+          in: query
+          schema:
+            type: number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewHistoryByReviewResponse"
+        "404":
+          description: Review not found or not visible under workspace ACL
+
   /stig_imports:
     post:
       tags: [Imports]
@@ -2494,6 +2584,96 @@ components:
           type: string
         ingest_lock:
           type: boolean
+      additionalProperties: true
+
+    ReviewHistoryEntry:
+      type: object
+      properties:
+        _key:
+          type: string
+        review_id:
+          type: string
+        stig_collection_id:
+          type: string
+        checklist_id:
+          type: string
+        host_id:
+          type: string
+        baseline_id:
+          type: string
+        rule_id:
+          type: string
+        rule_version:
+          type: string
+        action:
+          type: string
+          description: update | submit | accept | reject | ingest | upgrade
+        previous_status:
+          type: string
+        new_status:
+          type: string
+        previous_workflow_state:
+          type: string
+        new_workflow_state:
+          type: string
+        changed_fields:
+          type: array
+          items:
+            type: string
+        summary:
+          type: string
+        actor:
+          type: string
+        created_at:
+          type: number
+      additionalProperties: true
+
+    ReviewHistoryListResponse:
+      type: object
+      properties:
+        stig_collection_id:
+          type: string
+        stig_collection_name:
+          type: string
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewHistoryEntry"
+        pagination:
+          type: object
+          properties:
+            limit:
+              type: integer
+            offset:
+              type: integer
+            total:
+              type: integer
+            has_more:
+              type: boolean
+        filters:
+          type: object
+      additionalProperties: true
+
+    ReviewHistoryByReviewResponse:
+      type: object
+      properties:
+        review_id:
+          type: string
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewHistoryEntry"
+        pagination:
+          type: object
+          properties:
+            limit:
+              type: integer
+            offset:
+              type: integer
+            total:
+              type: integer
+            has_more:
+              type: boolean
       additionalProperties: true
 
     ReviewBatchRequest:

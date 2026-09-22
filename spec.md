@@ -260,7 +260,7 @@ Authentication: Splunk session or Basic Auth (`-u user:pass`). TLS verify often 
 
 ### 6.1 `default/collections.conf`
 
-Six stanzas: `stig_collections`, `stig_hosts`, `stig_baselines`, `stig_baseline_rules`, `stig_checklists`, `stig_reviews`.
+Six stanzas: `stig_collections`, `stig_hosts`, `stig_baselines`, `stig_baseline_rules`, `stig_checklists`, `stig_reviews`. **`stig_review_history`** stores append-only assessor change rows (see §7.7).
 
 All: `enforceTypes = true`.
 
@@ -464,6 +464,32 @@ REST: `GET/POST /stig_collections/{id}/labels`, `GET/PATCH/DELETE .../labels/{la
 | `rejected_at`, `rejected_by`, `reject_feedback` | | Set on reject (feedback optional) |
 | `updated_at` | time | |
 | `updated_by` | string | Set on every update |
+
+### 7.7 `stig_review_history`
+
+Append-only audit of **assessor-visible** review changes (not a full document snapshot). Rows are inserted when REST PATCH/submit/accept/reject/batch, checklist ingest apply, or baseline upgrade mutates tracked fields on a review.
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `_key` | string | KV id |
+| `review_id` | string | FK → `stig_reviews._key` |
+| `stig_collection_id`, `checklist_id`, `host_id`, `baseline_id` | string | Denormalized for workspace list filters and grant ACL |
+| `group_id`, `rule_id`, `rule_version` | string | Rule identity at change time |
+| `action` | string | `update` \| `submit` \| `accept` \| `reject` \| `ingest` \| `upgrade` |
+| `previous_status`, `new_status` | string | Assessor status |
+| `previous_workflow_state`, `new_workflow_state` | string | Governance state |
+| `changed_fields` | string | JSON array of changed field names (`status`, `finding_details`, `comments`, `ingest_lock`, `workflow_state`, `package_id`, `reject_feedback`) |
+| `summary` | string | Short human-readable line (bounded length; no full finding text) |
+| `actor` | string | Splunk username |
+| `created_at` | time | Event time |
+
+**Ingest:** `apply_review_seeds` records `action=ingest` when an incoming checklist/HEC apply changes a review. Rows are **not** written when ingest skips a review (`ingest_lock` or non-draft workflow). History writes are synchronous KV inserts (cheap); large zip imports may produce many rows.
+
+**Governance:** `submit` / `accept` / `reject` always append a history row when the REST action succeeds, even if assessor field values are unchanged; `reject_feedback` is included in `changed_fields` when it changes.
+
+**Workspace list:** `GET /stig_collections/{id}/review-history` loads all KV rows for the workspace then filters and paginates in the handler (acceptable for P2; very large histories may be slow—use per-review history or query filters).
+
+**Retention:** cascade workspace delete removes history rows for that `stig_collection_id`.
 
 ---
 
@@ -729,6 +755,8 @@ Requires **`stig_write`**.
 | POST | `/stig_reviews/{id}/accept` | Owner/manager accept (`stig_review_accept`, grant role, or `review_accept_principals`) |
 | POST | `/stig_reviews/{id}/reject` | `{reject_feedback?}` — returns review to `draft` |
 | POST | `/stig_reviews/batch` | Field batch: `{reviews: [{_key, ...}]}` **or** governance: `{action, review_ids[], reject_feedback?}` (mutually exclusive; max 500 ids). Both return `{updated: [...], errors: [...], summary: {total, succeeded, failed}}`; governance adds `action`. |
+| GET | `/stig_reviews/{id}/history` | `{review_id, history: [...], pagination}` — newest first; query `limit?` (default **100**, max **500**), `offset?`, `since?` / `until?` (epoch). Same read ACL as `GET /stig_reviews/{id}`. |
+| GET | `/stig_collections/{id}/review-history` | Workspace-scoped timeline; query `host_id?`, `baseline_id?`, `rule_id?`, `review_id?`, time range, pagination. Restricted grants filter by host/baseline/label scope. |
 
 Updates require workspace **write** access via parent checklist. Content PATCH is allowed only in `workflow_state=draft` (except `stig_admin`). Validate `status` against allowed set; accept internal or CKLB status strings on input. Content PATCH and submit enforce the workspace **`review_requirements`** policy (see below); invalid rows return **400** with a message derived from `validation_errors`. `ingest_lock=true` blocks HEC/reconcile from overwriting that finding. See **FEATURE_PARITY.md** for the state machine.
 

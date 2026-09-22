@@ -33,6 +33,7 @@ from services import baseline_defaults as baseline_defaults_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
 from services import hosts as hosts_svc
+from services import review_history as review_history_svc
 
 
 def _require_collection(service, collection_id: str, session: Dict[str, Any], write: bool = False):
@@ -438,7 +439,10 @@ def apply_review_seeds(
         patch["valid"] = validation.persistable_valid(patch)
         patch["updated_at"] = ts
         patch["updated_by"] = username
-        kv_client.update_record(reviews_coll, rec["_key"], kv_record(patch))
+        stored = kv_client.update_record(reviews_coll, rec["_key"], kv_record(patch))
+        review_history_svc.record_review_change(
+            service, rec, stored, username, action="ingest", checklist=None
+        )
         updated += 1
     return {"updated": updated, "unmatched": unmatched, "locked": locked}
 
