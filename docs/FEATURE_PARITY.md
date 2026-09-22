@@ -10,6 +10,7 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 | STIG Manager OpenAPI 3.0 | https://github.com/NUWCDIVNPT/stig-manager/blob/main/api/source/specification/stig-manager.yaml |
 | STIG Manager user walkthrough | https://stig-manager.readthedocs.io/en/latest/user-guide/user-quickstart.html |
 | `stigs_in_splunk` spec | [spec.md](../spec.md) |
+| `stigs_in_splunk` OpenAPI 3 | [docs/openapi.yaml](openapi.yaml) (human index [docs/api.md](api.md)) |
 | `stigs_in_splunk` REST | `https://<host>:8089/servicesNS/nobody/stigs_in_splunk` — `stig_collections`, `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_settings` |
 
 **Concept mapping (Splunk-shaped)**
@@ -66,9 +67,9 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count (approx.) |
 |--------|-----------------|
-| done | 33 |
+| done | 34 |
 | partial | 8 |
-| missing | 14 |
+| missing | 13 |
 | n/a | 8 |
 
 Priorities are suggestions for **this** Splunk port; adjust per your deployment (e.g. heavy automation → bump XCCDF results).
@@ -145,7 +146,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Collection archive export XCCDF | API: `POST .../archive/xccdf` | **missing** | — | Optional XCCDF results export from KV state. | P2 | L |
 | STIGMan Watcher integration | [stigman-watcher](https://github.com/NUWCDIVNPT/stigman-watcher) | **done** | HEC + `events.py` fat events; reconcile every 5m. Event schema and Watcher POST field parity documented in [watcher-hec.md](watcher-hec.md). | Document event schema; parity with Watcher POST fields. | P1 | S |
 | Async import/export jobs | API: `/jobs`, `/jobs/{jobId}/runs`, tasks | **partial** | `/stig_baselines/jobs` chunk upload only. | Extend job pattern for large collection import/export if needed. | P2 | M |
-| Evaluate-STIG / API automation | OpenAPI entire surface | **partial** | Custom `/stig_*` only; no OpenAPI publish. | Optional `docs/openapi.yaml` for Splunk REST; versioning policy. | P2 | M |
+| Evaluate-STIG / API automation | OpenAPI entire surface | **partial** | Splunk-shaped [docs/openapi.yaml](openapi.yaml) documents persist `/stig_*` routes (auth, capabilities, imports including `xccdf-results-zip`). **Gap:** not STIG Manager URL/schema parity; no generated client SDK; field-level schemas are indicative — see `spec.md` and KV records for full shapes. | Optional `docs/openapi.yaml` for Splunk REST; versioning policy. | P2 | M |
 
 ### F. Findings, metrics, POA&M, reporting
 
@@ -165,7 +166,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 
 | Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
 |---------|-------------------------|--------|-----------|-----------------------------|-----|------|
-| OpenAPI 3 contract | `stig-manager.yaml` | **missing** | Undocumented persist REST conventions. | Publish Splunk REST OpenAPI or markdown reference generated from handler. | P2 | M |
+| OpenAPI 3 contract | `stig-manager.yaml` | **done** | [docs/openapi.yaml](openapi.yaml) + [docs/api.md](api.md); version tracks `app.manifest`. **Gap:** response schemas are not exhaustive for every KV field; UCC-generated Configuration REST stanzas outside persist handler are not listed; `by_stig/{id}` path may include slashes — encode per Splunk REST rules. | Publish Splunk REST OpenAPI or markdown reference generated from handler. | P2 | M |
 | Live state / SSE | API: `/op/state/sse` | **n/a** | Splunk Web polling or custom SSE if needed. | Document refresh strategy in UI. | P2 | S |
 | App configuration API | API: `/op/configuration` | **done** | UCC `stigs_in_splunk_settings.conf` `[general]` + `GET/POST|PATCH /stig_settings` JSON adapter (`services/settings.py`). **HEC token** only on `[http://stig_findings]` input — never in conf or REST. Field catalog: `globalConfig.yaml` tab **Editor & ingest**, spec §4.3.1 / §11.7, README. Legacy KV `stig_editor_settings` fallback documented. | Settings documented in globalConfig + spec. | P1 | — |
 | Horizontal scale / stateless API | Container scale-out | **n/a** | Splunk KV on search head; scale via Splunk architecture. | Deployment guide for SHC/KV. | — | — |
@@ -207,7 +208,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 
 OpenAPI **tags** (approximate operation counts from `stig-manager.yaml`): Collection (49), Asset (23), Metrics (16), STIG (15), Review (15), User (13), Job (11), Operation (9).
 
-**Splunk persist resources implemented today** (see `package/bin/stig_rest_handler.py`, `spec.md` §11):
+**Splunk persist resources implemented today** (see `package/bin/stig_rest_handler.py`, [openapi.yaml](openapi.yaml), `spec.md` §11):
 
 | Resource | Notes |
 |----------|--------|
