@@ -1461,7 +1461,9 @@ class StigRestHandler(PersistentServerConnectionApplication):
         if parts == ["review_aging_report"]:
             if method not in ("GET", "POST"):
                 return _error("method not allowed", status=405)
-            rec = review_aging_svc.report_stale_all_workspaces(service)
+            rec = review_aging_svc.report_stale_all_workspaces(
+                service, session, query
+            )
             return _json_response(rec)
         if parts:
             return _error("not found", status=404)

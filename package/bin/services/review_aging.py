@@ -8,9 +8,7 @@ import audit
 import kv_client
 import review_workflow
 from models import (
-    KV_STIG_CHECKLISTS,
     KV_STIG_COLLECTIONS,
-    KV_STIG_HOSTS,
     KV_STIG_REVIEWS,
     STATUSES,
     dumps_json,
@@ -18,7 +16,6 @@ from models import (
     now_epoch,
     parse_json_field,
 )
-from services import baselines as baselines_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
 from services import reporting as reporting_svc
@@ -359,13 +356,18 @@ def list_stale_reviews(
     }
 
 
-def report_stale_all_workspaces(service) -> Dict[str, Any]:
-    """Unfiltered stale rows for scheduled search / admin report (not grant-scoped)."""
+def report_stale_all_workspaces(
+    service,
+    session: Dict[str, Any],
+    query: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Stale rows for grant-visible workspaces (scheduled search / multi-workspace report)."""
     now = now_epoch()
-    reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
+    total_limit = _parse_limit(query, default=2000)
     rows: List[Dict[str, Any]] = []
     workspaces_scanned = 0
-    for collection in collections_svc.list_all_collections(service):
+    stale_count = 0
+    for collection in collections_svc.list_collections(service, session):
         collection_id = collection.get("_key")
         if not collection_id:
             continue
@@ -373,54 +375,34 @@ def report_stale_all_workspaces(service) -> Dict[str, Any]:
         if not config.get("enabled"):
             continue
         workspaces_scanned += 1
-        checklists = kv_client.query_all(
-            kv_client.get_collection(service, KV_STIG_CHECKLISTS),
-            {"stig_collection_id": collection_id},
+        item_limit = (
+            max(1, total_limit - len(rows)) if len(rows) < total_limit else 1
         )
-        host_by_id = {
-            h["_key"]: h
-            for h in kv_client.query_all(
-                kv_client.get_collection(service, KV_STIG_HOSTS),
-                {"stig_collection_id": collection_id},
-            )
-            if h.get("_key")
-        }
-        baselines = {
-            b["_key"]: b
-            for b in baselines_svc.list_baselines(service)
-            if b.get("_key")
-        }
-        baseline_ids = {c.get("baseline_id") for c in checklists if c.get("baseline_id")}
-        rule_meta_index = reporting_svc._rule_meta_index(service, baseline_ids)
-        severity_index = reporting_svc._severity_index_from_meta(rule_meta_index)
-        checklist_by_id = {c["_key"]: c for c in checklists if c.get("_key")}
+        chunk = list_stale_reviews(
+            service,
+            collection_id,
+            session,
+            {"limit": item_limit},
+        )
+        stale_count += int(chunk.get("stale_count") or 0)
+        if len(rows) < total_limit:
+            for item in chunk.get("items") or []:
+                if len(rows) >= total_limit:
+                    break
+                enriched = dict(item)
+                enriched["collection_name"] = collection.get("name") or ""
+                rows.append(enriched)
 
-        for checklist_id, checklist in checklist_by_id.items():
-            host = host_by_id.get(checklist.get("host_id") or "", {})
-            baseline = baselines.get(checklist.get("baseline_id") or "", {})
-            for review in kv_client.query_all(reviews_coll, {"checklist_id": checklist_id}):
-                sev = reporting_svc.review_severity(review, severity_index)
-                if not is_review_stale(review, config, severity=sev, now=now):
-                    continue
-                row = _stale_row(
-                    review,
-                    checklist=checklist,
-                    host=host,
-                    baseline=baseline,
-                    severity=sev,
-                    config=config,
-                    now=now,
-                )
-                row["collection_name"] = collection.get("name") or ""
-                rows.append(row)
-
+    truncated = stale_count > len(rows)
     return {
         "generated_at": now,
         "workspaces_scanned": workspaces_scanned,
-        "stale_count": len(rows),
+        "stale_count": stale_count,
+        "limit": total_limit,
+        "truncated": truncated,
         "items": rows,
         "note": (
-            "Report is not grant-filtered; use GET "
-            "/stig_collections/{id}/review_aging/stale for ACL-scoped results."
+            "Includes only workspaces visible to the caller (grant ACL). "
+            "Per-workspace detail: GET /stig_collections/{id}/review_aging/stale."
         ),
     }

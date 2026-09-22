@@ -110,12 +110,8 @@ class ReviewAgingStaleTests(unittest.TestCase):
         )
 
     @patch("services.grants.workspace_context")
-    @patch.object(aging_svc.reporting_svc, "_rule_meta_index", return_value={})
-    @patch.object(aging_svc.baselines_svc, "list_baselines", return_value=[])
     @patch.object(aging_svc.reporting_svc, "_collection_workspace_context")
-    def test_stale_when_enabled(
-        self, mock_ctx, _baselines, _meta, mock_workspace
-    ):
+    def test_stale_when_enabled(self, mock_ctx, mock_workspace):
         aging_json = '{"enabled": true, "stale_after_days": 90}'
         self.kv.tables["stig_collections"]["ws1"]["review_aging_config"] = aging_json
         mock_workspace.return_value = (
@@ -228,6 +224,93 @@ class ReviewAgingStaleTests(unittest.TestCase):
         self.assertTrue(out["review_aging"]["enabled"])
         stored = self.kv.tables["stig_collections"]["ws1"]["review_aging_config"]
         self.assertIn("45", stored)
+
+
+class ReviewAgingReportAclTests(unittest.TestCase):
+    def setUp(self):
+        self.kv = _AgingKv()
+        self.now = 1_700_000_000.0
+        aging_json = '{"enabled": true, "stale_after_days": 90}'
+        self.kv.tables["stig_collections"]["ws1"] = {
+            "_key": "ws1",
+            "name": "Visible",
+            "review_aging_config": aging_json,
+        }
+        self.kv.tables["stig_collections"]["ws2"] = {
+            "_key": "ws2",
+            "name": "Hidden",
+            "review_aging_config": aging_json,
+        }
+        self.kv.tables["stig_checklists"]["cl2"] = {
+            "_key": "cl2",
+            "stig_collection_id": "ws2",
+            "host_id": "h2",
+            "baseline_id": "b1",
+        }
+        self.kv.tables["stig_hosts"]["h2"] = {
+            "_key": "h2",
+            "stig_collection_id": "ws2",
+            "hostname": "secret-host",
+        }
+        self.kv.tables["stig_reviews"]["r2"] = {
+            "_key": "r2",
+            "checklist_id": "cl2",
+            "baseline_id": "b1",
+            "group_id": "V-2",
+            "rule_id": "SV-2",
+            "status": "open",
+            "workflow_state": "accepted",
+            "updated_at": self.now - (100 * 86400),
+        }
+        self.kv.tables["stig_reviews"]["r1"] = {
+            "_key": "r1",
+            "checklist_id": "cl1",
+            "baseline_id": "b1",
+            "group_id": "V-1",
+            "rule_id": "SV-1",
+            "status": "open",
+            "workflow_state": "accepted",
+            "updated_at": self.now - (100 * 86400),
+        }
+
+    def _patch_kv(self):
+        return patch.multiple(
+            aging_svc.kv_client,
+            get_collection=self.kv.get_collection,
+            query_all=self.kv.query_all,
+            get_by_key=self.kv.get_by_key,
+            update_record=self.kv.update_record,
+        )
+
+    @patch.object(aging_svc.collections_svc, "list_collections")
+    @patch("services.grants.workspace_context")
+    @patch.object(aging_svc.reporting_svc, "_rule_meta_index", return_value={})
+    @patch.object(aging_svc.reporting_svc, "_collection_workspace_context")
+    def test_report_only_visible_workspaces(
+        self, mock_ctx, _meta, mock_workspace, mock_list_collections
+    ):
+        mock_list_collections.return_value = [self.kv.tables["stig_collections"]["ws1"]]
+        mock_workspace.return_value = (
+            {"_key": "ws1", "review_aging_config": '{"enabled": true, "stale_after_days": 90}'},
+            MagicMock(can_read=True),
+            [],
+        )
+        mock_ctx.return_value = {
+            "checklist_by_id": {"cl1": self.kv.tables["stig_checklists"]["cl1"]},
+            "host_by_id": {"h1": self.kv.tables["stig_hosts"]["h1"]},
+            "baselines": {},
+            "severity_index": {},
+        }
+        with self._patch_kv():
+            with patch.object(aging_svc, "now_epoch", return_value=self.now):
+                body = aging_svc.report_stale_all_workspaces(
+                    MagicMock(), {"user": "member"}, {}
+                )
+        self.assertEqual(body["workspaces_scanned"], 1)
+        self.assertEqual(body["stale_count"], 1)
+        hostnames = {(row.get("hostname") or "") for row in body.get("items") or []}
+        self.assertNotIn("secret-host", hostnames)
+        self.assertEqual(len(body["items"]), 1)
 
 
 if __name__ == "__main__":

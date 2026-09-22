@@ -1948,6 +1948,50 @@ paths:
                   - $ref: "#/components/schemas/ChecklistFileImportResult"
                   - $ref: "#/components/schemas/ImportBatchResult"
 
+  /stig_imports/review_aging_report:
+    get:
+      tags: [Imports, Collections, Reviews]
+      summary: Stale reviews across grant-visible workspaces with aging enabled
+      description: >
+        Same grant ACL as listing workspaces (`stig_collections`). Only workspaces
+        the caller may read are scanned. Response `items` are capped by `limit`
+        (default 2000); `stale_count` is the full total and `truncated` indicates
+        when more rows exist. Invoked by `| stigkvreviewaging` using the search
+        runner session key.
+      operationId: reviewAgingReportGet
+      x-splunk-capability: stig_read
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 2000
+            maximum: 2000
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      tags: [Imports, Collections, Reviews]
+      summary: Stale reviews across grant-visible workspaces with aging enabled
+      operationId: reviewAgingReportPost
+      x-splunk-capability: stig_read
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 2000
+            maximum: 2000
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
   /stig_imports/reconcile:
     get:
       tags: [Imports]
