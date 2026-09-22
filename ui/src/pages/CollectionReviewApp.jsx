@@ -7,11 +7,13 @@ import Message from "@splunk/react-ui/Message";
 import Select from "@splunk/react-ui/Select";
 import Switch from "@splunk/react-ui/Switch";
 import Table from "@splunk/react-ui/Table";
+import Text from "@splunk/react-ui/Text";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
 import styled from "styled-components";
 import {
     apiFetch,
     apiGet,
+    apiPatch,
     defaultWorkspaceId,
     viewUrl,
     workspaceLabel,
@@ -26,7 +28,17 @@ import {
     Shell,
     Toolbar,
 } from "../layout";
-import { STATUS_LABELS, StatusChip, reviewIsValid, reviewValidationIssues, DEFAULT_REVIEW_REQUIREMENTS, normalizeReviewRequirements } from "../status";
+import {
+    STATUS_LABELS,
+    StatusChip,
+    WorkflowChip,
+    reviewIsEditable,
+    reviewIsValid,
+    reviewValidationIssues,
+    reviewWorkflowState,
+    DEFAULT_REVIEW_REQUIREMENTS,
+    normalizeReviewRequirements,
+} from "../status";
 
 const CellInput = styled.textarea`
     box-sizing: border-box;
@@ -64,6 +76,18 @@ function reviewMatchesRule(review, rule) {
     return false;
 }
 
+function reviewSnapshotFromRow(row) {
+    if (!row || !row.review) {
+        return null;
+    }
+    return {
+        ...row.review,
+        status: row.status,
+        finding_details: row.finding,
+        comments: row.comments,
+    };
+}
+
 function emptyRow(host, checklist, review) {
     return {
         key: review ? review._key : checklist._key,
@@ -95,6 +119,8 @@ export default function CollectionReviewApp() {
     const [loading, setLoading] = useState(false);
     const [busy, setBusy] = useState(false);
     const [banner, setBanner] = useState(null);
+    const [selectedReviewKeys, setSelectedReviewKeys] = useState([]);
+    const [rejectFeedback, setRejectFeedback] = useState("");
 
     const baselineOptions = useMemo(() => {
         const ids = {};
@@ -112,12 +138,57 @@ export default function CollectionReviewApp() {
 
     const dirtyCount = rows.filter((r) => r.dirty).length;
 
+    const workflowCounts = useMemo(() => {
+        const counts = { draft: 0, submitted: 0, accepted: 0, rejected: 0 };
+        rows.forEach((row) => {
+            if (!row.review) {
+                return;
+            }
+            const wf = reviewWorkflowState(row.review);
+            if (counts[wf] != null) {
+                counts[wf] += 1;
+            }
+        });
+        return counts;
+    }, [rows]);
+
+    const selectableReviewKeys = useMemo(
+        () =>
+            rows
+                .filter((row) => row.review && row.review._key)
+                .map((row) => row.review._key),
+        [rows]
+    );
+
+    const allSelected =
+        selectableReviewKeys.length > 0 &&
+        selectableReviewKeys.every((key) => selectedReviewKeys.indexOf(key) >= 0);
+
+    const toggleSelectAll = () => {
+        if (allSelected) {
+            setSelectedReviewKeys([]);
+        } else {
+            setSelectedReviewKeys(selectableReviewKeys.slice());
+        }
+    };
+
+    const toggleSelectReview = (reviewKey) => {
+        setSelectedReviewKeys((prev) => {
+            const idx = prev.indexOf(reviewKey);
+            if (idx >= 0) {
+                return prev.filter((k) => k !== reviewKey);
+            }
+            return prev.concat([reviewKey]);
+        });
+    };
+
     const loadWorkspace = (cid) => {
         setCollectionId(cid);
         setBaselineId("");
         setRuleKey("");
         setRules([]);
         setRows([]);
+        setSelectedReviewKeys([]);
         if (!cid) {
             setHosts([]);
             setChecklists([]);
@@ -173,6 +244,7 @@ export default function CollectionReviewApp() {
         setBaselineId(bid);
         setRuleKey("");
         setRows([]);
+        setSelectedReviewKeys([]);
         if (!bid) {
             setRules([]);
             return;
@@ -194,6 +266,7 @@ export default function CollectionReviewApp() {
 
     const loadRuleRows = (rkey) => {
         setRuleKey(rkey);
+        setSelectedReviewKeys([]);
         if (!collectionId || !baselineId || !rkey) {
             setRows([]);
             return;
@@ -366,6 +439,140 @@ export default function CollectionReviewApp() {
             .finally(() => setBusy(false));
     };
 
+    const applyWorkflowUpdate = (updated) => {
+        if (!updated || !updated._key) {
+            return;
+        }
+        setRows((prev) =>
+            prev.map((row) => {
+                if (!row.review || row.review._key !== updated._key) {
+                    return row;
+                }
+                return {
+                    ...row,
+                    review: { ...row.review, ...updated },
+                    status: updated.status || row.status,
+                    finding: updated.finding_details != null
+                        ? updated.finding_details
+                        : row.finding,
+                    comments: updated.comments != null ? updated.comments : row.comments,
+                    ingestLock: updated.ingest_lock != null
+                        ? !!updated.ingest_lock
+                        : row.ingestLock,
+                    dirty: false,
+                };
+            })
+        );
+    };
+
+    const workflowTargets = (action) => {
+        const scope =
+            selectedReviewKeys.length > 0
+                ? rows.filter(
+                      (row) =>
+                          row.review &&
+                          selectedReviewKeys.indexOf(row.review._key) >= 0
+                  )
+                : rows.filter((row) => row.review && row.review._key);
+        return scope.filter((row) => {
+            const wf = reviewWorkflowState(row.review);
+            if (action === "submit") {
+                return (
+                    wf === "draft" &&
+                    reviewIsValid(reviewSnapshotFromRow(row), reviewRequirements)
+                );
+            }
+            if (action === "accept" || action === "reject") {
+                return wf === "submitted";
+            }
+            return false;
+        });
+    };
+
+    const onBatchWorkflow = (action) => {
+        const dirtyInScope = rows.filter((row) => {
+            if (!row.dirty || !row.review) {
+                return false;
+            }
+            if (selectedReviewKeys.length) {
+                return selectedReviewKeys.indexOf(row.review._key) >= 0;
+            }
+            return true;
+        });
+        if (dirtyInScope.length) {
+            setBanner({
+                type: "warning",
+                text: "Save pending field edits before running " + action + ".",
+            });
+            return;
+        }
+        const targets = workflowTargets(action);
+        const ids = targets.map((row) => row.review._key);
+        if (!ids.length) {
+            const scopeLabel = selectedReviewKeys.length
+                ? "selected row(s)"
+                : "host row(s) for this rule";
+            setBanner({
+                type: "warning",
+                text:
+                    "No " +
+                    scopeLabel +
+                    " match " +
+                    action +
+                    " (check workflow state and review completeness).",
+            });
+            return;
+        }
+        setBusy(true);
+        apiPatch("stig_reviews/batch", {
+            action,
+            review_ids: ids,
+            reject_feedback: action === "reject" ? rejectFeedback : undefined,
+        })
+            .then((result) => {
+                (result.updated || result.reviews || []).forEach((updated) => {
+                    applyWorkflowUpdate(updated);
+                });
+                const summary = result.summary || {};
+                const succeeded =
+                    summary.succeeded != null
+                        ? summary.succeeded
+                        : (result.updated || []).length;
+                const errCount =
+                    summary.failed != null
+                        ? summary.failed
+                        : (result.errors || []).length;
+                const firstErr = (result.errors || [])[0];
+                const errDetail =
+                    firstErr && (firstErr.error || firstErr.message);
+                let text =
+                    action +
+                    ": " +
+                    succeeded +
+                    " updated" +
+                    (selectedReviewKeys.length
+                        ? " (" + ids.length + " selected)"
+                        : " (all eligible hosts)");
+                if (errCount) {
+                    text += ", " + errCount + " error(s)";
+                    if (errDetail) {
+                        text += " — " + errDetail;
+                    }
+                }
+                setBanner({
+                    type: errCount ? "warning" : "success",
+                    text,
+                });
+            })
+            .catch((err) =>
+                setBanner({
+                    type: "error",
+                    text: "Governance " + action + " failed: " + err.message,
+                })
+            )
+            .finally(() => setBusy(false));
+    };
+
     return (
         <Shell>
             <Header>
@@ -435,6 +642,27 @@ export default function CollectionReviewApp() {
                     </ControlGroup>
                     <Actions>
                         <Button
+                            appearance="secondary"
+                            disabled={busy || !rows.length}
+                            onClick={() => onBatchWorkflow("submit")}
+                        >
+                            Submit
+                        </Button>
+                        <Button
+                            appearance="secondary"
+                            disabled={busy || !rows.length}
+                            onClick={() => onBatchWorkflow("accept")}
+                        >
+                            Accept
+                        </Button>
+                        <Button
+                            appearance="secondary"
+                            disabled={busy || !rows.length}
+                            onClick={() => onBatchWorkflow("reject")}
+                        >
+                            Reject
+                        </Button>
+                        <Button
                             appearance="primary"
                             disabled={busy || !dirtyCount}
                             onClick={onSave}
@@ -445,6 +673,15 @@ export default function CollectionReviewApp() {
                 </Toolbar>
                 <HeaderMeta>
                     {loading ? <WaitSpinner /> : null}
+                    {rows.length ? (
+                        <span style={{ fontSize: 12, color: "#555" }}>
+                            {workflowCounts.submitted} submitted ·{" "}
+                            {workflowCounts.accepted} accepted
+                            {selectedReviewKeys.length
+                                ? " · " + selectedReviewKeys.length + " selected"
+                                : ""}
+                        </span>
+                    ) : null}
                     <Link to={viewUrl("stig_editor_ui")}>Editor</Link>
                     <Link to={viewUrl("stig_import_ui")}>Import</Link>
                     <Link to={viewUrl("stig_export_ui")}>Export</Link>
@@ -462,6 +699,35 @@ export default function CollectionReviewApp() {
                         {selectedRule.rule_title || selectedRule.title || ""}
                     </p>
                 ) : null}
+                {ruleKey ? (
+                    <div
+                        style={{
+                            display: "flex",
+                            gap: 12,
+                            alignItems: "flex-end",
+                            marginBottom: 12,
+                            flexWrap: "wrap",
+                        }}
+                    >
+                        <ControlGroup
+                            label="Reject feedback (optional)"
+                            labelPosition="top"
+                            style={{ minWidth: 280, flex: "1 1 280px" }}
+                        >
+                            <Text
+                                value={rejectFeedback}
+                                onChange={(e, { value }) => setRejectFeedback(value)}
+                                disabled={busy}
+                                placeholder="Shown when rejecting submitted reviews"
+                            />
+                        </ControlGroup>
+                        <p style={{ margin: 0, fontSize: 12, color: "#666", maxWidth: 420 }}>
+                            Governance applies to checked rows, or all eligible hosts for this
+                            rule when none are checked. Accept/reject require server-side
+                            authorization.
+                        </p>
+                    </div>
+                ) : null}
                 {!ruleKey ? (
                     <Message type="info">
                         Choose a workspace, baseline, and rule to review that check across
@@ -470,7 +736,17 @@ export default function CollectionReviewApp() {
                 ) : (
                     <Table>
                         <Table.Head>
+                            <Table.HeadCell width={44}>
+                                <input
+                                    type="checkbox"
+                                    checked={allSelected}
+                                    disabled={!selectableReviewKeys.length || busy}
+                                    onChange={toggleSelectAll}
+                                    aria-label="Select all hosts"
+                                />
+                            </Table.HeadCell>
                             <Table.HeadCell>Host</Table.HeadCell>
+                            <Table.HeadCell width={110}>Workflow</Table.HeadCell>
                             <Table.HeadCell width={140}>Status</Table.HeadCell>
                             <Table.HeadCell>Finding details</Table.HeadCell>
                             <Table.HeadCell>Comments</Table.HeadCell>
@@ -490,11 +766,42 @@ export default function CollectionReviewApp() {
                                 const rowId = row.review
                                     ? row.review._key
                                     : row.checklistId;
+                                const editable =
+                                    row.review &&
+                                    reviewIsEditable(row.review) &&
+                                    !busy;
+                                const reviewKey = row.review && row.review._key;
+                                const checked =
+                                    reviewKey &&
+                                    selectedReviewKeys.indexOf(reviewKey) >= 0;
                                 return (
                                     <Table.Row key={rowId}>
                                         <Table.Cell>
+                                            <input
+                                                type="checkbox"
+                                                checked={!!checked}
+                                                disabled={!reviewKey || busy}
+                                                onChange={() =>
+                                                    reviewKey &&
+                                                    toggleSelectReview(reviewKey)
+                                                }
+                                                aria-label={
+                                                    "Select " + (row.hostname || "host")
+                                                }
+                                            />
+                                        </Table.Cell>
+                                        <Table.Cell>
                                             {row.hostname}
                                             {row.dirty ? " *" : ""}
+                                        </Table.Cell>
+                                        <Table.Cell>
+                                            {row.review ? (
+                                                <WorkflowChip
+                                                    workflowState={row.review.workflow_state}
+                                                />
+                                            ) : (
+                                                "—"
+                                            )}
                                         </Table.Cell>
                                         <Table.Cell>
                                             <Select
@@ -502,7 +809,7 @@ export default function CollectionReviewApp() {
                                                 onChange={(e, { value }) =>
                                                     patchRow(row.key, { status: value })
                                                 }
-                                                disabled={!row.review || busy}
+                                                disabled={!editable}
                                             >
                                                 {Object.keys(STATUS_LABELS).map((st) => (
                                                     <Select.Option
@@ -522,7 +829,7 @@ export default function CollectionReviewApp() {
                                                         finding: e.target.value,
                                                     })
                                                 }
-                                                disabled={!row.review || busy}
+                                                disabled={!editable}
                                             />
                                         </Table.Cell>
                                         <Table.Cell>
@@ -533,7 +840,7 @@ export default function CollectionReviewApp() {
                                                         comments: e.target.value,
                                                     })
                                                 }
-                                                disabled={!row.review || busy}
+                                                disabled={!editable}
                                             />
                                         </Table.Cell>
                                         <Table.Cell>
@@ -547,7 +854,7 @@ export default function CollectionReviewApp() {
                                                         ingestLock: selected,
                                                     })
                                                 }
-                                                disabled={!row.review || busy}
+                                                disabled={!editable}
                                             />
                                         </Table.Cell>
                                     </Table.Row>
