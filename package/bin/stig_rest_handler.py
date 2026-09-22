@@ -779,7 +779,16 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return _json_response(rec)
         if method in ("PATCH", "POST", "PUT"):
             body = _body_json(payload)
-            updated = hosts_svc.update_host(service, key, body, username, session)
+            try:
+                updated = hosts_svc.update_host(
+                    service, key, body, username, session
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
             return _json_response(updated)
         if method == "DELETE":
             if not access.user_has_stig_admin(session):

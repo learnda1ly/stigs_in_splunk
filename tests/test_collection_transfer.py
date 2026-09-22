@@ -226,6 +226,59 @@ class TestCollectionTransferService(unittest.TestCase):
         )
         self.assertEqual(labels, [])
 
+    @patch("services.hosts.audit.log_event")
+    def test_patch_move_plus_hostname_stays_in_destination(self, mock_audit) -> None:
+        alice = _session()
+        hosts_svc.update_host(
+            self.service,
+            "h1",
+            {"stig_collection_id": "ws2", "hostname": "alpha-renamed"},
+            "alice",
+            alice,
+        )
+        host = self.kv.tables["stig_hosts"]["h1"]
+        self.assertEqual(host["stig_collection_id"], "ws2")
+        self.assertEqual(host["hostname"], "alpha-renamed")
+        self.assertEqual(
+            self.kv.tables["stig_checklists"]["cl1"]["stig_collection_id"], "ws2"
+        )
+
+    @patch("services.hosts.audit.log_event")
+    def test_destination_hostname_collision(self, mock_audit) -> None:
+        alice = _session()
+        self.kv.tables["stig_hosts"]["h3"] = {
+            "_key": "h3",
+            "stig_collection_id": "ws2",
+            "hostname": "alpha",
+            "label_ids": "[]",
+        }
+        with self.assertRaises(ValueError) as ctx:
+            hosts_svc.transfer_host_to_collection(
+                self.service, "h1", "ws1", "ws2", "alice", alice
+            )
+        self.assertEqual(str(ctx.exception), "destination_hostname_collision")
+        self.assertEqual(
+            self.kv.tables["stig_hosts"]["h1"]["stig_collection_id"], "ws1"
+        )
+
+    def test_acl_deny_source(self) -> None:
+        alice = _session()
+        del self.kv.tables["stig_collection_grants"]["g1"]
+        self.kv.tables["stig_collections"]["ws1"]["access_principals"] = (
+            '["user:someone_else"]'
+        )
+        with patch("services.collection_transfer.collections_svc.get_collection") as mock_get:
+            mock_get.side_effect = lambda _s, cid: self.kv.tables["stig_collections"].get(cid)
+            with self.assertRaises(PermissionError):
+                transfer_svc.export_hosts_to_collection(
+                    self.service,
+                    "ws1",
+                    "ws2",
+                    {"host_ids": ["h1"]},
+                    "alice",
+                    alice,
+                )
+
     def test_acl_deny_destination(self) -> None:
         alice = _session()
         del self.kv.tables["stig_collection_grants"]["g2"]
@@ -243,6 +296,72 @@ class TestCollectionTransferService(unittest.TestCase):
                     "alice",
                     alice,
                 )
+
+    @patch("services.hosts.audit.log_event")
+    def test_mixed_bulk_results_and_201(self, mock_audit) -> None:
+        alice = _session()
+        with patch("services.collection_transfer.collections_svc.get_collection") as mock_get:
+            mock_get.side_effect = lambda _s, cid: self.kv.tables["stig_collections"].get(cid)
+            result = transfer_svc.export_hosts_to_collection(
+                self.service,
+                "ws1",
+                "ws2",
+                {"host_ids": ["h1", "missing", "h2"]},
+                "alice",
+                alice,
+            )
+        self.assertEqual(result["summary"]["moved"], 2)
+        self.assertEqual(result["summary"]["failed"], 1)
+        by_id = {r["host_id"]: r for r in result["results"]}
+        self.assertEqual(by_id["h1"]["status"], "moved")
+        self.assertEqual(by_id["missing"]["status"], "error")
+        self.assertEqual(by_id["missing"]["error"], "not_found")
+        self.assertEqual(by_id["h2"]["status"], "moved")
+        handler = stig_rest_handler.StigRestHandler("", "")
+        payload = {
+            "method": "POST",
+            "session": {
+                "authtoken": "t",
+                "user": "alice",
+                "capabilities": {"stig_write": True},
+            },
+            "rest_path": "stig_collections/ws1/export-to/ws2",
+            "payload": json.dumps({"host_ids": ["h1"]}),
+        }
+        with patch.object(
+            stig_rest_handler.collection_transfer_svc,
+            "export_hosts_to_collection",
+            return_value=result,
+        ):
+            with patch.object(
+                stig_rest_handler.kv_client, "connect", return_value=MagicMock()
+            ):
+                resp = handler.handle(json.dumps(payload))
+        self.assertEqual(resp["status"], 201)
+
+    def test_skip_host_not_in_source_workspace(self) -> None:
+        alice = _session()
+        self.kv.tables["stig_hosts"]["other"] = {
+            "_key": "other",
+            "stig_collection_id": "ws2",
+            "hostname": "stray",
+            "label_ids": "[]",
+        }
+        with patch("services.collection_transfer.collections_svc.get_collection") as mock_get:
+            mock_get.side_effect = lambda _s, cid: self.kv.tables["stig_collections"].get(cid)
+            result = transfer_svc.export_hosts_to_collection(
+                self.service,
+                "ws1",
+                "ws2",
+                {"host_ids": ["other"]},
+                "alice",
+                alice,
+            )
+        self.assertEqual(result["summary"]["skipped"], 1)
+        self.assertEqual(result["results"][0]["status"], "skipped")
+        self.assertEqual(
+            result["results"][0]["error"], "host_not_in_source_workspace"
+        )
 
     @patch.object(transfer_svc, "export_hosts_to_collection")
     def test_rest_route(self, mock_export) -> None:

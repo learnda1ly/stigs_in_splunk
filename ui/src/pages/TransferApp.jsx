@@ -26,6 +26,7 @@ export default function TransferApp() {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
     const [info, setInfo] = useState("");
+    const [resultRows, setResultRows] = useState([]);
     const [selectedHostIds, setSelectedHostIds] = useState({});
 
     const destOptions = useMemo(
@@ -99,6 +100,7 @@ export default function TransferApp() {
     async function runTransfer() {
         setError("");
         setInfo("");
+        setResultRows([]);
         if (!sourceId || !destId) {
             setError("Choose source and destination workspaces.");
             return;
@@ -155,6 +157,9 @@ export default function TransferApp() {
                     " skipped).";
             }
             setInfo(msg);
+            const rows = Array.isArray(result.results) ? result.results : [];
+            const problems = rows.filter((r) => r && r.status !== "moved");
+            setResultRows(problems);
         } catch (err) {
             setError(String(err.message || err));
         } finally {
@@ -173,6 +178,33 @@ export default function TransferApp() {
             <PagePad>
                 {error ? <Message type="error">{error}</Message> : null}
                 {info ? <Message type="info">{info}</Message> : null}
+                {resultRows.length ? (
+                    <>
+                        <Heading level={4}>Hosts not transferred</Heading>
+                        <Table>
+                            <Table.Head>
+                                <Table.HeadCell>Host id</Table.HeadCell>
+                                <Table.HeadCell>Status</Table.HeadCell>
+                                <Table.HeadCell>Detail</Table.HeadCell>
+                            </Table.Head>
+                            <Table.Body>
+                                {resultRows.map((row) => (
+                                    <Table.Row key={row.host_id || row.status}>
+                                        <Table.Cell>
+                                            {row.host_id || "—"}
+                                        </Table.Cell>
+                                        <Table.Cell>
+                                            {row.status || "—"}
+                                        </Table.Cell>
+                                        <Table.Cell>
+                                            {row.error || "—"}
+                                        </Table.Cell>
+                                    </Table.Row>
+                                ))}
+                            </Table.Body>
+                        </Table>
+                    </>
+                ) : null}
                 <p>
                     Move hosts and their checklists to another workspace. You need
                     write access on both workspaces. Workspace grants are not

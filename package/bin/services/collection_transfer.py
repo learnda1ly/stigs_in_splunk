@@ -32,6 +32,10 @@ def export_hosts_to_collection(
     reviews remain keyed by checklist_id. ``label_ids`` on each host are kept
     only when the label exists in the destination workspace (same as single-host
     PATCH). Workspace grants are not copied; destination ACL applies after move.
+
+    Processing is **per host** with no cross-host transaction: earlier hosts in
+    ``host_ids`` remain moved if a later host fails. HTTP **201** is returned
+    when ``summary.moved > 0`` even if other rows failed or were skipped.
     """
     src = (source_collection_id or "").strip()
     dst = (dest_collection_id or "").strip()
