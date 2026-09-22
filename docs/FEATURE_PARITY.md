@@ -2,6 +2,8 @@
 
 This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manager)** (reference product; read-only) with **`stigs_in_splunk`** (Splunk-native port: KV store, custom persist REST, UCC Configuration, SplunkUI React). It is a **gap backlog** for iterative parity work—one feature PR per row (or per grouped epic), not an implementation plan for this repo.
 
+**Independence:** `stigs_in_splunk` is not a fork of STIG Manager and is not affiliated with NUWCDIVNPT or NAVSEA. STIG Manager is a **behavioral and UX reference only**—this project reimplements capabilities in Splunk (KV store, persist REST, SplunkUI React) and does **not** port STIG Manager Node/Express server code or the GPL-3.0 ExtJS client. See [NOTICE](../NOTICE) and [LICENSE](../LICENSE).
+
 **Authoritative references**
 
 | Source | URL |

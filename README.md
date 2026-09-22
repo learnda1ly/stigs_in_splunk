@@ -240,3 +240,9 @@ REST (requires `stig_read` and workspace access):
 For ad-hoc Splunk exports without REST, pipe open findings to `| outputcsv` after the governance filter in spec.md §12 (`status=open NOT workflow_state=accepted`).
 
 See spec.md §11.6 for query parameters and response fields.
+
+## License and attribution
+
+This project is licensed under the [MIT License](LICENSE). Attribution and third-party notices are in [NOTICE](NOTICE).
+
+`stigs_in_splunk` is an independent Splunk-native implementation. [STIG Manager](https://github.com/NUWCDIVNPT/stig-manager) informed behavior and UX goals as a **reference only**—this repo is **not** a fork, not affiliated with NUWCDIVNPT/NAVSEA/STIG Manager, and does not include STIG Manager’s ExtJS client or other GPL-3.0 client code. Feature parity tracking: [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md).
