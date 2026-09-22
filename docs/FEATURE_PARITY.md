@@ -179,7 +179,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
 |---------|-------------------------|--------|-----------|-----------------------------|-----|------|
 | Cascade delete collection | SM collection delete semantics | **done** | `DELETE /stig_collections/{id}` blocks with **409** when children exist unless `cascade=true`; removes workspace hosts, checklists, reviews, grants, assignment rules/overrides; global baselines unchanged; UCC blocks non-empty workspace delete (REST cascade). | Defined cascade or block delete with children. | P1 | M |
-| Orphan baseline rule GC | — | **missing** | Known PoC limitation (spec §17). | Admin REST job to clean orphans. | P2 | S |
+| Orphan baseline rule GC | — | **done** | Admin `GET/POST /stig_baselines/gc_orphan_rules` with dry-run default; execute via `dry_run=false` or `confirm=true`; audit on delete. Does not cascade to checklists/reviews. | Admin REST job to clean orphans. | P2 | S |
 | Workspace-scoped baseline catalog | — | **missing** | Baselines global (spec Phase 2). | Optional `stig_collection_id` on baselines or sharing ACL. | P2 | L |
 
 ### I. Splunk-specific enhancements (not in STIG Manager)
@@ -214,7 +214,7 @@ OpenAPI **tags** (approximate operation counts from `stig-manager.yaml`): Collec
 |----------|--------|
 | `stig_collections` | Workspace CRUD; `POST .../archive/ckl` and `.../archive/cklb` collection archive export |
 | `stig_hosts` | Asset CRUD, move workspace, **assign STIG** (`POST .../stigs`), list host checklists |
-| `stig_baselines` | List, import, rules, delete, `jobs` chunk import; **library browse** (`/hierarchy`, `/by_stig/{stigId}`, `/rule/{ruleKey}`, `/{id}/rules/{ruleRef}`) |
+| `stig_baselines` | List, import, rules, delete, `jobs` chunk import; **orphan rule GC** (`/gc_orphan_rules`); **library browse** (`/hierarchy`, `/by_stig/{stigId}`, `/rule/{ruleKey}`, `/{id}/rules/{ruleRef}`) |
 | `stig_checklists` | CRUD, export, `export_bulk` (by `checklist_ids` or `stig_collection_id` + filters) |
 | `stig_reviews` | List, get, patch (`ingest_lock`), batch (`/batch`) |
 | `stig_imports` | CKL/CKLB ingest, zip archive, reconcile |

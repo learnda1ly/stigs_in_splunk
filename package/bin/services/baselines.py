@@ -46,6 +46,96 @@ def set_ucc_name(service, key: str, ucc_name: str) -> Optional[Dict[str, Any]]:
     return kv_client.update_record(coll, key, kv_record(patch))
 
 
+def parse_orphan_gc_execute_flag(query: Dict[str, Any], body: Dict[str, Any]) -> bool:
+    """Return True when the caller wants to delete orphans (not dry-run).
+
+    Default is dry-run. Execute when ``confirm`` is truthy or ``dry_run`` is
+    explicitly false (query or JSON body).
+    """
+    if _truthy_flag(query.get("confirm")) or _truthy_flag(body.get("confirm")):
+        return True
+    for value in (query.get("dry_run"), body.get("dry_run")):
+        if value is None or value == "":
+            continue
+        if isinstance(value, bool):
+            return not value
+        text = str(value).strip().lower()
+        if text in {"0", "false", "no", "off"}:
+            return True
+        if text in {"1", "true", "yes", "on"}:
+            return False
+    return False
+
+
+def _truthy_flag(value: Any) -> bool:
+    if value is None or value == "":
+        return False
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def find_orphan_baseline_rules(service) -> List[Dict[str, Any]]:
+    """Rules whose ``baseline_id`` is missing or not present in ``stig_baselines``."""
+    baseline_ids = {
+        rec.get("_key") for rec in list_baselines(service) if rec.get("_key")
+    }
+    rules_coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
+    orphans: List[Dict[str, Any]] = []
+    for rule in kv_client.query_all(rules_coll):
+        bid = (rule.get("baseline_id") or "").strip()
+        if not bid or bid not in baseline_ids:
+            orphans.append(rule)
+    return orphans
+
+
+def _orphan_rule_summary(rule: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "_key": rule.get("_key"),
+        "baseline_id": rule.get("baseline_id"),
+        "rule_id": rule.get("rule_id"),
+        "group_id": rule.get("group_id"),
+    }
+
+
+def gc_orphan_baseline_rules(
+    service, username: str, *, execute: bool = False
+) -> Dict[str, Any]:
+    """Report or delete orphan baseline rules. Does not touch checklists or reviews."""
+    orphans = find_orphan_baseline_rules(service)
+    result: Dict[str, Any] = {
+        "dry_run": not execute,
+        "orphan_count": len(orphans),
+        "orphans": [_orphan_rule_summary(r) for r in orphans],
+        "deleted_count": 0,
+    }
+    if not execute:
+        return result
+
+    rules_coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
+    deleted = 0
+    for rule in orphans:
+        key = rule.get("_key")
+        if not key:
+            continue
+        kv_client.delete_record(rules_coll, key)
+        deleted += 1
+
+    audit.log_event(
+        "gc_orphan_rules",
+        "stig_baseline_rules",
+        None,
+        username,
+        {
+            "deleted_count": deleted,
+            "orphan_count": len(orphans),
+        },
+    )
+    result["dry_run"] = False
+    result["deleted_count"] = deleted
+    return result
+
+
 def delete_baseline(service, key: str, username: str) -> None:
     rec = get_baseline(service, key)
     if not rec:

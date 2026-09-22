@@ -659,6 +659,7 @@ DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 | GET | `/stig_baselines/{id}/rules/{ruleRef}` | Rule in baseline context. `ruleRef` may be the rule KV `_key`, composite `group_id\|rule_id` (V-id\|SV-id), or SV-id via `rule_id` / `rule_id_src`. A bare V-id is not accepted (avoids first-row scans). Optional query `group_id` disambiguates duplicate SV-ids in one baseline. Ambiguous matches return **404**. |
 | POST | `/stig_baselines/import` | Query `format` (`xccdf` \| `cklb` \| `ckl` \| `zip`), `source_uri`; raw body. Zip walks nested archives and imports only `*Manual-xccdf.xml` STIG baselines. |
 | GET | `/stig_baselines/{id}/rules` | All rules for baseline |
+| GET/POST | `/stig_baselines/gc_orphan_rules` | Admin orphan rule GC. **GET** and default **POST** are dry-run reports (`orphan_count`, `orphans[]`). Destructive delete when **POST** with `dry_run=false` or `confirm=true` (query or JSON). Removes only `stig_baseline_rules` rows whose `baseline_id` is absent from `stig_baselines`; does **not** cascade to checklists or reviews. Audits successful deletes. Requires **stig_admin**. |
 | DELETE | `/stig_baselines/{id}` | Remove baseline + rules (UCC Configuration table or persist REST). |
 
 UCC Configuration **Baselines** tab is the management UI: list, import (including zip-of-zips), delete.
@@ -929,7 +930,7 @@ curl $AUTH "$BASE/stig_checklists/CHECKLIST_ID/export?format=cklb"
 
 | Limitation | Detail |
 |------------|--------|
-| Orphan data | Failed imports before KV `_key` fix may leave orphan `stig_baseline_rules` or empty baselines; no automatic GC. |
+| Orphan data | Failed imports before KV `_key` fix may leave orphan `stig_baseline_rules` or empty baselines; no automatic GC. Admins can report and delete orphan **rules** via `GET/POST /stig_baselines/gc_orphan_rules` (does not remove empty baseline headers or checklist/review rows). |
 | No baseline dedup for legacy rows | Missing `content_fingerprint` until re-import. |
 | Global baselines | All workspaces share baseline catalog. |
 | Collection delete | Blocked when children exist unless `?cascade=true`; cascades workspace hosts/checklists/reviews/grants/assignment rows; baselines stay global. UCC Configuration delete only allows empty workspaces. |
