@@ -29,6 +29,7 @@ from services import review_aging as review_aging_svc
 from services import review_requirements as review_requirements_svc
 from services import collection_metadata as collection_metadata_svc
 from services import collection_clone as collection_clone_svc
+from services import collection_jobs as collection_jobs_svc
 from services import collection_transfer as collection_transfer_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
@@ -484,6 +485,11 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 )
             except KeyError:
                 return _error("not found", status=404)
+
+        if len(parts) >= 2 and parts[1] == "jobs":
+            return self._collection_jobs(
+                method, key, parts[2:], query, payload, service, session, username
+            )
 
         if len(parts) == 2 and parts[1] == "imports":
             if method != "POST":
@@ -1162,6 +1168,85 @@ class StigRestHandler(PersistentServerConnectionApplication):
             baselines_svc.delete_baseline(service, key, username)
             return _json_response({"deleted": key})
         return _error("not found", status=404)
+
+    def _collection_jobs(
+        self,
+        method: str,
+        collection_id: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        if not parts:
+            if method != "POST":
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            operation = (body.get("operation") or "archive_export").strip().lower()
+            if operation != "archive_export":
+                return _error("operation must be archive_export", status=400)
+            try:
+                rec = collection_jobs_svc.create_archive_export_job(
+                    service,
+                    collection_id,
+                    session,
+                    username,
+                    body.get("format") or query.get("format") or "",
+                    host_id=body.get("host_id") or query.get("host_id"),
+                    baseline_id=body.get("baseline_id") or query.get("baseline_id"),
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+            return _json_response(rec, status=201)
+
+        job_id = parts[0]
+        if len(parts) == 2 and parts[1] == "download":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            try:
+                return _json_response(
+                    collection_jobs_svc.download_job_result(
+                        job_id, collection_id, username
+                    )
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+
+        if len(parts) != 1:
+            return _error("not found", status=404)
+
+        if method == "GET":
+            try:
+                return _json_response(
+                    collection_jobs_svc.get_job(job_id, collection_id, username)
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+        if method == "DELETE":
+            try:
+                collection_jobs_svc.delete_job(job_id, collection_id, username)
+                return _json_response({"deleted": job_id})
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+        return _error("method not allowed", status=405)
 
     def _baseline_jobs(
         self,
