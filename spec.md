@@ -35,7 +35,7 @@ This document is the **authoritative requirements spec** for the Splunk app **`s
 - Full audit **dashboard** (logs only in PoC).
 - XCCDF **results** import mapping to review status (pass/fail → open/not_a_finding).
 - ~~Review **merge** across STIG revisions when `check_content_hash` matches~~ **implemented** — see §11.4 `upgrade` endpoints.
-- Cascading delete of hosts/checklists when a **stig_collection** is deleted.
+- ~~Cascading delete of hosts/checklists when a **stig_collection** is deleted~~ **implemented** — see §11.1 `DELETE` with `?cascade=true`.
 - Baseline ACL per workspace (baselines are **global** in PoC).
 
 ---
@@ -569,7 +569,7 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 | POST | `/stig_collections` | JSON `{name, description?, access_principals?, is_default?}` | **201** created record |
 | GET | `/stig_collections/{id}` | — | Record or **404** |
 | PATCH/PUT | `/stig_collections/{id}` | Partial JSON | Updated record. Setting `is_default` true unsets the previous default. |
-| DELETE | `/stig_collections/{id}` | — | `{deleted: id}`; requires **stig_admin**. Cannot delete the default workspace. |
+| DELETE | `/stig_collections/{id}` | Query `cascade=true` or JSON `{"cascade": true}` when the workspace has dependent rows | `{deleted, cascade, removed}`; requires **stig_admin**. Cannot delete the default workspace. Without `cascade`, **409** when hosts, checklists, reviews, grants, or assignment rows remain (audit `delete_blocked`). With `cascade=true`, removes workspace-scoped hosts, checklists, reviews, grants, and assignment rules/overrides; **global baselines are untouched**. Empty workspaces delete without `cascade`. |
 | GET | `/stig_collections/{id}/metrics` | — | Workspace metrics: `totals`, `completion`, `by_status`, `by_severity`, `open_by_severity`. Requires **stig_read** and workspace access (**404** if hidden). |
 | GET | `/stig_collections/{id}/findings` | Query filters (see §11.6) | Paginated findings report for assessors. Default filter: `status=open`. |
 | GET | `/stig_collections/{id}/findings/aggregate` | `group_by?`, filters (see §11.6) | Governance-open counts by group, rule, and/or CCI. |
@@ -754,7 +754,7 @@ Logger name: `stigs_in_splunk.audit`.
 
 Each mutation: INFO line `stig_audit {"action","entity_type","entity_id","user","details"}`.
 
-Actions include: `create`, `update`, `delete`, `import`, `import_deduplicated`.
+Actions include: `create`, `update`, `delete`, `delete_blocked`, `import`, `import_deduplicated`.
 
 Phase 2 may index `_internal` or dedicated index; PoC uses splunkd log only.
 
@@ -838,7 +838,7 @@ curl $AUTH "$BASE/stig_checklists/CHECKLIST_ID/export?format=cklb"
 | Orphan data | Failed imports before KV `_key` fix may leave orphan `stig_baseline_rules` or empty baselines; no automatic GC. |
 | No baseline dedup for legacy rows | Missing `content_fingerprint` until re-import. |
 | Global baselines | All workspaces share baseline catalog. |
-| Collection delete | Does not delete child hosts/checklists. |
+| Collection delete | Blocked when children exist unless `?cascade=true`; cascades workspace hosts/checklists/reviews/grants/assignment rows; baselines stay global. UCC Configuration delete only allows empty workspaces. |
 | Export review join | By `group_id` only; empty `group_id` in XCCDF may weaken CKL/CKLB status linkage for some rules. |
 | Batch rule insert | Sequential inserts via `batch_save`; large STIGs (~366 rules) take seconds. |
 | Session capabilities shape | If Splunk sends `capabilities` as non-dict, admin checks may need hardening (Phase 2). |

@@ -16,6 +16,10 @@ pages:
         tabs:
         -   name: workspace
             title: Workspaces
+            description: Empty workspaces can be deleted here (Splunk shows a confirm
+                dialog). Workspaces that still have hosts, checklists, grants, or
+                assignment rows must be removed with REST DELETE and
+                ?cascade=true (stig_admin only); global baselines are never deleted.
             formTitle: workspace
             restHandlerModule: stig_ucc_workspace_rh
             restHandlerClass: WorkspaceRestHandler
