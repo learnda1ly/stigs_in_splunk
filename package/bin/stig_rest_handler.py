@@ -1422,7 +1422,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
 
         if len(parts) == 3 and parts[1] == "copy_from":
             peer_id = parts[2]
-            if method not in ("POST", "PUT", "PATCH"):
+            if method != "POST":
                 return _error("method not allowed", status=405)
             body = _body_json(payload)
             try:

@@ -147,10 +147,21 @@ def list_review_peers(
         anchor_baseline_id,
         anchor_stig_id,
     )
+    rule_id = _text(anchor.get("rule_id"))
+    if not rule_id:
+        return {
+            "review_id": review_id,
+            "rule_id": "",
+            "group_id": anchor.get("group_id") or "",
+            "rule_version": anchor.get("rule_version") or "",
+            "stig_collection_id": collection_id,
+            "peers": [],
+        }
+
     if not peer_cl_ids:
         return {
             "review_id": review_id,
-            "rule_id": anchor.get("rule_id") or "",
+            "rule_id": rule_id,
             "group_id": anchor.get("group_id") or "",
             "rule_version": anchor.get("rule_version") or "",
             "stig_collection_id": collection_id,
@@ -158,11 +169,7 @@ def list_review_peers(
         }
 
     coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
-    query: Dict[str, Any] = {}
-    rule_id = _text(anchor.get("rule_id"))
-    if rule_id:
-        query["rule_id"] = rule_id
-    candidates = kv_client.query_all(coll, query if query else None)
+    candidates = kv_client.query_all(coll, {"rule_id": rule_id})
 
     checklist_by_id = {
         _text(cl.get("_key")): cl
@@ -181,6 +188,9 @@ def list_review_peers(
             continue
         cl = checklist_by_id.get(cl_id)
         if not cl:
+            continue
+        host_id = _text(cl.get("host_id"))
+        if host_id and not hosts_svc.get_host(service, host_id, session):
             continue
         peers.append(_public_peer_row(service, session, rec, cl))
 

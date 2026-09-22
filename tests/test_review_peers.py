@@ -93,6 +93,11 @@ class ReviewPeersLogicTests(unittest.TestCase):
             "stig_id": "RHEL_STIG",
             "version": "V1R1",
         }
+        self.kv.tables["stig_baselines"]["bl2"] = {
+            "_key": "bl2",
+            "stig_id": "RHEL_STIG",
+            "version": "V2R1",
+        }
         self.kv.tables["stig_checklists"]["cl_anchor"] = {
             "_key": "cl_anchor",
             "stig_collection_id": "ws1",
@@ -104,6 +109,12 @@ class ReviewPeersLogicTests(unittest.TestCase):
             "stig_collection_id": "ws1",
             "host_id": "h2",
             "baseline_id": "bl1",
+        }
+        self.kv.tables["stig_checklists"]["cl_peer_v2"] = {
+            "_key": "cl_peer_v2",
+            "stig_collection_id": "ws1",
+            "host_id": "h2",
+            "baseline_id": "bl2",
         }
         self.kv.tables["stig_checklists"]["cl_hidden"] = {
             "_key": "cl_hidden",
@@ -134,6 +145,17 @@ class ReviewPeersLogicTests(unittest.TestCase):
             "rule_id": "SV-1",
             "rule_version": "RHEL-08-010000",
             "status": "not_reviewed",
+            "workflow_state": "draft",
+        }
+        self.kv.tables["stig_reviews"]["r_peer_v2"] = {
+            "_key": "r_peer_v2",
+            "checklist_id": "cl_peer_v2",
+            "baseline_id": "bl2",
+            "group_id": "V-1",
+            "rule_id": "SV-1",
+            "rule_version": "RHEL-08-010000",
+            "status": "not_a_finding",
+            "finding_details": "rev2 peer",
             "workflow_state": "draft",
         }
         self.kv.tables["stig_reviews"]["r_peer"] = {
@@ -214,12 +236,38 @@ class ReviewPeersLogicTests(unittest.TestCase):
         self.assertIn("peer finding", out["peers"][0]["finding_details_snippet"])
 
     def test_acl_hides_out_of_scope_host(self):
-        patches = self._patch_stack(["cl_anchor", "cl_peer"], {"h1", "h2"})
+        """Checklist may be listed, but host grant ACL drops the peer row."""
+        patches = self._patch_stack(
+            ["cl_anchor", "cl_peer", "cl_hidden"], {"h1", "h2"}
+        )
         with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
             out = peers_svc.list_review_peers(self.service, "r_anchor", self.session)
         ids = {p["review_id"] for p in out["peers"]}
         self.assertIn("r_peer", ids)
         self.assertNotIn("r_hidden", ids)
+
+    def test_peers_match_same_stig_id_different_baseline(self):
+        patches = self._patch_stack(
+            ["cl_anchor", "cl_peer_v2"], {"h1", "h2"}
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+            out = peers_svc.list_review_peers(self.service, "r_anchor", self.session)
+        ids = {p["review_id"] for p in out["peers"]}
+        self.assertEqual(ids, {"r_peer_v2"})
+        self.assertEqual(out["peers"][0]["baseline_id"], "bl2")
+
+    def test_empty_peers_when_rule_id_missing(self):
+        anchor = dict(self.kv.tables["stig_reviews"]["r_anchor"])
+        anchor["rule_id"] = ""
+        patches = self._patch_stack(["cl_anchor", "cl_peer"], {"h1", "h2"})
+        with patches[0], patches[1], patches[2], patch.object(
+            peers_svc.review_history_svc,
+            "_require_visible_review",
+            return_value=anchor,
+        ), patches[4], patches[5], patches[6], patches[7]:
+            out = peers_svc.list_review_peers(self.service, "r_anchor", self.session)
+        self.assertEqual(out["peers"], [])
+        self.assertEqual(out["rule_id"], "")
 
     def test_empty_peers_when_no_other_checklists(self):
         patches = self._patch_stack(["cl_anchor"], {"h1"})
@@ -301,6 +349,16 @@ class ReviewPeersRestTests(unittest.TestCase):
         resp = self._dispatch("/stig_reviews/r1/copy_from/r2", method="POST")
         self.assertEqual(resp["status"], 200)
         mock_copy.assert_called_once()
+
+    @patch.object(stig_rest_handler.review_peers_svc, "copy_from_peer")
+    def test_copy_from_validation_maps_to_400(self, mock_copy):
+        mock_copy.side_effect = ValueError("finding_details required")
+        resp = self._dispatch("/stig_reviews/r1/copy_from/r2", method="POST")
+        self.assertEqual(resp["status"], 400)
+
+    def test_copy_from_rejects_put(self):
+        resp = self._dispatch("/stig_reviews/r1/copy_from/r2", method="PUT")
+        self.assertEqual(resp["status"], 405)
 
 
 if __name__ == "__main__":
