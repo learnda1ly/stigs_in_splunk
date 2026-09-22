@@ -34,7 +34,7 @@ This document is the **authoritative requirements spec** for the Splunk app **`s
 - Search macros, CIM Vulnerability datamodel, eventtypes for ingested STIG events.
 - Full audit **dashboard** (logs only in PoC).
 - XCCDF **results** import mapping to review status (pass/fail → open/not_a_finding).
-- Review **merge** across STIG revisions when `check_content_hash` matches (design hooks only).
+- ~~Review **merge** across STIG revisions when `check_content_hash` matches~~ **implemented** — see §11.4 `upgrade` endpoints.
 - Cascading delete of hosts/checklists when a **stig_collection** is deleted.
 - Baseline ACL per workspace (baselines are **global** in PoC).
 
@@ -626,10 +626,13 @@ Import responses:
 | POST | `/stig_checklists` | `{stig_collection_id, host_id, baseline_id, title?, mode?, target_data?}` → spawns reviews |
 | GET/PATCH/DELETE | `/stig_checklists/{id}` | DELETE cascades reviews |
 | GET | `/stig_checklists/{id}/export` | Query `format=cklb|ckl` |
-| POST | `/stig_imports` | Query `format=ckl|cklb|xccdf-results`, `source_uri`, `stig_collection_id`; raw body |
+| POST/PUT | `/stig_checklists/{id}/upgrade` | `{baseline_id}` — same `stig_id`, newer revision; merge reviews when `check_content_hash` matches |
 | GET/POST/DELETE | `/stig_collections/{id}/baseline_defaults` | Workspace default `baseline_id` per `stig_id` (`default_baseline_map` on collection) |
+| POST/PUT | `/stig_collections/{id}/upgrade_checklists` | `{baseline_id, from_baseline_id?, stig_id?}` — bulk upgrade matching checklists in workspace |
 
 POST validates: host belongs to workspace; baseline exists; baseline has rules.
+
+**Revision upgrade:** does not run automatically on baseline import. Call `upgrade` explicitly after importing a newer Manual STIG revision. For each rule in the target baseline, the prior review is matched by `group_id` / `rule_id`. When `check_content_hash` is unchanged, assessor fields and `workflow_state` carry forward. When the hash changed and the row is editable draft (not `ingest_lock`, `workflow_state=draft`), `status` resets to `not_reviewed` and finding details clear for re-assessment. Locked or submitted/accepted rows keep assessor content on hash mismatch (metadata still updates). Orphan reviews for removed rules are deleted; new rules spawn `not_reviewed` rows. Requires workspace **write** (same as checklist PATCH).
 
 ### 11.4.1 Checklist file import and HEC ingest
 
@@ -843,7 +846,7 @@ curl $AUTH "$BASE/stig_checklists/CHECKLIST_ID/export?format=cklb"
 ## 19. Phase 2 backlog (preserve intent)
 
 - Ingested findings → CIM / macros / dashboards.
-- XCCDF results import; cross-revision review merge using `check_content_hash`.
+- ~~Cross-revision review merge using `check_content_hash`~~ (see §11.4 `upgrade`).
 - Workspace-scoped baselines or sharing model.
 - Stronger audit (dedicated index, UI).
 - KV cleanup jobs; cascade deletes; bulk review update.

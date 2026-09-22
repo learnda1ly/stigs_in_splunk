@@ -134,6 +134,24 @@ curl -k -u admin:changeme -X POST \
   -d '{"stig_id":"Example_STIG","baseline_id":"BASELINE_KV_KEY"}'
 ```
 
+After importing a **newer Manual STIG revision** (same `stig_id`), upgrade checklists explicitly so unchanged rules keep assessor state (`check_content_hash` merge):
+
+```bash
+# One host checklist
+curl -k -u admin:changeme -X POST \
+  "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_checklists/CHECKLIST_ID/upgrade" \
+  -H "Content-Type: application/json" \
+  -d '{"baseline_id":"NEW_BASELINE_KV_KEY"}'
+
+# All checklists in a workspace still on the old revision
+curl -k -u admin:changeme -X POST \
+  "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_collections/COLLECTION_ID/upgrade_checklists" \
+  -H "Content-Type: application/json" \
+  -d '{"baseline_id":"NEW_BASELINE_KV_KEY","from_baseline_id":"OLD_BASELINE_KV_KEY"}'
+```
+
+The STIG Editor also exposes **Upgrade revision** when a host is selected.
+
 Reconcile indexed findings into KV (same job as the 5-minute saved search):
 
 ```bash

@@ -66,9 +66,9 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count (approx.) |
 |--------|-----------------|
-| done | 22 |
+| done | 23 |
 | partial | 14 |
-| missing | 18 |
+| missing | 17 |
 | n/a | 8 |
 
 Priorities are suggestions for **this** Splunk port; adjust per your deployment (e.g. heavy automation → bump XCCDF results).
@@ -113,7 +113,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Import from CKL/CKLB as **baseline** | Supported in SM for content | **done** | `format=ckl|cklb` on baseline import. | Unit tests + Configuration list. | P1 | — |
 | Skip SRG/SCAP in library zip | SM library behavior | **done** | Spec: Manual-xccdf only from DISA zips. | Documented in README/spec. | P2 | — |
 | Default STIG revision per collection | UI: Collection Settings. User guide: [default revision](https://stig-manager.readthedocs.io/en/latest/index.html) | **done** | `default_baseline_map` on workspace; REST `GET/POST/DELETE .../baseline_defaults`; SplunkUI **Default revisions**; checklist create accepts `stig_id` when default set. Precedence: explicit `baseline_id` &gt; workspace default &gt; catalog match. | Per-workspace default baseline per `stig_id`; new assignments use default. | P1 | M |
-| Intelligent revision upgrade / review merge | README feature; API behavior on new revision | **missing** | `check_content_hash` stored; spec Phase 2 merge hooks only. | On new baseline import, merge reviews where hash matches; re-evaluate changed rules only. | P1 | L |
+| Intelligent revision upgrade / review merge | README feature; API behavior on new revision | **done** | Explicit `POST /stig_checklists/{id}/upgrade` and workspace `POST /stig_collections/{id}/upgrade_checklists`; merges on matching `check_content_hash`; draft rows with changed hash reset to `not_reviewed`; `ingest_lock` and non-draft `workflow_state` preserved on hash mismatch. STIG Editor upgrade control. | On new baseline revision, merge reviews where hash matches; re-evaluate changed rules only. | P1 | L |
 | Delete baseline / revision | API: admin on library | **done** | DELETE baseline + rules; UCC table. | Admin cap; orphan checklist handling documented. | P1 | — |
 | CCI / group / rule reference APIs | API: `/stigs/.../rules/{ruleId}`, `/stigs/ccis/{cci}`, groups | **partial** | Rules embedded in baseline import; no top-level `/stigs/rules/{ruleId}` search. | `GET` rule by id across baselines or Splunk lookup export. | P2 | M |
 | SCAP benchmark maps | API: `/stigs/scap-maps` | **n/a** | Splunk port targets Manual STIG + checklist workflows; SCAP scanner mapping is optional. | If needed: static map table or n/a documented. | P2 | S |
