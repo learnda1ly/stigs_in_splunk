@@ -85,7 +85,7 @@ def log_event(
     log_payload = {
         "action": event["action"],
         "entity_type": event["entity_type"],
-        "entity_id": event["entity_id"],
+        "entity_id": entity_id,
         "user": event["user"],
         "details": event["details"],
     }

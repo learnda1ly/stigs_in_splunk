@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import unittest
+import builtins
 from unittest.mock import patch
 
 _BIN = os.path.join(os.path.dirname(__file__), "..", "package", "bin")
@@ -79,6 +80,30 @@ class AuditLogEventTests(unittest.TestCase):
         self.assertEqual(kwargs["index"], "stig_audit")
         self.assertEqual(kwargs["sourcetype"], "stig:audit")
         self.assertEqual(kwargs["session_key"], "session-key-abc")
+
+    @patch("services.hec.emit_indexed_events", side_effect=RuntimeError("hec down"))
+    def test_emit_indexed_swallows_hec_failure(self, _mock_emit) -> None:
+        event = audit.build_event("create", "stig_host", "h1", "admin", {})
+        audit.emit_indexed(event)
+
+    def test_emit_indexed_swallows_import_failure(self) -> None:
+        event = audit.build_event("create", "stig_host", "h1", "admin", {})
+        real_import = builtins.__import__
+
+        def _block_hec_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "services" and fromlist and "hec" in fromlist:
+                raise ImportError("no hec")
+            return real_import(name, globals, locals, fromlist, level)
+
+        with patch("builtins.__import__", side_effect=_block_hec_import):
+            audit.emit_indexed(event)
+
+    @patch.object(audit, "emit_indexed")
+    @patch.object(audit.logger, "info")
+    def test_log_payload_preserves_null_entity_id(self, _mock_info, _mock_index) -> None:
+        audit.log_event("update", "stig_baseline", None, "admin", {})
+        payload = json.loads(_mock_info.call_args[0][1])
+        self.assertIsNone(payload["entity_id"])
 
 
 if __name__ == "__main__":

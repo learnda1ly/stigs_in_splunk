@@ -7,6 +7,8 @@ Structured mutation audit events are emitted by `package/bin/audit.py` on REST/K
 
 If indexing fails (missing index, HTTP input disabled, no HEC token), mutations still succeed; only the searchable copy is skipped.
 
+**Splunkd log vs index:** Lines in `splunkd.log` still use JSON `null` for `entity_id` when the caller omits an id. Indexed events normalize omitted ids to `""` for consistent SPL/dashboard fields.
+
 ## Event shape
 
 Indexed events use **sourcetype** `stig:audit` with JSON field extraction (`props.conf`). Top-level fields:
@@ -16,7 +18,7 @@ Indexed events use **sourcetype** `stig:audit` with JSON field extraction (`prop
 | `action` | Mutation type (`create`, `update`, `delete`, `import`, `transfer`, …) |
 | `user` | Splunk username from the REST session |
 | `entity_type` | KV entity (`stig_host`, `stig_collection`, `stig_review`, …) |
-| `entity_id` | Entity `_key` when applicable |
+| `entity_id` | Entity `_key` when applicable (empty string in the index when omitted) |
 | `object` | `entity_type:entity_id` for dashboard display |
 | `workspace_id` | Workspace `_key` when known (from `stig_collection_id` in details or collection entity id) |
 | `details` | Optional JSON bag (same as splunkd log payload) |
@@ -45,7 +47,7 @@ After install or upgrade, **restart Splunk** (or reload indexes/inputs) so `stig
 ## Admin enablement
 
 1. **Index** — On indexers/search heads, confirm `stig_audit` exists (`index=stig_audit | head 1` or Settings → Indexes). The app ships the stanza; clustered deployments may require pushing `indexes.conf` via deployer.
-2. **HTTP input** — Requires the Splunk **HTTP Event Collector** / `splunk_httpinput` app (same as finding ingest). Enable the `stig_audit` input under **Settings → Data inputs → HTTP Event Collector** (app context `stigs_in_splunk`). Splunk generates a **token** at runtime; the REST handler reads it server-side only (never exposed in Configuration UI).
+2. **HTTP input** — Requires the Splunk **HTTP Event Collector** / `splunk_httpinput` app (same as finding ingest). The shipped stanza sets `disabled = 0`; after restart, confirm the `stig_audit` input is present and enabled under **Settings → Data inputs → HTTP Event Collector** (app context `stigs_in_splunk`). Splunk generates a **token** at runtime; the REST handler reads it server-side only (never exposed in Configuration UI).
 3. **Fallback** — During authenticated REST calls, the app may index via `/services/receivers/simple` when a user session is present but HEC is unavailable.
 4. **Retention** — Adjust `frozenTimePeriodInSecs` on `[stig_audit]` in `local/indexes.conf` if you need longer retention than the shipped one-year default.
 
