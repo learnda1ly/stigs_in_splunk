@@ -69,8 +69,8 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count (approx.) |
 |--------|-----------------|
-| done | 38 |
-| partial | 7 |
+| done | 39 |
+| partial | 6 |
 | missing | 10 |
 | n/a | 8 |
 
@@ -162,7 +162,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Unreviewed rules/assets reports | API: `/collections/{id}/unreviewed/rules`, `.../assets` | **done** | SplunkUI **Unreviewed** tab on Collection dashboard; REST `GET /stig_collections/{id}/unreviewed/rules` and `.../assets` with `status=not_reviewed` definition and grant ACL filtering (same as metrics/findings). | REST or saved search returning unreviewed counts per host/baseline. | P1 | M |
 | Splunk search / lookups | SM: API-only for reports | **done** | `transforms.conf` + `inputlookup`; spec §12. | Document example SPL in README. | P1 | — |
 | CIM / vulnerability datamodel | — | **n/a** | Spec Phase 2. | Optional `stig:finding` CIM mapping. | P2 | M |
-| Dedicated audit index / dashboard | SM operational logs | **partial** | `stigs_in_splunk.audit` to splunkd log; no UI. | Index audit events; simple dashboard. | P2 | M |
+| Dedicated audit index / dashboard | SM operational logs | **done** | Indexed `stig:audit` events in `stig_audit` (HEC input `stig_audit` + receivers/simple fallback); splunkd log retained. Simple XML dashboard **STIG audit** (`stig_audit_dashboard`). **Gap:** clustered/indexer deploys must distribute `indexes.conf`; HTTP input token is runtime-generated (see [audit-index.md](audit-index.md)). | Index audit events; simple dashboard. | P2 | M |
 
 ### G. Platform, operations, API infrastructure
 

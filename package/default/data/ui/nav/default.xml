@@ -2,6 +2,7 @@
   <view name="stig_editor_ui" default="true" label="STIG Editor" icon="filenode"/>
   <view name="stig_collection_review_ui" label="Collection review"/>
   <view name="stig_collection_dashboard_ui" label="Collection dashboard"/>
+  <view name="stig_audit_dashboard" label="Audit"/>
   <view name="stig_import_ui" label="Import" icon="forwarderuniversal"/>
   <view name="stig_library_ui" label="STIG library"/>
   <view name="stig_assignment_ui" label="Assignment"/>
