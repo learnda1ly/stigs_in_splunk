@@ -47,6 +47,8 @@ import {
     reviewIsEditable,
     reviewIsValid,
     reviewWorkflowState,
+    DEFAULT_REVIEW_REQUIREMENTS,
+    normalizeReviewRequirements,
 } from "../status";
 import VimField from "../vim/VimField";
 import { HelpOverlay, JumpOverlay, VimCommandBar } from "../vim/overlays";
@@ -88,6 +90,9 @@ function lookupRule(rulesByKey, rev) {
 export default function EditorApp() {
     const [collections, setCollections] = useState([]);
     const [collectionId, setCollectionId] = useState("");
+    const [reviewRequirements, setReviewRequirements] = useState(
+        DEFAULT_REVIEW_REQUIREMENTS
+    );
     const [hosts, setHosts] = useState([]);
     const [hostId, setHostId] = useState("");
     const [moveTo, setMoveTo] = useState("");
@@ -272,14 +277,22 @@ export default function EditorApp() {
         if (!id) {
             setHosts([]);
             setChecklists([]);
+            setReviewRequirements(DEFAULT_REVIEW_REQUIREMENTS);
             return;
         }
         setLoading(true);
         Promise.all([
             apiGet("stig_checklists", { stig_collection_id: id }),
             apiGet("stig_hosts", { stig_collection_id: id }),
+            apiGet("stig_collections/" + id + "/review_requirements"),
         ])
-            .then(([cls, hs]) => {
+            .then(([cls, hs, reqBody]) => {
+                setReviewRequirements(
+                    normalizeReviewRequirements(
+                        (reqBody && reqBody.review_requirements) ||
+                            DEFAULT_REVIEW_REQUIREMENTS
+                    )
+                );
                 const checkList = Array.isArray(cls) ? cls : [];
                 const hostList = Array.isArray(hs) ? hs : [];
                 setChecklists(checkList);
@@ -387,7 +400,7 @@ export default function EditorApp() {
             if (statusFilter && rev.status !== statusFilter) {
                 return false;
             }
-            const complete = reviewIsValid(rev);
+            const complete = reviewIsValid(rev, reviewRequirements);
             if (validityFilter === "complete" && !complete) {
                 return false;
             }
@@ -435,7 +448,7 @@ export default function EditorApp() {
         setStatus(selected.review.status || "not_reviewed");
     }, [selected && selected.review._key, selected && selected.review.updated_at]);
 
-    const doneCount = items.filter((item) => reviewIsValid(item.review)).length;
+    const doneCount = items.filter((item) => reviewIsValid(item.review, reviewRequirements)).length;
     const workflowCounts = useMemo(() => {
         const counts = { draft: 0, submitted: 0, accepted: 0 };
         items.forEach((item) => {
@@ -576,7 +589,7 @@ export default function EditorApp() {
             .filter((item) => {
                 const wf = reviewWorkflowState(item.review);
                 if (action === "submit") {
-                    return wf === "draft" && reviewIsValid(item.review);
+                    return wf === "draft" && reviewIsValid(item.review, reviewRequirements);
                 }
                 if (action === "accept" || action === "reject") {
                     return wf === "submitted";
@@ -1322,7 +1335,7 @@ export default function EditorApp() {
                                 const rule = lookupRule(rulesByKey, rev);
                                 const host =
                                     hostsById[checklistById(rev.checklist_id).host_id] || {};
-                                const complete = reviewIsValid(rev);
+                                const complete = reviewIsValid(rev, reviewRequirements);
                                 const isSel = selected && selected.review._key === rev._key;
                                 return (
                                     <FindingRow
@@ -1385,10 +1398,14 @@ export default function EditorApp() {
                                     </span>
                                     <span>
                                         <strong>Valid</strong>{" "}
-                                        {reviewIsValid({
-                                            finding_details: finding,
-                                            comments,
-                                        })
+                                        {reviewIsValid(
+                                            {
+                                                status: selected.review.status,
+                                                finding_details: finding,
+                                                comments,
+                                            },
+                                            reviewRequirements
+                                        )
                                             ? "yes"
                                             : "no"}
                                     </span>
@@ -1406,20 +1423,28 @@ export default function EditorApp() {
                                 ) : null}
                                 <Message
                                     appearance={
-                                        reviewIsValid({
-                                            finding_details: finding,
-                                            comments,
-                                        })
+                                        reviewIsValid(
+                                            {
+                                                status: selected.review.status,
+                                                finding_details: finding,
+                                                comments,
+                                            },
+                                            reviewRequirements
+                                        )
                                             ? "success"
                                             : "warning"
                                     }
                                 >
-                                    {reviewIsValid({
-                                        finding_details: finding,
-                                        comments,
-                                    })
-                                        ? "Completed — finding details or comments are present."
-                                        : "Incomplete — add finding details or comments, then Write."}
+                                    {reviewIsValid(
+                                        {
+                                            status: selected.review.status,
+                                            finding_details: finding,
+                                            comments,
+                                        },
+                                        reviewRequirements
+                                    )
+                                        ? "Completed — review meets workspace requirements."
+                                        : "Incomplete — update finding details/comments to match workspace requirements, then Write."}
                                 </Message>
                             </div>
                             <ControlGroup label="Status (saves immediately)">
@@ -1516,10 +1541,14 @@ export default function EditorApp() {
                                         appearance="primary"
                                         disabled={
                                             busy ||
-                                            !reviewIsValid({
-                                                finding_details: finding,
-                                                comments,
-                                            }) ||
+                                            !reviewIsValid(
+                                                {
+                                                    status: selected.review.status,
+                                                    finding_details: finding,
+                                                    comments,
+                                                },
+                                                reviewRequirements
+                                            ) ||
                                             reviewWorkflowState(selected.review) !== "draft"
                                         }
                                         onClick={() => onWorkflow("submit")}
