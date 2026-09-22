@@ -67,11 +67,11 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 ## Summary (counts)
 
-| Status | Count (approx.) |
-|--------|-----------------|
-| done | 57 |
+| Status | Count |
+|--------|-------|
+| done | 58 |
 | partial | 0 |
-| missing | 1 |
+| missing | 0 |
 | n/a | 8 |
 
 Priorities are suggestions for **this** Splunk port; adjust per your deployment (e.g. heavy automation → bump XCCDF results).
