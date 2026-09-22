@@ -1,4 +1,13 @@
-"""Async collection import/export jobs (pollable; artifacts on disk)."""
+"""Async collection import/export jobs (pollable; artifacts on disk).
+
+Workers never reuse the parent persist ``service`` handle across threads. Each
+background run calls ``kv_client.connect(session_key)`` with the request
+``authtoken`` captured at job creation (same pattern as a new REST round-trip).
+
+Job directories use lazy TTL expiry on read (``_load_meta``), like
+``baseline_jobs``: abandoned jobs remain on disk until TTL plus the next GET
+poll; there is no global sweeper.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +21,7 @@ import time
 import uuid
 from typing import Any, Dict, Optional
 
+import kv_client
 from services import checklists as checklists_svc
 
 JOB_TTL_SECONDS = 6 * 3600
@@ -106,7 +116,7 @@ def _normalize_format(fmt: str) -> str:
 
 
 def _execute_job(
-    service,
+    session_key: str,
     session: Dict[str, Any],
     job_id: str,
     collection_id: str,
@@ -122,6 +132,7 @@ def _execute_job(
     meta["updated_at"] = time.time()
     _save_meta(meta)
     try:
+        service = kv_client.connect(session_key)
         export_fmt = meta.get("format") or "cklb"
         filters = meta.get("filters") or {}
         payload = checklists_svc.export_collection_archive(
@@ -152,18 +163,19 @@ def _execute_job(
 
 
 def _start_worker(
-    service,
+    session_key: str,
     session: Dict[str, Any],
     job_id: str,
     collection_id: str,
     username: str,
 ) -> None:
+    session_snap = dict(session or {})
     if os.environ.get(SYNC_ENV) == "1":
-        _execute_job(service, session, job_id, collection_id, username)
+        _execute_job(session_key, session_snap, job_id, collection_id, username)
         return
 
     def _run() -> None:
-        _execute_job(service, session, job_id, collection_id, username)
+        _execute_job(session_key, session_snap, job_id, collection_id, username)
         with _LOCK:
             _ACTIVE.pop(job_id, None)
 
@@ -188,6 +200,9 @@ def create_archive_export_job(
     if not collection_id:
         raise ValueError("stig_collection_id is required")
     checklists_svc._require_workspace_export_access(service, collection_id, session)
+    session_key = (session or {}).get("authtoken") or ""
+    if not str(session_key).strip():
+        raise ValueError("session authtoken required for export job")
     job_id = uuid.uuid4().hex
     os.makedirs(_job_dir(job_id), mode=0o700)
     now = time.time()
@@ -208,7 +223,7 @@ def create_archive_export_job(
         "result": None,
     }
     _save_meta(meta)
-    _start_worker(service, dict(session or {}), job_id, collection_id, username)
+    _start_worker(session_key, session, job_id, collection_id, username)
     return get_job(job_id, collection_id, username)
 
 

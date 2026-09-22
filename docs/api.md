@@ -85,3 +85,5 @@ For large workspace zips, prefer jobs over synchronous `POST .../archive/{format
 | — | `DELETE` | `/stig_collections/{id}/jobs/{jobId}` | Drop staged artifact (creator only). |
 
 Baseline library zip chunk upload: `POST /stig_baselines/jobs` (unchanged).
+
+**Size / disk:** Download returns the same base64-in-JSON zip as synchronous `POST .../archive/{format}` (no extra app cap beyond disk and Splunk REST payload limits). Job dirs expire after **6h** on next poll (lazy TTL; no global sweeper).

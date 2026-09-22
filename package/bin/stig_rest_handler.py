@@ -1234,6 +1234,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error("not found", status=404)
             except PermissionError as exc:
                 return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
         if method == "DELETE":
             try:
                 collection_jobs_svc.delete_job(job_id, collection_id, username)
@@ -1242,6 +1244,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error("not found", status=404)
             except PermissionError as exc:
                 return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
         return _error("method not allowed", status=405)
 
     def _baseline_jobs(

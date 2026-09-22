@@ -9,6 +9,8 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
+import time
 import types
 import unittest
 import zipfile
@@ -70,9 +72,13 @@ class TestCollectionJobs(unittest.TestCase):
         self.env_patch.stop()
         shutil.rmtree(self.tmp, ignore_errors=True)
 
+    @patch("services.collection_jobs.kv_client.connect")
     @patch("services.collection_jobs.checklists_svc.export_collection_archive")
     @patch("services.collection_jobs.checklists_svc._require_workspace_export_access")
-    def test_create_poll_download_succeeds(self, mock_acl, mock_export):
+    def test_create_poll_download_succeeds(
+        self, mock_acl, mock_export, mock_connect
+    ):
+        mock_connect.return_value = self.service
         mock_acl.return_value = self.ws
         zip_bytes = io.BytesIO()
         with zipfile.ZipFile(zip_bytes, "w") as archive:
@@ -103,9 +109,11 @@ class TestCollectionJobs(unittest.TestCase):
         with zipfile.ZipFile(io.BytesIO(raw), "r") as archive:
             self.assertEqual(archive.namelist(), ["host_stig.cklb"])
 
+    @patch("services.collection_jobs.kv_client.connect")
     @patch("services.collection_jobs.checklists_svc.export_collection_archive")
     @patch("services.collection_jobs.checklists_svc._require_workspace_export_access")
-    def test_other_user_denied(self, mock_acl, mock_export):
+    def test_other_user_denied(self, mock_acl, mock_export, mock_connect):
+        mock_connect.return_value = self.service
         mock_acl.return_value = self.ws
         mock_export.return_value = {
             "filename": "x.zip",
@@ -120,9 +128,11 @@ class TestCollectionJobs(unittest.TestCase):
         with self.assertRaises(PermissionError):
             jobs.get_job(created["job_id"], "ws1", "bob")
 
+    @patch("services.collection_jobs.kv_client.connect")
     @patch("services.collection_jobs.checklists_svc.export_collection_archive")
     @patch("services.collection_jobs.checklists_svc._require_workspace_export_access")
-    def test_export_failure_marks_job_failed(self, mock_acl, mock_export):
+    def test_export_failure_marks_job_failed(self, mock_acl, mock_export, mock_connect):
+        mock_connect.return_value = self.service
         mock_acl.return_value = self.ws
         mock_export.side_effect = ValueError("no checklists match export filter")
         created = jobs.create_archive_export_job(
@@ -132,6 +142,99 @@ class TestCollectionJobs(unittest.TestCase):
         self.assertIn("no checklists", (created.get("error") or "").lower())
         with self.assertRaises(ValueError):
             jobs.download_job_result(created["job_id"], "ws1", "alice")
+
+    @patch("services.collection_jobs.kv_client.connect")
+    @patch("services.collection_jobs.checklists_svc.export_collection_archive")
+    @patch("services.collection_jobs.checklists_svc._require_workspace_export_access")
+    def test_wrong_workspace_returns_404(self, mock_acl, mock_export, mock_connect):
+        mock_connect.return_value = self.service
+        mock_acl.return_value = self.ws
+        mock_export.return_value = {
+            "filename": "x.zip",
+            "format": "cklb",
+            "count": 1,
+            "files": ["a.cklb"],
+            "content_base64": base64.b64encode(b"PK").decode("ascii"),
+        }
+        created = jobs.create_archive_export_job(
+            self.service, "ws1", self.session, "alice", "cklb"
+        )
+        with self.assertRaises(KeyError):
+            jobs.get_job(created["job_id"], "ws2", "alice")
+
+
+class TestCollectionJobsAsync(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="stig_coll_jobs_async_")
+        self.root_patch = patch.object(jobs, "_jobs_root", return_value=self.tmp)
+        self.root_patch.start()
+        self.env = os.environ.copy()
+        os.environ.pop(jobs.SYNC_ENV, None)
+        self.service = MagicMock()
+        self.session = _session()
+        self.ws = {"_key": "ws1", "name": "Lab"}
+
+    def tearDown(self):
+        self.root_patch.stop()
+        os.environ.clear()
+        os.environ.update(self.env)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        with jobs._LOCK:
+            jobs._ACTIVE.clear()
+
+    @patch("services.collection_jobs.kv_client.connect")
+    @patch("services.collection_jobs.checklists_svc.export_collection_archive")
+    @patch("services.collection_jobs.checklists_svc._require_workspace_export_access")
+    def test_background_thread_reconnects_and_poll_succeeds(
+        self, mock_acl, mock_export, mock_connect
+    ):
+        mock_acl.return_value = self.ws
+        connect_threads: list[threading.Thread] = []
+        main = threading.main_thread()
+
+        def _connect(_key):
+            connect_threads.append(threading.current_thread())
+            return self.service
+
+        mock_connect.side_effect = _connect
+
+        zip_bytes = io.BytesIO()
+        with zipfile.ZipFile(zip_bytes, "w") as archive:
+            archive.writestr("host_stig.cklb", "{}")
+
+        def _slow_export(*_args, **_kwargs):
+            time.sleep(0.2)
+            return {
+                "filename": "stig-archive-Lab-cklb.zip",
+                "format": "cklb",
+                "count": 1,
+                "files": ["host_stig.cklb"],
+                "content_base64": base64.b64encode(zip_bytes.getvalue()).decode(
+                    "ascii"
+                ),
+            }
+
+        mock_export.side_effect = _slow_export
+
+        created = jobs.create_archive_export_job(
+            self.service, "ws1", self.session, "alice", "cklb"
+        )
+        self.assertIn(created["status"], ("pending", "running", "succeeded"))
+        job_id = created["job_id"]
+
+        deadline = time.time() + 3.0
+        polled = created
+        while time.time() < deadline:
+            polled = jobs.get_job(job_id, "ws1", "alice")
+            if polled["status"] in ("succeeded", "failed"):
+                break
+            time.sleep(0.05)
+
+        self.assertEqual(polled["status"], "succeeded")
+        self.assertTrue(
+            any(t is not main for t in connect_threads),
+            "kv_client.connect should run on worker thread",
+        )
 
 
 class TestCollectionJobsRest(unittest.TestCase):
@@ -167,6 +270,33 @@ class TestCollectionJobsRest(unittest.TestCase):
         with patch.object(stig_rest_handler.kv_client, "connect", return_value=MagicMock()):
             resp = handler.handle(json.dumps(payload))
         self.assertEqual(resp["status"], 403)
+
+    @patch(
+        "services.collection_jobs.checklists_svc._require_workspace_export_access",
+        side_effect=KeyError("ws1"),
+    )
+    def test_rest_create_acl_404(self, _mock_acl):
+        handler = stig_rest_handler.StigRestHandler("", "")
+        payload = {
+            "method": "POST",
+            "session": _session(),
+            "rest_path": "stig_collections/ws1/jobs",
+            "payload": json.dumps({"format": "cklb"}),
+        }
+        with patch.object(stig_rest_handler.kv_client, "connect", return_value=MagicMock()):
+            resp = handler.handle(json.dumps(payload))
+        self.assertEqual(resp["status"], 404)
+
+    def test_rest_invalid_job_id_400(self):
+        handler = stig_rest_handler.StigRestHandler("", "")
+        payload = {
+            "method": "GET",
+            "session": _session(),
+            "rest_path": "stig_collections/ws1/jobs/bad..job",
+        }
+        with patch.object(stig_rest_handler.kv_client, "connect", return_value=MagicMock()):
+            resp = handler.handle(json.dumps(payload))
+        self.assertEqual(resp["status"], 400)
 
 
 if __name__ == "__main__":
