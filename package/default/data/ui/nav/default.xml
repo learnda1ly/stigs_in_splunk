@@ -8,6 +8,7 @@
   <view name="stig_workspace_defaults_ui" label="Default revisions"/>
   <view name="stig_review_requirements_ui" label="Review requirements"/>
   <view name="stig_grants_ui" label="Workspace grants"/>
+  <view name="stig_labels_ui" label="Asset labels"/>
   <view name="stig_export_ui" label="Export" icon="filechart"/>
   <view name="configuration" label="Configuration" icon="cog"/>
   <collection label="Classic" icon="layerstriple">
