@@ -628,6 +628,10 @@ DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 | Method | Path | Notes |
 |--------|------|--------|
 | GET | `/stig_baselines` | List all baseline headers |
+| GET | `/stig_baselines/hierarchy` | Benchmark-centric library: groups catalog rows by `stig_id` with per-revision metadata (`version`, `release_info`, `content_fingerprint`, `rule_count`, `imported_at`, …) |
+| GET | `/stig_baselines/by_stig/{stigId}` | One benchmark entry from hierarchy (404 when unknown) |
+| GET | `/stig_baselines/rule/{ruleKey}` | Stable rule detail by KV `_key` on `stig_baseline_rules` (includes parent baseline summary) |
+| GET | `/stig_baselines/{id}/rules/{ruleRef}` | Rule in baseline context. `ruleRef` may be the rule KV `_key`, composite `group_id\|rule_id` (V-id\|SV-id), or SV-id via `rule_id` / `rule_id_src`. A bare V-id is not accepted (avoids first-row scans). Optional query `group_id` disambiguates duplicate SV-ids in one baseline. Ambiguous matches return **404**. |
 | POST | `/stig_baselines/import` | Query `format` (`xccdf` \| `cklb` \| `ckl` \| `zip`), `source_uri`; raw body. Zip walks nested archives and imports only `*Manual-xccdf.xml` STIG baselines. |
 | GET | `/stig_baselines/{id}/rules` | All rules for baseline |
 | DELETE | `/stig_baselines/{id}` | Remove baseline + rules (UCC Configuration table or persist REST). |

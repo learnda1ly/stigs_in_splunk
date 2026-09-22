@@ -108,7 +108,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 
 | Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
 |---------|-------------------------|--------|-----------|-----------------------------|-----|------|
-| STIG library browse | UI: STIG Library in nav. API: `/stigs`, `/stigs/{benchmarkId}/revisions/...` | **partial** | `GET /stig_baselines`, `GET /stig_baselines/{id}/rules`; no benchmark-centric hierarchy API. | List baselines with revision metadata; rule detail endpoint stable for UI. | P0 | — |
+| STIG library browse | UI: STIG Library in nav. API: `/stigs`, `/stigs/{benchmarkId}/revisions/...` | **done** | SplunkUI **STIG library** nav view; persist `GET /stig_baselines/hierarchy`, `GET /stig_baselines/by_stig/{stigId}`, `GET /stig_baselines/rule/{ruleKey}`, `GET /stig_baselines/{id}/rules/{ruleRef}` (optional `group_id`). Flat `GET /stig_baselines` unchanged. | List baselines with revision metadata; rule detail endpoint stable for UI. | P0 | — |
 | Import benchmark content (XCCDF) | API: import flows; DISA Manual XCCDF | **done** | XCCDF parser, dedup via `content_fingerprint`, zip-of-zips via `/stig_baselines/jobs`. | RHEL-scale rule count integration test; dedup 200 response. | P0 | — |
 | Import from CKL/CKLB as **baseline** | Supported in SM for content | **done** | `format=ckl|cklb` on baseline import. | Unit tests + Configuration list. | P1 | — |
 | Skip SRG/SCAP in library zip | SM library behavior | **done** | Spec: Manual-xccdf only from DISA zips. | Documented in README/spec. | P2 | — |
@@ -213,7 +213,7 @@ OpenAPI **tags** (approximate operation counts from `stig-manager.yaml`): Collec
 |----------|--------|
 | `stig_collections` | Workspace CRUD; `POST .../archive/ckl` and `.../archive/cklb` collection archive export |
 | `stig_hosts` | Asset CRUD, move workspace, **assign STIG** (`POST .../stigs`), list host checklists |
-| `stig_baselines` | List, import, rules, delete, `jobs` chunk import |
+| `stig_baselines` | List, import, rules, delete, `jobs` chunk import; **library browse** (`/hierarchy`, `/by_stig/{stigId}`, `/rule/{ruleKey}`, `/{id}/rules/{ruleRef}`) |
 | `stig_checklists` | CRUD, export, `export_bulk` (by `checklist_ids` or `stig_collection_id` + filters) |
 | `stig_reviews` | List, get, patch (`ingest_lock`), batch (`/batch`) |
 | `stig_imports` | CKL/CKLB ingest, zip archive, reconcile |
