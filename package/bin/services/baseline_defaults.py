@@ -111,9 +111,9 @@ def set_default(
     bid = (baseline_id or "").strip()
     if not stig_key or not bid:
         raise ValueError("stig_id and baseline_id are required")
-    baseline = baselines_svc.get_baseline(service, bid)
-    if not baseline:
-        raise KeyError(baseline_id)
+    baseline = baselines_svc.require_baseline_usable_in_workspace(
+        service, session, bid, collection_id
+    )
     bench_stig = _normalize_stig_key(baseline.get("stig_id") or "")
     bench_xccdf = _normalize_stig_key(baseline.get("xccdf_benchmark_id") or "")
     allowed = {bench_stig, bench_xccdf}

@@ -32,7 +32,9 @@ if "splunk" not in sys.modules:
     sys.modules["splunk.persistconn.application"] = application
 
 from importers import xccdf  # noqa: E402
+from services import baseline_defaults as defaults_svc  # noqa: E402
 from services import baselines as baselines_svc  # noqa: E402
+from services import checklists as checklists_svc  # noqa: E402
 import stig_rest_handler  # noqa: E402
 
 
@@ -48,6 +50,9 @@ class _ScopeKv:
             "stig_collection_grants": {},
             "stig_baselines": {},
             "stig_baseline_rules": {},
+            "stig_hosts": {},
+            "stig_checklists": {},
+            "stig_reviews": {},
         }
         self._seq = 0
 
@@ -96,6 +101,9 @@ def _patch_kv(kv: _ScopeKv):
         "services.collections.kv_client",
         "services.grants.kv_client",
         "services.baseline_library.kv_client",
+        "services.checklists.kv_client",
+        "services.hosts.kv_client",
+        "services.baseline_defaults.kv_client",
     )
     patches = [patch(t, kv) for t in targets]
     for p in patches:
@@ -194,14 +202,23 @@ class TestBaselineWorkspaceScope(unittest.TestCase):
         self.assertTrue(created)
         self.assertEqual(stored.get("stig_collection_id"), self.ws_a)
 
-    def _dispatch(self, method: str, rest_path: str, session: Dict[str, Any]):
+    def _dispatch(
+        self,
+        method: str,
+        rest_path: str,
+        session: Dict[str, Any],
+        query=None,
+        body: bytes = b"",
+    ):
         handler = stig_rest_handler.StigRestHandler("", "")
         payload = {
             "method": method,
             "session": {**session, "authtoken": "token"},
             "rest_path": rest_path,
-            "query": [],
+            "query": query or [],
         }
+        if body:
+            payload["payload"] = body.decode("utf-8")
         with patch.object(
             stig_rest_handler.kv_client, "connect", return_value=self.service
         ):
@@ -220,6 +237,104 @@ class TestBaselineWorkspaceScope(unittest.TestCase):
         self.assertEqual(resp["status"], 200)
         body = json.loads(resp["payload"])
         self.assertEqual(body["match_count"], 0)
+
+    def test_stig_admin_sees_all_scoped_baselines(self):
+        rows = baselines_svc.list_baselines_for_user(
+            self.service, _session("ops", admin=True)
+        )
+        keys = {r["_key"] for r in rows}
+        self.assertIn("private-a", keys)
+
+    @patch("services.baselines.audit.log_event")
+    def test_dedup_isolated_between_global_and_workspace(self, _audit):
+        fixture = os.path.join(
+            os.path.dirname(__file__), "fixtures", "minimal_benchmark.xml"
+        )
+        with open(fixture, "rb") as handle:
+            body = handle.read()
+        meta, rules = xccdf.parse_xccdf(body)
+        global_rec, created_g = baselines_svc.import_parsed_baseline(
+            self.service, meta, rules, "alice"
+        )
+        scoped_rec, created_s = baselines_svc.import_parsed_baseline(
+            self.service,
+            meta,
+            rules,
+            "alice",
+            stig_collection_id=self.ws_a,
+        )
+        self.assertTrue(created_g)
+        self.assertTrue(created_s)
+        self.assertNotEqual(global_rec["_key"], scoped_rec["_key"])
+        self.assertEqual(scoped_rec.get("stig_collection_id"), self.ws_a)
+        self.assertFalse(global_rec.get("stig_collection_id"))
+
+    @patch("services.checklists.audit.log_event")
+    def test_assign_rejects_foreign_private_baseline(self, _audit):
+        self.kv.tables["stig_hosts"]["host-b"] = {
+            "_key": "host-b",
+            "stig_collection_id": self.ws_b,
+            "hostname": "host-b",
+        }
+        session = _session("bob", write=True)
+        with self.assertRaises(PermissionError):
+            checklists_svc.assign_stig_to_host(
+                self.service,
+                "host-b",
+                {"baseline_id": "private-a"},
+                "bob",
+                session,
+            )
+
+    @patch("services.checklists.audit.log_event")
+    @patch("services.checklists.validation.persistable_valid", return_value=False)
+    def test_create_checklist_rejects_foreign_private_baseline(
+        self, _valid, _audit
+    ):
+        self.kv.tables["stig_hosts"]["host-b"] = {
+            "_key": "host-b",
+            "stig_collection_id": self.ws_b,
+            "hostname": "host-b",
+        }
+        session = _session("bob", write=True)
+        with self.assertRaises(PermissionError):
+            checklists_svc.create_checklist(
+                self.service,
+                {
+                    "stig_collection_id": self.ws_b,
+                    "host_id": "host-b",
+                    "baseline_id": "private-a",
+                },
+                "bob",
+                session,
+            )
+
+    def test_set_default_rejects_foreign_private_baseline(self):
+        session = _session("bob", write=True)
+        with self.assertRaises(PermissionError):
+            defaults_svc.set_default(
+                self.service,
+                self.ws_b,
+                "Private_STIG",
+                "private-a",
+                "bob",
+                session,
+            )
+
+    def test_rest_scoped_import_denied_without_workspace_write(self):
+        fixture = os.path.join(
+            os.path.dirname(__file__), "fixtures", "minimal_benchmark.xml"
+        )
+        with open(fixture, "rb") as handle:
+            body = handle.read()
+        resp = self._dispatch(
+            "POST",
+            "stig_baselines/import",
+            _session("bob", write=True),
+            query=[["stig_collection_id", self.ws_a], ["format", "xccdf"]],
+            body=body,
+        )
+        self.assertEqual(resp["status"], 403)
 
 
 if __name__ == "__main__":

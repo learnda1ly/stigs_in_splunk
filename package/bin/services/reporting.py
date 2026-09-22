@@ -399,6 +399,7 @@ def _collection_workspace_context(
         if b.get("_key")
     }
     baseline_ids = {c.get("baseline_id") for c in checklists if c.get("baseline_id")}
+    # Checklists may reference baselines hidden from catalog ACL; keep titles for export.
     for bid in baseline_ids:
         if bid and bid not in baselines:
             legacy = baselines_svc.get_baseline(service, bid)
