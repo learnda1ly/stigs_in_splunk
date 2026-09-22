@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 
 import audit
 from importers.checklist_zip import checklist_format, list_checklist_files
+from importers.xccdf_results_zip import list_xccdf_results_files
 from importers.events import events_from_parsed
 from importers.ingest import detect_format, parse_ingest
 from services import apply as apply_svc
@@ -16,6 +17,16 @@ from services import hec as hec_svc
 from services import settings as settings_svc
 
 MAX_BATCH_FILES = 500
+
+_BATCH_FORMATS = frozenset(
+    {
+        "ckl",
+        "cklb",
+        "xccdf-results",
+        "xccdf_results",
+        "xccdfresults",
+    }
+)
 
 
 def _collection_name(service, session: Dict[str, Any], collection_id: str) -> str:
@@ -215,8 +226,10 @@ def import_checklist_batch(
             fmt = (entry.get("format") or "").strip().lower()
             if not fmt:
                 fmt = detect_format(source_uri, body)
-            if fmt not in {"ckl", "cklb"}:
-                raise ValueError("format must be ckl or cklb for collection import builder")
+            if fmt not in _BATCH_FORMATS:
+                raise ValueError(
+                    "format must be ckl, cklb, or xccdf-results for batch import"
+                )
             rec = import_checklist_file(
                 service,
                 body,
@@ -255,6 +268,36 @@ def import_checklist_batch(
     }
 
 
+def import_xccdf_results_zip(
+    service,
+    session: Dict[str, Any],
+    username: str,
+    collection_id: str,
+    body: bytes,
+    source_uri: str = "",
+) -> Dict[str, Any]:
+    if not body:
+        raise ValueError("empty zip body")
+    members = list_xccdf_results_files(body, source_prefix=source_uri or "archive.zip")
+    if not members:
+        raise ValueError(
+            "zip contains no XCCDF TestResult files "
+            "(expected *-results.xml or XML with rule-result elements)"
+        )
+    entries = [
+        {"source_uri": path, "format": "xccdf-results", "content": raw}
+        for path, raw in members
+    ]
+    batch = import_checklist_batch(service, session, username, collection_id, entries)
+    batch["archive"] = {
+        "source_uri": source_uri or "archive.zip",
+        "member_count": len(members),
+        "results_members": len(members),
+        "checklist_members": 0,
+    }
+    return batch
+
+
 def import_checklist_zip(
     service,
     session: Dict[str, Any],
@@ -265,11 +308,15 @@ def import_checklist_zip(
 ) -> Dict[str, Any]:
     if not body:
         raise ValueError("empty zip body")
-    members = list_checklist_files(body, source_prefix=source_uri or "archive.zip")
-    if not members:
-        raise ValueError("zip contains no .ckl or .cklb checklist files")
-    entries = []
-    for path, raw in members:
+    prefix = source_uri or "archive.zip"
+    checklist_members = list_checklist_files(body, source_prefix=prefix)
+    results_members = list_xccdf_results_files(body, source_prefix=prefix)
+    if not checklist_members and not results_members:
+        raise ValueError(
+            "zip contains no .ckl/.cklb checklists or XCCDF TestResult XML files"
+        )
+    entries: List[Dict[str, Any]] = []
+    for path, raw in checklist_members:
         entries.append(
             {
                 "source_uri": path,
@@ -277,9 +324,17 @@ def import_checklist_zip(
                 "content": raw,
             }
         )
+    for path, raw in results_members:
+        entries.append(
+            {"source_uri": path, "format": "xccdf-results", "content": raw}
+        )
+    if len(entries) > MAX_BATCH_FILES:
+        raise ValueError(f"zip exceeds {MAX_BATCH_FILES} importable files")
     batch = import_checklist_batch(service, session, username, collection_id, entries)
     batch["archive"] = {
-        "source_uri": source_uri or "archive.zip",
-        "member_count": len(members),
+        "source_uri": prefix,
+        "member_count": len(entries),
+        "checklist_members": len(checklist_members),
+        "results_members": len(results_members),
     }
     return batch

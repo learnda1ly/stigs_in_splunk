@@ -130,7 +130,7 @@ curl -k -u admin:changeme -X POST \
   -d '{"files":[{"source_uri":"web-01.ckl","format":"ckl","content":"..."}]}'
 ```
 
-Zip archive of checklists (nested zips supported, `.ckl`/`.cklb` only):
+Zip archive of checklists and/or XCCDF scan results (nested zips supported):
 
 ```bash
 curl -k -u admin:changeme -X POST \
@@ -138,9 +138,17 @@ curl -k -u admin:changeme -X POST \
   --data-binary @hosts.zip
 ```
 
-**Not supported in the collection builder:** multi-file XCCDF **results** archives (STIG Manager automation bundle). Use single-file `format=xccdf-results` or HEC below.
+XCCDF-only results archive (skips `.ckl`/`.cklb` members):
 
-XCCDF scan results (`TestResult` with `rule-result` children). Import the matching Manual STIG baseline first (or set a workspace default revision):
+```bash
+curl -k -u admin:changeme -X POST \
+  "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_imports?format=xccdf-results-zip&stig_collection_id=COLLECTION_ID&source_uri=scan-results.zip" \
+  --data-binary @scan-results.zip
+```
+
+Supported archive shape: one XML file per host scan with an XCCDF 1.2 `TestResult` root (or embedded `TestResult`) and `rule-result` children — typical OpenSCAP `*-results.xml` or Evaluate-STIG output. **Not supported:** ingesting full SCAP source data stream bundles as a single parsed artifact (import Manual STIG baselines separately).
+
+Single-file XCCDF scan results. Import the matching Manual STIG baseline first (or set a workspace default revision):
 
 ```bash
 curl -k -u admin:changeme -X POST \

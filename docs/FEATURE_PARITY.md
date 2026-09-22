@@ -66,8 +66,8 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count (approx.) |
 |--------|-----------------|
-| done | 31 |
-| partial | 9 |
+| done | 32 |
+| partial | 8 |
 | missing | 15 |
 | n/a | 8 |
 
@@ -139,7 +139,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
 |---------|-------------------------|--------|-----------|-----------------------------|-----|------|
 | Import CKL/CKLB checklist | UI: Checklist menu. API: asset/collection import | **done** | `POST /stig_imports`; Import UI; Watcher-shaped events. | HEC + KV apply; workspace default. | P0 | — |
-| Import XCCDF **results** (scan) | Multi-source integration in README | **partial** | `POST /stig_imports?format=xccdf-results` parses XCCDF `TestResult` / `rule-result` (OpenSCAP-style); HEC + KV apply. Requires baseline in catalog (or workspace default). No full SCAP data stream bundle ingest. | Map pass/fail to review status; document Evaluate-STIG/SCAP path via HEC or REST. | P1 | L |
+| Import XCCDF **results** (scan) | Multi-source integration in README | **done** | Single-file `format=xccdf-results`, multi-file `format=zip` / `xccdf-results-zip` (OpenSCAP `*-results.xml` / Evaluate-STIG `TestResult` XML; nested zips; per-file batch errors). HEC + KV apply; baseline catalog or workspace default. **n/a:** full SCAP source data stream bundle as one ingest artifact (import Manual STIG baselines via `/stig_baselines`). | Map pass/fail to review status; document Evaluate-STIG/SCAP path via HEC or REST. | P1 | L |
 | Collection archive export CKL | API: `POST .../archive/ckl` | **done** | `POST /stig_collections/{id}/archive/ckl` (optional `host_id` / `baseline_id` filters); `POST /stig_checklists/export_bulk` with `stig_collection_id`; per-checklist `GET .../export?format=ckl`. Zip entry names `{hostname}_{stig_id}_{version}.ckl` (tests). | Workspace-scoped bulk export; filename conventions (tests). | P1 | — |
 | Collection archive export CKLB | API: `POST .../archive/cklb` | **done** | Same as CKL for CKLB (`.../archive/cklb`, `.cklb` filenames). SplunkUI Export uses archive route for **Download all in view** when a workspace is selected. | Bulk zip includes all checklists in workspace filter. | P1 | — |
 | Collection archive export XCCDF | API: `POST .../archive/xccdf` | **missing** | — | Optional XCCDF results export from KV state. | P2 | L |

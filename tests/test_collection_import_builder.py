@@ -275,9 +275,11 @@ class TestImportBatchService(unittest.TestCase):
         self.assertEqual(out["summary"]["updated"], 1)
 
     @patch.object(imports_svc, "import_checklist_batch")
+    @patch("services.imports.list_xccdf_results_files")
     @patch("services.imports.list_checklist_files")
-    def test_import_checklist_zip_expands_members(self, mock_list, mock_batch):
+    def test_import_checklist_zip_expands_members(self, mock_list, mock_results, mock_batch):
         mock_list.return_value = [("bundle/a.ckl", b"<x/>")]
+        mock_results.return_value = []
         mock_batch.return_value = {
             "stig_collection_id": "col1",
             "results": [],
