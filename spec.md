@@ -357,6 +357,7 @@ Foreign keys are string `_key` values unless noted. Timestamps are **epoch secon
 | `_key` | string | Server-generated |
 | `name` | string | Required on create |
 | `description` | string | Optional |
+| `metadata` | string | Optional JSON object string for arbitrary workspace key/value metadata (REST `GET/PATCH .../metadata`). |
 | `access_principals` | string | JSON array string, e.g. `["user:alice","role:stig_admin"]`. Empty/missing ⇒ readable by all authenticated users with caps. |
 | `is_default` | bool | Exactly one workspace is the import default. Checklist ingest with no `stig_collection_id` / `collectionId` uses it. |
 | `created_at`, `updated_at` | time | |
@@ -678,6 +679,7 @@ Import responses:
 | POST | `/stig_collections/{id}/imports` | JSON `{files: [{source_uri, format?, content\|content_base64}]}` **or** raw zip body (`format=zip` query or PK magic). Batch CKL/CKLB/XCCDF-results collection import; workspace **write** required. |
 | GET/POST/DELETE | `/stig_collections/{id}/baseline_defaults` | Workspace default `baseline_id` per `stig_id` (`default_baseline_map` on collection) |
 | GET/PATCH | `/stig_collections/{id}/review_requirements` | Workspace review validation policy (`review_requirements` JSON on collection). **GET** returns `{stig_collection_id, review_requirements, defaults}`. **PATCH** body `{review_requirements: {...}}` or flat policy fields; requires workspace **write**. |
+| GET/PATCH | `/stig_collections/{id}/metadata` | Optional workspace metadata (`metadata` JSON on collection). **GET** returns `{stig_collection_id, metadata}` (empty object when unset). **PATCH** requires workspace **write**; body `{metadata: {...}}` shallow-merges keys (set a key to JSON `null` to remove). `{replace: true, metadata: {...}}` replaces the entire object. `{clear: true}` removes all keys. Values must be JSON-serializable; non-object `metadata` returns **400**. |
 | POST/PUT | `/stig_collections/{id}/upgrade_checklists` | `{baseline_id, from_baseline_id?, stig_id?}` — bulk upgrade matching checklists in workspace |
 
 POST validates: host belongs to workspace; baseline exists; baseline has rules.
