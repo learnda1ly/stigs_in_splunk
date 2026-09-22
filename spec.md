@@ -672,6 +672,8 @@ Updates require workspace **write** access via parent checklist. Content PATCH i
 
 ### 11.6 Metrics and findings report
 
+**Unreviewed reports** (`/unreviewed/assets`, `/unreviewed/rules`) accept the same **scope** filters as findings (`host_id`, `hostname`, `baseline_id`, `rule_id`, `group_id`, `severity`) but **ignore `status`** (and findings-only params such as `limit` / `offset`). They always count rows with assessor **`status=not_reviewed`** only—do not copy findings query strings that default `status=open` or apply governance filters.
+
 | Method | Path | Query | Response |
 |--------|------|-------|----------|
 | GET | `/stig_collections/{id}/metrics` | — | Aggregated counts from KV reviews (joined to baseline rules for severity). |

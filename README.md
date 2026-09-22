@@ -192,8 +192,8 @@ REST (requires `stig_read` and workspace access):
 - `GET /stig_collections/{id}/metrics` — counts by review status and severity, plus completion summary.
 - `GET /stig_collections/{id}/findings` — paginated findings (default `status=open`; optional `severity`, `host_id`, `limit`, `offset`).
 - `GET /stig_collections/{id}/findings/aggregate` — governance-open finding counts by `group_id`, `rule_id`, and CCI (from baseline rules).
-- `GET /stig_collections/{id}/unreviewed/assets` — per-host unreviewed (`status=not_reviewed`) counts with per-baseline breakdown.
-- `GET /stig_collections/{id}/unreviewed/rules` — per-rule unreviewed counts with host coverage.
+- `GET /stig_collections/{id}/unreviewed/assets` — per-host unreviewed (`status=not_reviewed`) counts with per-baseline breakdown. Ignores findings `status` query params.
+- `GET /stig_collections/{id}/unreviewed/rules` — per-rule unreviewed counts with host coverage. Same filter scope as assets (no `status` param).
 - `GET /stig_collections/{id}/poam?format=json|csv|xlsx` — POA&M-style export template for governance-open findings (JSON includes example SPL alternative).
 - `GET /stig_findings?stig_collection_id={id}` — same findings payload as the collection subpath.
 

@@ -363,6 +363,38 @@ export default function CollectionDashboardApp() {
             .finally(() => setPoamLoading(false));
     };
 
+    const renderUnreviewedFilters = (actions) => (
+        <Toolbar style={{ marginTop: 12, marginBottom: 12 }}>
+            <ControlGroup label="Severity" labelPosition="top">
+                <Select
+                    value={severityFilter}
+                    onChange={(e, { value }) => setSeverityFilter(value)}
+                >
+                    <Select.Option label="Any" value="" />
+                    <Select.Option label="High" value="high" />
+                    <Select.Option label="Medium" value="medium" />
+                    <Select.Option label="Low" value="low" />
+                </Select>
+            </ControlGroup>
+            <ControlGroup label="Host" labelPosition="top">
+                <Select
+                    value={hostFilter}
+                    onChange={(e, { value }) => setHostFilter(value)}
+                >
+                    <Select.Option label="All hosts" value="" />
+                    {hosts.map((h) => (
+                        <Select.Option
+                            key={h._key}
+                            label={h.hostname || h._key}
+                            value={h._key}
+                        />
+                    ))}
+                </Select>
+            </ControlGroup>
+            <Actions>{actions}</Actions>
+        </Toolbar>
+    );
+
     const renderFindingsFilters = (actions) => (
         <Toolbar style={{ marginTop: 12, marginBottom: 12 }}>
             <ControlGroup label="Status" labelPosition="top">
@@ -722,7 +754,7 @@ export default function CollectionDashboardApp() {
 
                     {tab === "unreviewed" ? (
                         <>
-                            {renderFindingsFilters(
+                            {renderUnreviewedFilters(
                                 <Button onClick={() => loadUnreviewed(collectionId)}>
                                     Refresh
                                 </Button>
@@ -731,8 +763,9 @@ export default function CollectionDashboardApp() {
                             {unreviewedAssets ? (
                                 <>
                                     <Message type="info">
-                                        {unreviewedAssets.definition ||
-                                            "Reviews with status not_reviewed."}{" "}
+                                        Counts only assessor status{" "}
+                                        <strong>not_reviewed</strong> (not affected by the
+                                        findings Status filter on other tabs).{" "}
                                         Total: {unreviewedAssets.total_unreviewed || 0} across{" "}
                                         {unreviewedAssets.asset_count || 0} host(s).
                                     </Message>
@@ -793,6 +826,7 @@ export default function CollectionDashboardApp() {
                                             <Table.HeadCell>STIG / rule</Table.HeadCell>
                                             <Table.HeadCell>Unreviewed</Table.HeadCell>
                                             <Table.HeadCell>Hosts</Table.HeadCell>
+                                            <Table.HeadCell>Hostnames</Table.HeadCell>
                                             <Table.HeadCell>Severity</Table.HeadCell>
                                         </Table.Head>
                                         <Table.Body>
@@ -819,6 +853,11 @@ export default function CollectionDashboardApp() {
                                                         {row.unreviewed_count}
                                                     </Table.Cell>
                                                     <Table.Cell>{row.host_count}</Table.Cell>
+                                                    <Table.Cell
+                                                        title={(row.hostnames || []).join(", ")}
+                                                    >
+                                                        {(row.hostnames || []).join(", ") || "—"}
+                                                    </Table.Cell>
                                                     <Table.Cell>
                                                         {SEVERITY_LABELS[row.severity] ||
                                                             row.severity}

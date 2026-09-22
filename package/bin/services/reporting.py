@@ -782,7 +782,7 @@ def splunk_unreviewed_alternative(collection_id: str) -> Dict[str, Any]:
             base
             + "| stats count AS unreviewed_count dc(hostname) AS host_count by "
             "baseline_id group_id rule_id "
-            + "| sort - unreviewed_count"
+            + "| sort -unreviewed_count baseline_id group_id rule_id"
         ),
         "outputcsv_example": base + "| outputcsv stig_unreviewed_reviews.csv",
     }
