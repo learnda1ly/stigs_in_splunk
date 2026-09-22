@@ -1106,6 +1106,74 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /stig_baselines/rules/{ruleRef}:
+    get:
+      tags: [Baselines]
+      summary: Find rules by id across all baselines
+      operationId: findCatalogRulesByRef
+      parameters:
+        - name: ruleRef
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: stig_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineRuleRefList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /stig_baselines/ccis/{cci}:
+    get:
+      tags: [Baselines]
+      summary: Find rules by CCI across all baselines
+      operationId: findCatalogRulesByCci
+      parameters:
+        - name: cci
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: stig_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineCciRefList"
+
+  /stig_baselines/groups/{groupId}:
+    get:
+      tags: [Baselines]
+      summary: Find rules by group V-id across all baselines
+      operationId: findCatalogRulesByGroupId
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: stig_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineGroupRefList"
+
   /stig_baselines/rule/{ruleKey}:
     get:
       tags: [Baselines]
@@ -2495,6 +2563,95 @@ components:
             moved:
               type: integer
       additionalProperties: true
+
+    BaselinePointer:
+      type: object
+      properties:
+        baseline_id:
+          type: string
+        stig_id:
+          type: string
+        version:
+          type: string
+        title:
+          type: string
+        benchmark_date:
+          type: string
+        content_fingerprint:
+          type: string
+
+    BaselineRuleMatch:
+      type: object
+      properties:
+        rule_key:
+          type: string
+        group_id:
+          type: string
+        rule_id:
+          type: string
+        rule_id_src:
+          type: string
+        rule_version:
+          type: string
+        severity:
+          type: string
+        rule_title:
+          type: string
+        group_title:
+          type: string
+        ccis:
+          type: array
+          items:
+            type: string
+        check_content_hash:
+          type: string
+        baseline:
+          $ref: "#/components/schemas/BaselinePointer"
+
+    BaselineRuleRefList:
+      type: object
+      properties:
+        rule_ref:
+          type: string
+        stig_id:
+          type: string
+          nullable: true
+        match_count:
+          type: integer
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/BaselineRuleMatch"
+
+    BaselineCciRefList:
+      type: object
+      properties:
+        cci:
+          type: string
+        stig_id:
+          type: string
+          nullable: true
+        match_count:
+          type: integer
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/BaselineRuleMatch"
+
+    BaselineGroupRefList:
+      type: object
+      properties:
+        group_id:
+          type: string
+        stig_id:
+          type: string
+          nullable: true
+        match_count:
+          type: integer
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/BaselineRuleMatch"
 
     BaselineJobActionResult:
       type: object

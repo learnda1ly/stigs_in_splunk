@@ -658,8 +658,13 @@ DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 | GET | `/stig_baselines/rule/{ruleKey}` | Stable rule detail by KV `_key` on `stig_baseline_rules` (includes parent baseline summary) |
 | GET | `/stig_baselines/{id}/rules/{ruleRef}` | Rule in baseline context. `ruleRef` may be the rule KV `_key`, composite `group_id\|rule_id` (V-id\|SV-id), or SV-id via `rule_id` / `rule_id_src`. A bare V-id is not accepted (avoids first-row scans). Optional query `group_id` disambiguates duplicate SV-ids in one baseline. Ambiguous matches return **404**. |
 | POST | `/stig_baselines/import` | Query `format` (`xccdf` \| `cklb` \| `ckl` \| `zip`), `source_uri`; raw body. Zip walks nested archives and imports only `*Manual-xccdf.xml` STIG baselines. |
+| GET | `/stig_baselines/rules/{ruleRef}` | Rules matching `ruleRef` across all imported baselines (`rule_id`, `rule_id_src`, `rule_version`, or `group_id`; DISA `xccdf_mil.disa.stig_rule_` prefix stripped). Query `stig_id?` optional. **404** when no matches. |
+| GET | `/stig_baselines/ccis/{cci}` | Rules whose imported `ccis` JSON array contains the CCI (normalized to `CCI-…`). Query `stig_id?` optional. **200** with empty `matches` when none. |
+| GET | `/stig_baselines/groups/{groupId}` | Rules with `group_id` (V-id) across baselines. Query `stig_id?` optional. |
 | GET | `/stig_baselines/{id}/rules` | All rules for baseline |
 | GET/POST | `/stig_baselines/gc_orphan_rules` | Admin orphan rule GC. **GET** and default **POST** are dry-run reports (`orphan_count`, `orphans[]`, `skipped_no_key_count`). Destructive delete when **POST** with `dry_run=false` or `confirm=true` (query or JSON). Removes only deletable `stig_baseline_rules` rows (requires KV `_key`); orphans without `_key` are listed but skipped. Does **not** cascade to checklists or reviews. Audits only when `deleted_count > 0`. Requires **stig_admin** in handler (`restmap` admits GET/POST with read/write capabilities). |
+
+**Reserved path literals:** The first segment after `/stig_baselines/` cannot be used as a baseline KV `_key` for `GET /stig_baselines/{id}` when it equals `import`, `jobs`, `gc_orphan_rules`, `hierarchy`, `by_stig`, `rules`, `ccis`, `groups`, or `rule` (those paths are routed to catalog/import handlers). UCC `ucc_name` values should avoid these tokens.
 | DELETE | `/stig_baselines/{id}` | Remove baseline + rules (UCC Configuration table or persist REST). |
 
 UCC Configuration **Baselines** tab is the management UI: list, import (including zip-of-zips), delete.

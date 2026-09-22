@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import audit
 import kv_client
 from importers import ckl, cklb, xccdf
+from importers.events import strip_disa_rule_id
 from models import (
     KV_STIG_BASELINES,
     KV_STIG_BASELINE_RULES,
@@ -14,7 +15,182 @@ from models import (
     dumps_json,
     kv_record,
     now_epoch,
+    parse_json_field,
 )
+
+def normalize_cci(value: Any) -> str:
+    text = str(value or "").strip().upper()
+    if text and not text.startswith("CCI-") and text.replace("-", "").isdigit():
+        text = f"CCI-{text}"
+    return text
+
+
+def _baseline_pointer(baseline: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not baseline:
+        return {}
+    return {
+        "baseline_id": baseline.get("_key") or "",
+        "stig_id": baseline.get("stig_id") or "",
+        "version": baseline.get("version") or "",
+        "title": baseline.get("title") or "",
+        "benchmark_date": baseline.get("benchmark_date") or "",
+        "content_fingerprint": baseline.get("content_fingerprint") or "",
+    }
+
+
+def _rule_match_view(
+    rule: Dict[str, Any], baseline: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    ccis = parse_json_field(rule.get("ccis"), default=[]) or []
+    if not isinstance(ccis, list):
+        ccis = []
+    view = {
+        "rule_key": rule.get("_key") or "",
+        "group_id": rule.get("group_id") or "",
+        "rule_id": rule.get("rule_id") or "",
+        "rule_id_src": rule.get("rule_id_src") or "",
+        "rule_version": rule.get("rule_version") or "",
+        "severity": rule.get("severity") or "",
+        "rule_title": rule.get("rule_title") or "",
+        "group_title": rule.get("group_title") or "",
+        "ccis": ccis,
+        "check_content_hash": rule.get("check_content_hash") or "",
+        "baseline": _baseline_pointer(baseline),
+    }
+    return view
+
+
+def _baselines_by_id(service) -> Dict[str, Dict[str, Any]]:
+    return {
+        str(b.get("_key")): b
+        for b in list_baselines(service)
+        if b.get("_key")
+    }
+
+
+def _rule_matches_stig_filter(
+    baseline: Optional[Dict[str, Any]], want_stig: str
+) -> bool:
+    """Optional catalog filter; orphan rules (missing baseline row) never match."""
+    if not want_stig:
+        return True
+    if not baseline:
+        return False
+    return (baseline.get("stig_id") or "").strip().casefold() == want_stig
+
+
+def list_all_catalog_rules(service) -> List[Dict[str, Any]]:
+    coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
+    return kv_client.query_all(coll)
+
+
+def get_catalog_rule_by_key(service, rule_key: str) -> Optional[Dict[str, Any]]:
+    key = (rule_key or "").strip()
+    if not key:
+        return None
+    coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
+    return kv_client.get_by_key(coll, key)
+
+
+def _rule_ref_matches(rule: Dict[str, Any], want: str) -> bool:
+    ref = strip_disa_rule_id(want)
+    if not ref:
+        return False
+    candidates = {
+        strip_disa_rule_id(rule.get("rule_id")),
+        strip_disa_rule_id(rule.get("rule_id_src")),
+        str(rule.get("rule_version") or "").strip(),
+        str(rule.get("group_id") or "").strip(),
+    }
+    return ref in {c for c in candidates if c}
+
+
+def find_catalog_rules_by_ref(
+    service, rule_ref: str, *, stig_id: str = ""
+) -> List[Dict[str, Any]]:
+    want_stig = (stig_id or "").strip().casefold()
+    baselines = _baselines_by_id(service)
+    matches: List[Dict[str, Any]] = []
+    for rule in list_all_catalog_rules(service):
+        if not _rule_ref_matches(rule, rule_ref):
+            continue
+        baseline = baselines.get(str(rule.get("baseline_id") or ""))
+        if not _rule_matches_stig_filter(baseline, want_stig):
+            continue
+        matches.append(_rule_match_view(rule, baseline))
+    matches.sort(
+        key=lambda row: (
+            (row.get("baseline") or {}).get("stig_id") or "",
+            (row.get("baseline") or {}).get("version") or "",
+            row.get("group_id") or "",
+            row.get("rule_id") or "",
+        )
+    )
+    return matches
+
+
+def find_catalog_rules_by_group_id(
+    service, group_id: str, *, stig_id: str = ""
+) -> List[Dict[str, Any]]:
+    gid = str(group_id or "").strip()
+    if not gid:
+        return []
+    want_stig = (stig_id or "").strip().casefold()
+    coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
+    baselines = _baselines_by_id(service)
+    matches: List[Dict[str, Any]] = []
+    for rule in kv_client.query_all(coll, {"group_id": gid}):
+        baseline = baselines.get(str(rule.get("baseline_id") or ""))
+        if not _rule_matches_stig_filter(baseline, want_stig):
+            continue
+        matches.append(_rule_match_view(rule, baseline))
+    matches.sort(
+        key=lambda row: (
+            (row.get("baseline") or {}).get("stig_id") or "",
+            (row.get("baseline") or {}).get("version") or "",
+            row.get("rule_version") or "",
+        )
+    )
+    return matches
+
+
+def find_catalog_rules_by_cci(
+    service, cci: str, *, stig_id: str = ""
+) -> List[Dict[str, Any]]:
+    want = normalize_cci(cci)
+    if not want:
+        return []
+    want_stig = (stig_id or "").strip().casefold()
+    baselines = _baselines_by_id(service)
+    matches: List[Dict[str, Any]] = []
+    for rule in list_all_catalog_rules(service):
+        ccis = parse_json_field(rule.get("ccis"), default=[]) or []
+        if not isinstance(ccis, list):
+            continue
+        normalized = {normalize_cci(c) for c in ccis if str(c).strip()}
+        if want not in normalized:
+            continue
+        baseline = baselines.get(str(rule.get("baseline_id") or ""))
+        if not _rule_matches_stig_filter(baseline, want_stig):
+            continue
+        matches.append(_rule_match_view(rule, baseline))
+    matches.sort(
+        key=lambda row: (
+            (row.get("baseline") or {}).get("stig_id") or "",
+            (row.get("baseline") or {}).get("version") or "",
+            row.get("group_id") or "",
+            row.get("rule_id") or "",
+        )
+    )
+    return matches
+
+
+def get_catalog_rule_reference(service, rule_key: str) -> Optional[Dict[str, Any]]:
+    rule = get_catalog_rule_by_key(service, rule_key)
+    if not rule:
+        return None
+    baseline = get_baseline(service, str(rule.get("baseline_id") or ""))
+    return _rule_match_view(rule, baseline)
 
 
 def list_baselines(service) -> List[Dict[str, Any]]:

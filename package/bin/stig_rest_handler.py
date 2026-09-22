@@ -996,6 +996,59 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error("not found", status=404)
             return _json_response(entry)
 
+        if len(parts) == 2 and parts[0] == "rules":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            rule_ref = parts[1]
+            stig_filter = (query.get("stig_id") or "").strip()
+            matches = baselines_svc.find_catalog_rules_by_ref(
+                service, rule_ref, stig_id=stig_filter
+            )
+            if not matches:
+                return _error("not found", status=404)
+            return _json_response(
+                {
+                    "rule_ref": rule_ref,
+                    "stig_id": stig_filter or None,
+                    "match_count": len(matches),
+                    "matches": matches,
+                }
+            )
+
+        if len(parts) == 2 and parts[0] == "ccis":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            cci = parts[1]
+            stig_filter = (query.get("stig_id") or "").strip()
+            matches = baselines_svc.find_catalog_rules_by_cci(
+                service, cci, stig_id=stig_filter
+            )
+            return _json_response(
+                {
+                    "cci": baselines_svc.normalize_cci(cci),
+                    "stig_id": stig_filter or None,
+                    "match_count": len(matches),
+                    "matches": matches,
+                }
+            )
+
+        if len(parts) == 2 and parts[0] == "groups":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            group_id = parts[1]
+            stig_filter = (query.get("stig_id") or "").strip()
+            matches = baselines_svc.find_catalog_rules_by_group_id(
+                service, group_id, stig_id=stig_filter
+            )
+            return _json_response(
+                {
+                    "group_id": group_id,
+                    "stig_id": stig_filter or None,
+                    "match_count": len(matches),
+                    "matches": matches,
+                }
+            )
+
         if len(parts) == 2 and parts[0] == "rule":
             if method != "GET":
                 return _error("method not allowed", status=405)

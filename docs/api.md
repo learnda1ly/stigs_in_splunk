@@ -44,7 +44,7 @@ Grant-based workspace ACLs further restrict which collections, hosts, and review
 |--------|---------|
 | `/stig_collections` | Workspaces; subpaths for grants, labels, metrics, findings, POA&M, imports, clone, transfer, metadata, … |
 | `/stig_hosts` | Assets; `/metadata`, `/checklists`, `/stigs` |
-| `/stig_baselines` | STIG library; `/import`, `/jobs`, `/gc_orphan_rules`, `/hierarchy`, `/by_stig/{stigId}`, `/rule/{key}`, `/{id}/rules` |
+| `/stig_baselines` | STIG library; `/import`, `/jobs`, `/gc_orphan_rules`, `/hierarchy`, `/by_stig/{stigId}`, cross-catalog `/rules`, `/ccis`, `/groups`, `/rule/{key}`, `/{id}/rules`, `/{id}/rules/{ruleRef}` |
 | `/stig_checklists` | Checklists; export, upgrade, validate, `export_bulk` |
 | `/stig_reviews` | Reviews; workflow actions; `/batch` |
 | `/stig_imports` | File ingest and `/reconcile` |
@@ -54,6 +54,20 @@ Grant-based workspace ACLs further restrict which collections, hosts, and review
 | `/stigs_in_splunk_baseline` | UCC Configuration table adapter (list/delete baselines) |
 
 Implementation source of truth: `package/bin/stig_rest_handler.py` and `package/default/restmap.conf`.
+
+## Baseline catalog reference (CCI / group / rule)
+
+Global baseline rules live in KV `stig_baseline_rules`. These endpoints search **across all imported baselines** (not workspace-scoped). CCI coverage depends on DISA XCCDF / CKL / CKLB import: only CCIs present on imported rule rows are searchable.
+
+**Reserved segments:** `rules`, `ccis`, `groups`, and `rule` are catalog path literals (not baseline `_key` values) for `GET /stig_baselines/{id}` — see [spec.md](../spec.md) §11.3.
+
+| Method | Path | Notes |
+|--------|------|--------|
+| GET | `/stig_baselines/rules/{ruleRef}` | Match `rule_id`, `rule_id_src`, `rule_version`, or `group_id`. Optional query `stig_id`. **404** if no matches. |
+| GET | `/stig_baselines/ccis/{cci}` | Rules referencing CCI (e.g. `CCI-000366`). Optional `stig_id`. **200** with `matches: []` when none. |
+| GET | `/stig_baselines/groups/{groupId}` | Rules with V-id `group_id`. Optional `stig_id`. |
+
+List responses include `match_count` and `matches[]` with `rule_key`, identity fields, parsed `ccis`, and a `baseline` pointer object. `GET /stig_baselines/rule/{ruleKey}` (library browse) returns baseline-scoped rule detail — see OpenAPI.
 
 ## Gaps vs STIG Manager OpenAPI
 
