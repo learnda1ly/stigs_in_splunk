@@ -573,6 +573,8 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 | GET | `/stig_collections/{id}/metrics` | — | Workspace metrics: `totals`, `completion`, `by_status`, `by_severity`, `open_by_severity`. Requires **stig_read** and workspace access (**404** if hidden). |
 | GET | `/stig_collections/{id}/findings` | Query filters (see §11.6) | Paginated findings report for assessors. Default filter: `status=open`. |
 | GET | `/stig_collections/{id}/findings/aggregate` | `group_by?`, filters (see §11.6) | Governance-open counts by group, rule, and/or CCI. |
+| GET | `/stig_collections/{id}/unreviewed/assets` | Filters (see §11.6) | Per-host unreviewed counts (`status=not_reviewed`). |
+| GET | `/stig_collections/{id}/unreviewed/rules` | Filters (see §11.6) | Per-rule unreviewed counts with hostnames. |
 | GET | `/stig_collections/{id}/poam` | `format?` (`json`, `csv`, `xlsx`) | POA&M-style export for governance-open findings. |
 
 Default `access_principals` on create: `["user:<creator>"]` if omitted. The Default holding workspace uses `[]` (any user with STIG caps).
@@ -670,17 +672,21 @@ Updates require workspace **write** access via parent checklist. Content PATCH i
 
 ### 11.6 Metrics and findings report
 
+**Unreviewed reports** (`/unreviewed/assets`, `/unreviewed/rules`) accept the same **scope** filters as findings (`host_id`, `hostname`, `baseline_id`, `rule_id`, `group_id`, `severity`) but **ignore `status`** (and findings-only params such as `limit` / `offset`). They always count rows with assessor **`status=not_reviewed`** only—do not copy findings query strings that default `status=open` or apply governance filters.
+
 | Method | Path | Query | Response |
 |--------|------|-------|----------|
 | GET | `/stig_collections/{id}/metrics` | — | Aggregated counts from KV reviews (joined to baseline rules for severity). |
 | GET | `/stig_collections/{id}/findings` | `status?` (comma-separated; default **open**), `severity?`, `host_id?`, `hostname?` (substring), `baseline_id?`, `rule_id?`, `limit?` (default **500**, max **2000**), `offset?` (default **0**) | `{findings: [...], pagination: {limit, offset, total, has_more}, filters}` |
 | GET | `/stig_collections/{id}/findings/aggregate` | `group_by?` (comma-separated: `group_id`, `rule_id`, `cci`; default all three). Same filter query params as findings; default `status=open` with governance filter (open ∧ not accepted). | `{open_findings_total, by_group_id?, by_rule_id?, by_cci?, group_by, filters, scan_note}` — buckets include `count`, `host_count`, `hostnames`, `severity`; `by_group_id` / `by_rule_id` also include `baseline_id`, `stig_id`, `baseline_title` (rule IDs scoped per baseline). |
 | GET | `/stig_collections/{id}/poam` | `format?` — `json` (default), `csv`, or `xlsx`. Same filter query params as findings. Default `status=open` with governance filter when status includes open. | **json:** `{rows, columns, row_count, splunk_alternative}` (`splunk_alternative` documents governance SPL + limitations vs enriched POA&M); **csv:** `text/csv` with `Content-Disposition` filename and `X-Stig-Row-Count`; **xlsx:** `{content_base64, filename, format, row_count}`. |
+| GET | `/stig_collections/{id}/unreviewed/assets` | `host_id?`, `hostname?` (substring), `baseline_id?`, `rule_id?`, `group_id?`, `severity?` | `{definition, total_unreviewed, asset_count, assets: [{host_id, hostname, unreviewed_count, by_baseline: [{baseline_id, stig_id, baseline_title, unreviewed_count}]}], filters, splunk_alternative}` — only reviews with **status=not_reviewed**; ACL matches findings. |
+| GET | `/stig_collections/{id}/unreviewed/rules` | Same query filters as unreviewed assets | `{definition, total_unreviewed, rule_count, rules: [{baseline_id, stig_id, group_id, rule_id, severity, rule_title?, unreviewed_count, host_count, hostnames}], filters, splunk_alternative}` — rule IDs scoped per baseline. |
 | GET | `/stig_findings` | Same as collection findings; **`stig_collection_id` required** | Same body as `/stig_collections/{id}/findings` |
 
 Each finding row includes: `hostname`, `host_id`, `baseline_id`, `baseline_title`, `stig_id`, `group_id`, `rule_id`, `rule_version`, `severity`, `status`, `finding_details`, `comments`, `valid`, `ingest_lock`, `updated_at`, `updated_by`, `checklist_id`, `_key`.
 
-SplunkUI **Collection dashboard** (`stig_collection_dashboard_ui`) loads metrics, findings, **aggregated open findings** (by group, rule, CCI), and **POA&M** CSV/XLSX export for governance-open rows. Optional Simple XML dashboard: `stig_collection_metrics_lookup`.
+SplunkUI **Collection dashboard** (`stig_collection_dashboard_ui`) loads metrics, findings, **aggregated open findings** (by group, rule, CCI), **unreviewed** rules/assets reports, and **POA&M** CSV/XLSX export for governance-open rows. Optional Simple XML dashboard: `stig_collection_metrics_lookup`.
 
 ---
 
@@ -709,6 +715,13 @@ Open findings not yet accepted (governance):
 ```spl
 | inputlookup stig_reviews
 | search status=open NOT workflow_state=accepted
+```
+
+Unreviewed assessor rows (matches REST unreviewed reports):
+
+```spl
+| inputlookup stig_reviews
+| search status=not_reviewed
 ```
 
 One baseline’s rules:

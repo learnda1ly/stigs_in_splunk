@@ -94,6 +94,19 @@ class TestReportingRestRoutes(unittest.TestCase):
         )
         self.assertEqual(resp["status"], 404)
 
+    @patch.object(stig_rest_handler.reporting_svc, "collection_unreviewed_rules")
+    def test_unreviewed_rules_route(self, mock_rules):
+        mock_rules.return_value = {"total_unreviewed": 0, "rules": []}
+        resp = self._dispatch("/stig_collections/ws1/unreviewed/rules")
+        self.assertEqual(resp["status"], 200)
+        mock_rules.assert_called_once()
+
+    @patch.object(stig_rest_handler.reporting_svc, "collection_unreviewed_assets")
+    def test_unreviewed_assets_not_found_when_acl_denies(self, mock_assets):
+        mock_assets.side_effect = KeyError("secret")
+        resp = self._dispatch("/stig_collections/secret/unreviewed/assets")
+        self.assertEqual(resp["status"], 404)
+
 
 if __name__ == "__main__":
     unittest.main()

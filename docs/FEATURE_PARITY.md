@@ -66,9 +66,9 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count (approx.) |
 |--------|-----------------|
-| done | 23 |
+| done | 24 |
 | partial | 14 |
-| missing | 17 |
+| missing | 16 |
 | n/a | 8 |
 
 Priorities are suggestions for **this** Splunk port; adjust per your deployment (e.g. heavy automation → bump XCCDF results).
@@ -156,7 +156,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | POA&M spreadsheet generation | UI: Generate POA&M. API: `GET .../poam` | **done** | SplunkUI **POA&M CSV/XLSX** on Collection dashboard; `GET /stig_collections/{id}/poam?format=json\|csv\|xlsx` from governance-open findings; JSON includes SPL `outputcsv` alternative (spec §11.6 / README). eMASS template reference only. | Export CSV/XLSX template from open findings; Splunk `outputcsv` alternative documented. | P1 | M |
 | CORA risk scoring | README / dashboard screenshots | **missing** | — | **n/a** unless product requests; else P2 calculator from severity weights in SPL. | P2 | L |
 | Aggregated findings by rule/group/CCI | UI: Aggregated Findings panel | **done** | SplunkUI **Aggregated findings** tab; `GET /stig_collections/{id}/findings/aggregate` with `group_by=group_id,rule_id,cci` (governance-open counts; CCI from `stig_baseline_rules`). | `stats` SPL or REST aggregation by `group_id`, `rule_id`, CCI from rules lookup. | P1 | M |
-| Unreviewed rules/assets reports | API: `/collections/{id}/unreviewed/rules`, `.../assets` | **missing** | Filter in editor only. | REST or saved search returning unreviewed counts per host/baseline. | P1 | M |
+| Unreviewed rules/assets reports | API: `/collections/{id}/unreviewed/rules`, `.../assets` | **done** | SplunkUI **Unreviewed** tab on Collection dashboard; REST `GET /stig_collections/{id}/unreviewed/rules` and `.../assets` with `status=not_reviewed` definition and grant ACL filtering (same as metrics/findings). | REST or saved search returning unreviewed counts per host/baseline. | P1 | M |
 | Splunk search / lookups | SM: API-only for reports | **done** | `transforms.conf` + `inputlookup`; spec §12. | Document example SPL in README. | P1 | — |
 | CIM / vulnerability datamodel | — | **n/a** | Spec Phase 2. | Optional `stig:finding` CIM mapping. | P2 | M |
 | Dedicated audit index / dashboard | SM operational logs | **partial** | `stigs_in_splunk.audit` to splunkd log; no UI. | Index audit events; simple dashboard. | P2 | M |
@@ -223,6 +223,8 @@ OpenAPI **tags** (approximate operation counts from `stig-manager.yaml`): Collec
 | `stig_collections/{id}/findings` | Workspace findings subpath on collections handler |
 | `stig_collections/{id}/findings/aggregate` | Governance-open findings counts by group, rule, CCI |
 | `stig_collections/{id}/poam` | POA&M-style CSV/XLSX/JSON export |
+| `stig_collections/{id}/unreviewed/rules` | Unreviewed rule counts with host coverage |
+| `stig_collections/{id}/unreviewed/assets` | Unreviewed counts per host with per-baseline breakdown |
 | UCC `stigs_in_splunk_baseline` | Configuration table adapter |
 
 For any new capability, prefer **adding Splunk-shaped endpoints** under these resources (or `stig_collections/{id}/...` subpaths implemented in the persist handler) rather than mirroring STIG Manager URL literals, while keeping response shapes familiar to API migrators.
