@@ -163,6 +163,7 @@ export default function ExportApp() {
                 );
             });
         } else {
+            // Full workspace download only: partial multi-select keeps export_bulk + checklist_ids.
             const allInWorkspace =
                 collectionId && ids.length === rows.length && rows.length > 0;
             const bulkPath = allInWorkspace

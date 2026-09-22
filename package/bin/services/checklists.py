@@ -609,6 +609,19 @@ def export_checklist_file(
     return content, export_filename(checklist, baseline, host, fmt)
 
 
+def _require_workspace_export_access(
+    service, collection_id: str, session: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Unreadable or missing workspace → KeyError (REST 404); avoids zip enumeration."""
+    collection = collections_svc.get_collection(service, collection_id)
+    if not collection:
+        raise KeyError(collection_id)
+    grants = grants_svc.query_grants(service, collection_id)
+    if not access.user_can_read_collection(collection, session, grants):
+        raise KeyError(collection_id)
+    return collection
+
+
 def checklist_ids_for_collection_export(
     service,
     collection_id: str,
@@ -617,11 +630,14 @@ def checklist_ids_for_collection_export(
     baseline_id: Optional[str] = None,
 ) -> List[str]:
     """Workspace-scoped checklist keys for archive export (grant ACL applied)."""
-    _require_collection(service, collection_id, session)
+    _require_workspace_export_access(service, collection_id, session)
     host_filter = (host_id or "").strip()
     baseline_filter = (baseline_id or "").strip()
+    coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
+    records = kv_client.query_all(coll, {"stig_collection_id": collection_id})
+    ctx = _access_context(service, collection_id, session)
     ids: List[str] = []
-    for rec in list_checklists(service, session, collection_id):
+    for rec in access.filter_checklists(records, ctx):
         if host_filter and rec.get("host_id") != host_filter:
             continue
         if baseline_filter and rec.get("baseline_id") != baseline_filter:
@@ -705,12 +721,7 @@ def export_collection_archive(
     baseline_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Bulk CKL/CKLB zip for all checklists in a workspace (optional host/baseline filters)."""
-    collection = collections_svc.get_collection(service, collection_id)
-    if not collection:
-        raise KeyError(collection_id)
-    grants = grants_svc.query_grants(service, collection_id)
-    if not access.user_can_read_collection(collection, session, grants):
-        raise KeyError(collection_id)
+    collection = _require_workspace_export_access(service, collection_id, session)
 
     result = export_checklists_bulk(
         service,

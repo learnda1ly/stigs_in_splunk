@@ -634,7 +634,7 @@ Import responses:
 | POST | `/stig_checklists` | `{stig_collection_id, host_id, baseline_id?, stig_id?, title?, mode?, target_data?}` → spawns reviews. Duplicate host+baseline → **400**. Prefer **`POST /stig_hosts/{id}/stigs`** for idempotent assign. |
 | GET/PATCH/DELETE | `/stig_checklists/{id}` | DELETE cascades reviews |
 | GET | `/stig_checklists/{id}/export` | Query `format=cklb|ckl` |
-| POST/PUT | `/stig_checklists/export_bulk` | JSON `{checklist_ids?, stig_collection_id?, format, host_id?, baseline_id?}` | Zip of multiple checklists. Either `checklist_ids` **or** `stig_collection_id` (workspace-scoped, optional host/baseline filters). Same zip/filename rules as collection archive. |
+| POST/PUT | `/stig_checklists/export_bulk` | JSON `{checklist_ids?, stig_collection_id?, format, host_id?, baseline_id?}` | Zip of multiple checklists. Either `checklist_ids` **or** `stig_collection_id` (workspace-scoped, optional host/baseline filters). Workspace-scoped calls use the same read ACL as archive export: missing or unreadable workspace → **404** (not **403**). **400** when filters match no checklists. Same zip/filename rules as collection archive. |
 | POST/PUT | `/stig_checklists/{id}/upgrade` | `{baseline_id}` — same `stig_id`, newer revision; merge reviews when `check_content_hash` matches |
 | POST | `/stig_imports` | Query `format=ckl|cklb|xccdf-results`, `source_uri`, `stig_collection_id`; raw body (see §11.4.1) |
 | GET/POST/DELETE | `/stig_collections/{id}/baseline_defaults` | Workspace default `baseline_id` per `stig_id` (`default_baseline_map` on collection) |
