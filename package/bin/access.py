@@ -297,6 +297,7 @@ def checklist_allowed(
     access_ctx: WorkspaceAccess,
     host_record: Optional[Dict[str, Any]] = None,
 ) -> bool:
+    """ACL dimensions compose as AND: each non-empty host/baseline/label filter must pass."""
     if access_ctx.admin_bypass:
         return True
     host_id = checklist_record.get("host_id") or ""

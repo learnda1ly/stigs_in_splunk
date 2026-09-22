@@ -416,6 +416,13 @@ export default function EditorApp() {
         return items.filter((item) => {
             const rev = item.review;
             const rule = lookupRule(rulesByKey, rev);
+            if (labelFilter) {
+                const cl = checklistById(rev.checklist_id);
+                const hid = cl && cl.host_id;
+                if (!hid || !hostsById[hid]) {
+                    return false;
+                }
+            }
             if (statusFilter && rev.status !== statusFilter) {
                 return false;
             }
@@ -451,6 +458,7 @@ export default function EditorApp() {
         rulesByKey,
         hostsById,
         checklistById,
+        labelFilter,
     ]);
 
     const selected = filtered.find((item) => item.review._key === selectedKey) || filtered[0];

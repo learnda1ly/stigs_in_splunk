@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import audit
 import kv_client
@@ -28,6 +28,36 @@ def _normalize_label_ids(value: Any) -> List[str]:
 def _public_label(rec: Dict[str, Any]) -> Dict[str, Any]:
     out = dict(rec)
     return out
+
+
+def label_ids_in_workspace(service, collection_id: str) -> Set[str]:
+    coll = _labels_coll(service)
+    return {
+        str(rec["_key"])
+        for rec in kv_client.query_all(coll, {"stig_collection_id": collection_id})
+        if rec.get("_key")
+    }
+
+
+def validate_label_ids(service, collection_id: str, label_ids: List[str]) -> List[str]:
+    """Reject label ids that are not defined in ``stig_labels`` for this workspace."""
+    if not label_ids:
+        return []
+    valid = label_ids_in_workspace(service, collection_id)
+    unknown = sorted({lid for lid in label_ids if lid not in valid})
+    if unknown:
+        raise ValueError("unknown label_ids for workspace: " + ", ".join(unknown))
+    return label_ids
+
+
+def sanitize_label_ids_for_workspace(
+    service, collection_id: str, label_ids: List[str]
+) -> List[str]:
+    """Keep only labels that exist in the destination workspace (e.g. after host move)."""
+    if not label_ids:
+        return []
+    valid = label_ids_in_workspace(service, collection_id)
+    return [lid for lid in label_ids if lid in valid]
 
 
 def _require_read(collection_id: str, session: Dict[str, Any], service) -> None:

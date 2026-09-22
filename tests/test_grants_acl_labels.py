@@ -63,6 +63,25 @@ class TestLabelAcl(unittest.TestCase):
             )
         )
 
+    def test_host_and_label_acl_and_composition(self):
+        ctx = access.WorkspaceAccess(
+            can_read=True,
+            can_write=False,
+            manage_grants=False,
+            edit_collection=False,
+            edit_access_principals=False,
+            grant_role="restricted",
+            acl_host_ids={"h1"},
+            acl_baseline_ids=None,
+            acl_label_ids={"lbl-a"},
+        )
+        match = {"_key": "h1", "label_ids": '["lbl-a"]'}
+        wrong_host = {"_key": "h2", "label_ids": '["lbl-a"]'}
+        wrong_label = {"_key": "h1", "label_ids": '["lbl-b"]'}
+        self.assertTrue(access.host_allowed(match, ctx))
+        self.assertFalse(access.host_allowed(wrong_host, ctx))
+        self.assertFalse(access.host_allowed(wrong_label, ctx))
+
     def test_filter_hosts_hides_unlabeled_when_label_acl(self):
         ctx = access.WorkspaceAccess(
             can_read=True,

@@ -18,6 +18,7 @@ from models import (
 )
 from services import collections as collections_svc
 from services import grants as grants_svc
+from services import labels as labels_svc
 
 
 def _require_collection_access(service, collection_id: str, session: Dict[str, Any], write: bool = False):
@@ -124,6 +125,9 @@ def create_host(service, body: Dict[str, Any], username: str, session: Dict[str,
         raise ValueError("stig_collection_id required")
     _require_collection_access(service, collection_id, session, write=True)
 
+    label_ids = _normalize_label_ids(body.get("label_ids"))
+    labels_svc.validate_label_ids(service, collection_id, label_ids)
+
     coll = kv_client.get_collection(service, KV_STIG_HOSTS)
     key = new_id()
     ts = now_epoch()
@@ -141,7 +145,7 @@ def create_host(service, body: Dict[str, Any], username: str, session: Dict[str,
             "tech_area": body.get("tech_area") or "",
             "web_or_database": bool(body.get("web_or_database", False)),
             "metadata": dumps_json(metadata) if isinstance(metadata, dict) else (metadata or "{}"),
-            "label_ids": dumps_json(_normalize_label_ids(body.get("label_ids"))),
+            "label_ids": dumps_json(label_ids),
             "created_at": ts,
             "updated_at": ts,
             "created_by": username,
@@ -170,6 +174,9 @@ def update_host(
     if moving:
         _require_collection_access(service, dest_collection, session, write=True)
         patch["stig_collection_id"] = dest_collection
+    workspace_for_labels = (
+        dest_collection if moving else existing.get("stig_collection_id") or ""
+    )
     for field in (
         "hostname",
         "ip_address",
@@ -186,7 +193,16 @@ def update_host(
         val = body["metadata"]
         patch["metadata"] = dumps_json(val) if isinstance(val, dict) else val
     if "label_ids" in body:
-        patch["label_ids"] = dumps_json(_normalize_label_ids(body.get("label_ids")))
+        label_ids = _normalize_label_ids(body.get("label_ids"))
+        labels_svc.validate_label_ids(service, workspace_for_labels, label_ids)
+        patch["label_ids"] = dumps_json(label_ids)
+    elif moving:
+        sanitized = labels_svc.sanitize_label_ids_for_workspace(
+            service,
+            workspace_for_labels,
+            _normalize_label_ids(patch.get("label_ids")),
+        )
+        patch["label_ids"] = dumps_json(sanitized)
     patch["updated_at"] = now_epoch()
     patch["updated_by"] = username
     stored = kv_client.update_record(coll, key, kv_record(patch))

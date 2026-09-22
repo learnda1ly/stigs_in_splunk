@@ -277,13 +277,23 @@ def list_reviews(
         )
         annotated = _annotate(records, policy)
     else:
-        checklist_coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
-        visible_checklists = {
-            c["_key"]
-            for c in kv_client.query_all(checklist_coll)
-            if c.get("stig_collection_id") in allowed
-        }
-        records = [r for r in records if r.get("checklist_id") in visible_checklists]
+        visible_checklists: set[str] = set()
+        if stig_collection_id:
+            for checklist in checklists_svc.list_checklists(
+                service, session, stig_collection_id
+            ):
+                key = checklist.get("_key")
+                if key:
+                    visible_checklists.add(str(key))
+        else:
+            for cid in allowed:
+                for checklist in checklists_svc.list_checklists(service, session, cid):
+                    key = checklist.get("_key")
+                    if key:
+                        visible_checklists.add(str(key))
+        records = [
+            r for r in records if r.get("checklist_id") in visible_checklists
+        ]
         annotated = _annotate_with_workspace_policies(service, records, session)
 
     want = _as_bool(valid)

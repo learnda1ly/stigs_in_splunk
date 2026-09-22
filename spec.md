@@ -213,7 +213,7 @@ Define in `package/default/authorize.conf`:
 
 Legacy: principals listed in `access_principals` with no matching grant row behave as **member**. Empty `access_principals` ⇒ any user with STIG caps may read. Creating a grant syncs the principal into `access_principals` for backward-compatible readers.
 
-**ACL:** optional `acl_host_ids`, `acl_baseline_ids`, and `acl_labels` JSON arrays on a grant. Non-empty lists filter visible hosts and checklists (and derived reviews/metrics). Label ACL requires the host’s `label_ids` to intersect the grant’s `acl_labels`.
+**ACL:** optional `acl_host_ids`, `acl_baseline_ids`, and `acl_labels` JSON arrays on a grant. An empty array `[]` (or omitted field) means **no filter** for that dimension. When multiple dimensions are set, they compose as **AND** (host id, baseline id, and label intersection must all pass). Label ACL requires the host’s `label_ids` to intersect the grant’s `acl_labels`. Host `label_ids` and grant `acl_labels` must reference `stig_labels._key` rows in the same workspace.
 
 Roles:
 
