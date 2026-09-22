@@ -35,9 +35,9 @@ def _baseline_fields(rec) -> dict:
     }
 
 
-def _baseline_rows(service):
+def _baseline_rows(service, session):
     rows = []
-    for rec in baselines_svc.list_baselines(service):
+    for rec in baselines_svc.list_baselines_for_user(service, session):
         name = baselines_svc.ucc_name_for(rec)
         if not name:
             continue
@@ -48,7 +48,7 @@ def _baseline_rows(service):
 class BaselineRestHandler(AdminExternalHandler):
     @build_conf_info
     def handleList(self, confInfo):
-        rows = _baseline_rows(connect(self))
+        rows = _baseline_rows(connect(self), handler_session(self))
         want = (self.callerArgs.id or "").strip()
         if want:
             rows = [row for row in rows if row[0] == want]

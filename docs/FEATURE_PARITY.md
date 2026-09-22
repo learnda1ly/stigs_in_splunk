@@ -182,7 +182,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 |---------|-------------------------|--------|-----------|-----------------------------|-----|------|
 | Cascade delete collection | SM collection delete semantics | **done** | `DELETE /stig_collections/{id}` blocks with **409** when children exist unless `cascade=true`; removes workspace hosts, checklists, reviews, grants, assignment rules/overrides; global baselines unchanged; UCC blocks non-empty workspace delete (REST cascade). | Defined cascade or block delete with children. | P1 | M |
 | Orphan baseline rule GC | — | **done** | Admin `GET/POST /stig_baselines/gc_orphan_rules` with dry-run default; execute via `dry_run=false` or `confirm=true`; audit on delete. Does not cascade to checklists/reviews. | Admin REST job to clean orphans. | P2 | S |
-| Workspace-scoped baseline catalog | — | **missing** | Baselines global (spec Phase 2). | Optional `stig_collection_id` on baselines or sharing ACL. | P2 | L |
+| Workspace-scoped baseline catalog | KV `stig_baselines.stig_collection_id`; REST list/import/hierarchy | **done** | Optional workspace scope on baseline rows (empty = global). List/hierarchy/catalog search honor workspace read ACL; `?stig_collection_id=` filters to globals + that workspace. Import accepts scope with workspace **write**. Checklist assign + default resolution prefer workspace catalog then global. | Optional `stig_collection_id` on baselines or sharing ACL. | P2 | L |
 
 ### I. Splunk-specific enhancements (not in STIG Manager)
 

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
+import access
 import audit
 import kv_client
 from importers import ckl, cklb, xccdf
@@ -60,22 +61,28 @@ def _rule_match_view(
     return view
 
 
-def _baselines_by_id(service) -> Dict[str, Dict[str, Any]]:
-    return {
-        str(b.get("_key")): b
-        for b in list_baselines(service)
-        if b.get("_key")
-    }
+def _baselines_by_id(
+    service, visible_baseline_ids: Optional[Set[str]] = None
+) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for b in list_baselines(service):
+        key = str(b.get("_key") or "")
+        if not key:
+            continue
+        if visible_baseline_ids is not None and key not in visible_baseline_ids:
+            continue
+        out[key] = b
+    return out
 
 
 def _rule_matches_stig_filter(
     baseline: Optional[Dict[str, Any]], want_stig: str
 ) -> bool:
-    """Optional catalog filter; orphan rules (missing baseline row) never match."""
-    if not want_stig:
-        return True
+    """Optional catalog filter; rules without a visible baseline row never match."""
     if not baseline:
         return False
+    if not want_stig:
+        return True
     return (baseline.get("stig_id") or "").strip().casefold() == want_stig
 
 
@@ -106,10 +113,14 @@ def _rule_ref_matches(rule: Dict[str, Any], want: str) -> bool:
 
 
 def find_catalog_rules_by_ref(
-    service, rule_ref: str, *, stig_id: str = ""
+    service,
+    rule_ref: str,
+    *,
+    stig_id: str = "",
+    visible_baseline_ids: Optional[Set[str]] = None,
 ) -> List[Dict[str, Any]]:
     want_stig = (stig_id or "").strip().casefold()
-    baselines = _baselines_by_id(service)
+    baselines = _baselines_by_id(service, visible_baseline_ids)
     matches: List[Dict[str, Any]] = []
     for rule in list_all_catalog_rules(service):
         if not _rule_ref_matches(rule, rule_ref):
@@ -130,14 +141,18 @@ def find_catalog_rules_by_ref(
 
 
 def find_catalog_rules_by_group_id(
-    service, group_id: str, *, stig_id: str = ""
+    service,
+    group_id: str,
+    *,
+    stig_id: str = "",
+    visible_baseline_ids: Optional[Set[str]] = None,
 ) -> List[Dict[str, Any]]:
     gid = str(group_id or "").strip()
     if not gid:
         return []
     want_stig = (stig_id or "").strip().casefold()
     coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
-    baselines = _baselines_by_id(service)
+    baselines = _baselines_by_id(service, visible_baseline_ids)
     matches: List[Dict[str, Any]] = []
     for rule in kv_client.query_all(coll, {"group_id": gid}):
         baseline = baselines.get(str(rule.get("baseline_id") or ""))
@@ -155,13 +170,17 @@ def find_catalog_rules_by_group_id(
 
 
 def find_catalog_rules_by_cci(
-    service, cci: str, *, stig_id: str = ""
+    service,
+    cci: str,
+    *,
+    stig_id: str = "",
+    visible_baseline_ids: Optional[Set[str]] = None,
 ) -> List[Dict[str, Any]]:
     want = normalize_cci(cci)
     if not want:
         return []
     want_stig = (stig_id or "").strip().casefold()
-    baselines = _baselines_by_id(service)
+    baselines = _baselines_by_id(service, visible_baseline_ids)
     matches: List[Dict[str, Any]] = []
     for rule in list_all_catalog_rules(service):
         ccis = parse_json_field(rule.get("ccis"), default=[]) or []
@@ -185,17 +204,137 @@ def find_catalog_rules_by_cci(
     return matches
 
 
-def get_catalog_rule_reference(service, rule_key: str) -> Optional[Dict[str, Any]]:
+def get_catalog_rule_reference(
+    service,
+    rule_key: str,
+    *,
+    visible_baseline_ids: Optional[Set[str]] = None,
+) -> Optional[Dict[str, Any]]:
     rule = get_catalog_rule_by_key(service, rule_key)
     if not rule:
         return None
-    baseline = get_baseline(service, str(rule.get("baseline_id") or ""))
+    baseline_id = str(rule.get("baseline_id") or "")
+    if visible_baseline_ids is not None and baseline_id not in visible_baseline_ids:
+        return None
+    baseline = get_baseline(service, baseline_id)
     return _rule_match_view(rule, baseline)
 
 
 def list_baselines(service) -> List[Dict[str, Any]]:
     coll = kv_client.get_collection(service, KV_STIG_BASELINES)
     return kv_client.query_all(coll)
+
+
+def baseline_workspace_id(rec: Optional[Dict[str, Any]]) -> str:
+    """Empty string means global (legacy) baseline."""
+    if not rec:
+        return ""
+    return (rec.get("stig_collection_id") or "").strip()
+
+
+def is_global_baseline(rec: Dict[str, Any]) -> bool:
+    return not baseline_workspace_id(rec)
+
+
+def readable_workspace_ids(service, session: Dict[str, Any]) -> Set[str]:
+    from services import collections as collections_svc
+
+    return {
+        (rec.get("_key") or "").strip()
+        for rec in collections_svc.list_collections(service, session)
+        if (rec.get("_key") or "").strip()
+    }
+
+
+def user_can_read_baseline(
+    service, session: Dict[str, Any], rec: Dict[str, Any]
+) -> bool:
+    cid = baseline_workspace_id(rec)
+    if not cid:
+        return True
+    if access.user_has_stig_admin(session):
+        return True
+    return cid in readable_workspace_ids(service, session)
+
+
+def baseline_usable_in_workspace(
+    service,
+    session: Dict[str, Any],
+    rec: Dict[str, Any],
+    collection_id: str,
+) -> bool:
+    """Assign defaults/checklists: global or scoped to the target workspace."""
+    if not user_can_read_baseline(service, session, rec):
+        return False
+    scope = baseline_workspace_id(rec)
+    if not scope:
+        return True
+    return scope == (collection_id or "").strip()
+
+
+def require_baseline_usable_in_workspace(
+    service,
+    session: Dict[str, Any],
+    baseline_id: str,
+    collection_id: str,
+) -> Dict[str, Any]:
+    rec = get_baseline(service, baseline_id)
+    if not rec:
+        raise KeyError(baseline_id)
+    if not baseline_usable_in_workspace(service, session, rec, collection_id):
+        raise PermissionError("baseline is not available in this workspace")
+    return rec
+
+
+def list_baselines_for_user(
+    service,
+    session: Dict[str, Any],
+    *,
+    stig_collection_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Globals plus workspace-scoped rows the caller may read.
+
+    With ``stig_collection_id``, requires workspace read and returns globals plus
+    baselines owned by that workspace only.
+    """
+    filter_cid = (stig_collection_id or "").strip()
+    if filter_cid:
+        from services import grants as grants_svc
+
+        grants_svc.require_workspace_read(service, filter_cid, session)
+
+    rows: List[Dict[str, Any]] = []
+    for rec in list_baselines(service):
+        if not user_can_read_baseline(service, session, rec):
+            continue
+        scope = baseline_workspace_id(rec)
+        if filter_cid and scope and scope != filter_cid:
+            continue
+        rows.append(rec)
+    return rows
+
+
+def visible_baseline_id_set(
+    service, session: Dict[str, Any], *, stig_collection_id: Optional[str] = None
+) -> Set[str]:
+    return {
+        str(rec.get("_key"))
+        for rec in list_baselines_for_user(
+            service, session, stig_collection_id=stig_collection_id
+        )
+        if rec.get("_key")
+    }
+
+
+def get_baseline_for_user(
+    service, session: Dict[str, Any], key: str
+) -> Optional[Dict[str, Any]]:
+    rec = get_baseline(service, key)
+    if not rec:
+        return None
+    if not user_can_read_baseline(service, session, rec):
+        return None
+    return rec
 
 
 def ucc_name_for(rec: Dict[str, Any]) -> str:
@@ -344,14 +483,21 @@ def list_baseline_rules(service, baseline_id: str) -> List[Dict[str, Any]]:
 
 
 def find_baseline_by_stig(
-    service, stig_id: str, version: str = ""
+    service,
+    stig_id: str,
+    version: str = "",
+    *,
+    stig_collection_id: str = "",
 ) -> Optional[Dict[str, Any]]:
     want_id = (stig_id or "").strip().casefold()
     want_ver = str(version or "").strip()
+    want_scope = (stig_collection_id or "").strip()
     if not want_id:
         return None
     matches = []
     for rec in list_baselines(service):
+        if baseline_workspace_id(rec) != want_scope:
+            continue
         if (rec.get("stig_id") or "").strip().casefold() != want_id:
             continue
         if want_ver and str(rec.get("version") or "").strip() != want_ver:
@@ -364,7 +510,7 @@ def find_baseline_by_stig(
 
 
 def find_baseline_by_fingerprint(
-    service, content_fingerprint: str
+    service, content_fingerprint: str, *, stig_collection_id: str = ""
 ) -> Optional[Dict[str, Any]]:
     if not content_fingerprint:
         return None
@@ -374,7 +520,11 @@ def find_baseline_by_fingerprint(
     )
     if not matches:
         return None
-    return matches[0]
+    want_scope = (stig_collection_id or "").strip()
+    for rec in matches:
+        if baseline_workspace_id(rec) == want_scope:
+            return rec
+    return None
 
 
 def _parse_import(format_name: str, body: bytes, source_uri: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
@@ -397,12 +547,16 @@ def import_parsed_baseline(
     format_name: str = "",
     match_stig_id: bool = False,
     ucc_name: str = "",
+    stig_collection_id: str = "",
 ) -> Tuple[Dict[str, Any], bool]:
     if not rules:
         raise ValueError("no rules parsed from import")
 
+    scope_id = (stig_collection_id or "").strip()
     content_fingerprint = baseline_content_fingerprint(meta, rules)
-    existing = find_baseline_by_fingerprint(service, content_fingerprint)
+    existing = find_baseline_by_fingerprint(
+        service, content_fingerprint, stig_collection_id=scope_id
+    )
     if existing:
         audit.log_event(
             "import_deduplicated",
@@ -421,7 +575,10 @@ def import_parsed_baseline(
         return existing, False
     if match_stig_id:
         existing = find_baseline_by_stig(
-            service, meta.get("stig_id") or "", meta.get("version") or ""
+            service,
+            meta.get("stig_id") or "",
+            meta.get("version") or "",
+            stig_collection_id=scope_id,
         )
         if existing:
             audit.log_event(
@@ -470,6 +627,7 @@ def import_parsed_baseline(
             "ucc_name": (ucc_name or "").strip(),
             "imported_at": ts,
             "imported_by": username,
+            "stig_collection_id": scope_id,
         }
     )
     stored_baseline = kv_client.insert_record(baseline_coll, baseline_record)
@@ -489,6 +647,7 @@ def import_parsed_baseline(
             "rule_count": len(rules),
             "format": format_name,
             "content_fingerprint": content_fingerprint,
+            "stig_collection_id": scope_id or None,
         },
     )
     return stored_baseline, True
@@ -593,6 +752,7 @@ def import_baseline(
     username: str,
     source_uri: str = "",
     ucc_name: str = "",
+    stig_collection_id: str = "",
 ) -> Tuple[Dict[str, Any], bool]:
     meta, rules = _parse_import(format_name, body, source_uri)
     return import_parsed_baseline(
@@ -603,6 +763,7 @@ def import_baseline(
         source_uri=source_uri,
         format_name=format_name,
         ucc_name=ucc_name,
+        stig_collection_id=stig_collection_id,
     )
 
 
@@ -613,6 +774,7 @@ def import_baselines_payload(
     username: str,
     source_uri: str = "",
     ucc_name: str = "",
+    stig_collection_id: str = "",
 ) -> List[Dict[str, Any]]:
     """Import one XCCDF/CKL/CKLB or a DISA zip / zip-of-zips of Manual-xccdf files."""
     from importers.stig_zip import list_baseline_xccdfs, looks_like_zip
@@ -632,6 +794,7 @@ def import_baselines_payload(
                 source_uri=path,
                 format_name="xccdf",
                 ucc_name=row_name,
+                stig_collection_id=stig_collection_id,
             )
             shown = ucc_name_for(rec) or row_name
             used.add(shown)
@@ -645,7 +808,13 @@ def import_baselines_payload(
             )
         return results
     rec, created = import_baseline(
-        service, body, fmt or "xccdf", username, source_uri=source_uri, ucc_name=ucc_name
+        service,
+        body,
+        fmt or "xccdf",
+        username,
+        source_uri=source_uri,
+        ucc_name=ucc_name,
+        stig_collection_id=stig_collection_id,
     )
     return [
         {

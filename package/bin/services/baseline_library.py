@@ -52,6 +52,8 @@ def revision_summary(rec: Dict[str, Any]) -> Dict[str, Any]:
         "ucc_name": rec.get("ucc_name") or "",
         "source_type": rec.get("source_type") or "",
         "source_uri": rec.get("source_uri") or "",
+        "stig_collection_id": rec.get("stig_collection_id") or "",
+        "scope": "workspace" if (rec.get("stig_collection_id") or "").strip() else "global",
     }
 
 
@@ -69,9 +71,20 @@ def _benchmark_entry(stig_id: str, revisions: List[Dict[str, Any]]) -> Dict[str,
     }
 
 
-def list_hierarchy(service) -> Dict[str, Any]:
+def list_hierarchy(
+    service,
+    session: Optional[Dict[str, Any]] = None,
+    *,
+    stig_collection_id: Optional[str] = None,
+) -> Dict[str, Any]:
     grouped: Dict[str, List[Dict[str, Any]]] = {}
-    for rec in baselines_svc.list_baselines(service):
+    if session is not None:
+        rows = baselines_svc.list_baselines_for_user(
+            service, session, stig_collection_id=stig_collection_id
+        )
+    else:
+        rows = baselines_svc.list_baselines(service)
+    for rec in rows:
         key = _benchmark_key(rec)
         grouped.setdefault(key, []).append(rec)
     benchmarks = [
@@ -87,13 +100,25 @@ def list_hierarchy(service) -> Dict[str, Any]:
     }
 
 
-def get_benchmark(service, stig_id: str) -> Optional[Dict[str, Any]]:
+def get_benchmark(
+    service,
+    stig_id: str,
+    session: Optional[Dict[str, Any]] = None,
+    *,
+    stig_collection_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     want = (stig_id or "").strip().casefold()
     if not want:
         return None
     matched_key = ""
     revisions: List[Dict[str, Any]] = []
-    for rec in baselines_svc.list_baselines(service):
+    if session is not None:
+        source = baselines_svc.list_baselines_for_user(
+            service, session, stig_collection_id=stig_collection_id
+        )
+    else:
+        source = baselines_svc.list_baselines(service)
+    for rec in source:
         bkey = _benchmark_key(rec)
         if bkey.casefold() != want:
             continue
