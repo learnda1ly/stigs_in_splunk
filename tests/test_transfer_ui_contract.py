@@ -8,13 +8,17 @@ import unittest
 _REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 _UI_MARKERS = [
     "/export-to/",
+    "/clone",
     "host_ids",
     "Transfer assets",
+    "Clone workspace",
 ]
 _BUNDLE_MARKERS = [
     "export-to",
+    "/clone",
     "host_ids",
     "Transfer assets",
+    "Clone workspace",
 ]
 
 
