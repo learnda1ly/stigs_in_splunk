@@ -62,6 +62,67 @@ EXPORT_STIG_FIELDS = (
 )
 
 
+_DISA_BENCHMARK_PREFIX = "xccdf_mil.disa.stig_benchmark_"
+_DISA_RULE_PREFIX = "xccdf_mil.disa.stig_rule_"
+
+
+def _strip_disa_benchmark_id(value: Any) -> str:
+    text = str(value or "").strip()
+    if text.startswith(_DISA_BENCHMARK_PREFIX):
+        return text[len(_DISA_BENCHMARK_PREFIX) :]
+    return text
+
+
+def _strip_disa_rule_id(value: Any) -> str:
+    text = str(value or "").strip()
+    if text.startswith(_DISA_RULE_PREFIX):
+        return text[len(_DISA_RULE_PREFIX) :]
+    return text
+
+
+def _coerce_watcher_aliases(event: Dict[str, Any]) -> None:
+    """Normalize Splunk REST / legacy sender keys to Watcher-shaped HEC fields."""
+    if not event.get("collectionId"):
+        for key in ("stig_collection_id", "collection_id", "stigCollectionId"):
+            val = event.get(key)
+            if val is not None and str(val).strip():
+                event["collectionId"] = str(val).strip()
+                break
+    if not event.get("collectionName"):
+        for key in ("collection_name", "stig_collection_name"):
+            val = event.get(key)
+            if val is not None and str(val).strip():
+                event["collectionName"] = str(val).strip()
+                break
+    if not event.get("sourceRef"):
+        for key in ("source_ref", "sourceURI", "source_uri"):
+            val = event.get(key)
+            if val is not None and str(val).strip():
+                event["sourceRef"] = str(val).strip()
+                break
+    pkg = event.get("package_id") or event.get("packageId")
+    if pkg is not None and str(pkg).strip():
+        event["package_id"] = str(pkg).strip()
+    if event.get("benchmarkId"):
+        event["benchmarkId"] = _strip_disa_benchmark_id(event["benchmarkId"])
+    if event.get("ruleId"):
+        event["ruleId"] = _strip_disa_rule_id(event["ruleId"])
+    if event.get("groupId"):
+        event["groupId"] = str(event["groupId"]).strip()
+    asset = event.get("asset")
+    if isinstance(asset, dict) and asset.get("name") and not event.get("assetName"):
+        event["assetName"] = asset["name"]
+    stig = event.get("stig")
+    if isinstance(stig, dict) and stig.get("stig_id"):
+        stig["stig_id"] = _strip_disa_benchmark_id(stig["stig_id"])
+    rule = event.get("rule")
+    if isinstance(rule, dict):
+        if rule.get("rule_id"):
+            rule["rule_id"] = _strip_disa_rule_id(rule["rule_id"])
+        if rule.get("rule_id_src"):
+            rule["rule_id_src"] = _strip_disa_rule_id(rule["rule_id_src"])
+
+
 def finding_key(event: Dict[str, Any]) -> str:
     return "|".join(
         [
@@ -173,6 +234,9 @@ def build_finding_event(
         "checklistId": checklist_id,
         "baselineId": baseline_id,
     }
+    pkg = review.get("package_id") or review.get("packageId")
+    if pkg is not None and str(pkg).strip():
+        event["package_id"] = str(pkg).strip()
     return event
 
 
@@ -249,6 +313,7 @@ def normalize_finding_event(raw: Dict[str, Any]) -> Dict[str, Any]:
         wrapped = dict(event["event"])
         wrapped.setdefault("time", event.get("time"))
         event = wrapped
+    _coerce_watcher_aliases(event)
     asset = event.get("asset") if isinstance(event.get("asset"), dict) else {}
     stig = event.get("stig") if isinstance(event.get("stig"), dict) else {}
     rule = event.get("rule") if isinstance(event.get("rule"), dict) else {}

@@ -651,7 +651,7 @@ POST validates: host belongs to workspace; baseline exists; baseline has rules.
 1. Emits one **fat** `stig:finding` JSON event per rule to **HEC** (`index=stig`, `sourcetype=stig:finding`). Each event includes Watcher review fields **and** asset `target_data`, STIG metadata, and the rule body (title, check content, fix text, CCIs, hashes) so a CKL/CKLB can be synthesized later from the index + KV.
 2. Applies the same events to KV current state (host, baseline, checklist, reviews).
 
-External Evaluate-STIG / Watcher streams must POST the same event shape to the HEC input `[http://stig_findings]`.
+External Evaluate-STIG / Watcher streams must POST the same event shape to the HEC input `[http://stig_findings]`. Full field reference: [docs/watcher-hec.md](../docs/watcher-hec.md).
 
 `GET|POST /stig_imports/reconcile` (and scheduled search `| stigkvreconcile`) reads recent index events and applies them to KV.
 

@@ -6,6 +6,8 @@ See [spec.md](spec.md) for the full build specification.
 
 For a gap backlog vs [STIG Manager](https://github.com/NUWCDIVNPT/stig-manager) (reference only), see [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md).
 
+Watcher / HEC **`stig:finding`** event schema (STIGMan Watcher parity): [docs/watcher-hec.md](docs/watcher-hec.md).
+
 ## Build with Splunk UCC
 
 This app is packaged with the [Splunk UCC framework](https://splunk.github.io/addonfactory-ucc-generator/) (`ucc-gen`). Source lives under `package/`; the installable app is produced under `output/stigs_in_splunk`.
