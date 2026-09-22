@@ -65,7 +65,7 @@ Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
 
 - **STIG Editor** — workspace + host filters, finding list, status, details, comments
 - **Collection review** — one baseline rule across all hosts in a workspace (batch save)
-- **Import** — checklists (`.ckl` / `.cklb` to HEC and KV) and STIG baselines (single XCCDF, CKL/CKLB, or a DISA product/quarterly zip via chunked persist REST `/stig_baselines/jobs`) on one page with **Checklists** and **Baselines** sections
+- **Import** — checklists (`.ckl` / `.cklb` / `.zip` archive → HEC and KV; multi-file queue in UI) and STIG baselines (single XCCDF, CKL/CKLB, or a DISA product/quarterly zip via chunked persist REST `/stig_baselines/jobs`) on one page with **Checklists** and **Baselines** sections
 - **Export** — CKL / CKLB download; bulk zip by selection or workspace archive (`POST /stig_collections/{id}/archive/ckl|cklb`)
 - **Configuration** — UCC-generated page for workspaces and editor/HEC settings. A **Default** workspace is created automatically; checklist imports with no workspace go there until you move the host. The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
 
@@ -113,13 +113,32 @@ curl -k -u admin:changeme -X POST \
 # 4) POST /stig_baselines/jobs/<id>  {"action":"import","path":"...Manual-xccdf.xml"}
 ```
 
-Checklist file ingest (indexes `stig:finding` via HEC, then updates KV). Omit `stig_collection_id` to use the Default workspace:
+Checklist file ingest (indexes `stig:finding` via HEC, then updates KV). Omit `stig_collection_id` to use the Default workspace. Re-importing the same host + STIG updates reviews in place (**200**) unless a finding is `ingest_lock`ed.
 
 ```bash
 curl -k -u admin:changeme -X POST \
   "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_imports?format=cklb&stig_collection_id=COLLECTION_ID&source_uri=host.cklb" \
   --data-binary @path/to/host.cklb
 ```
+
+Collection import builder (automation): batch CKL/CKLB into one workspace — per-file success/errors, partial success **200**, all succeeded **201**:
+
+```bash
+curl -k -u admin:changeme -X POST \
+  "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_collections/COLLECTION_ID/imports" \
+  -H "Content-Type: application/json" \
+  -d '{"files":[{"source_uri":"web-01.ckl","format":"ckl","content":"..."}]}'
+```
+
+Zip archive of checklists (nested zips supported, `.ckl`/`.cklb` only):
+
+```bash
+curl -k -u admin:changeme -X POST \
+  "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_imports?format=zip&stig_collection_id=COLLECTION_ID&source_uri=hosts.zip" \
+  --data-binary @hosts.zip
+```
+
+**Not supported in the collection builder:** multi-file XCCDF **results** archives (STIG Manager automation bundle). Use single-file `format=xccdf-results` or HEC below.
 
 XCCDF scan results (`TestResult` with `rule-result` children). Import the matching Manual STIG baseline first (or set a workspace default revision):
 

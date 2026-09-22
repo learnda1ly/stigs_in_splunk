@@ -7,7 +7,7 @@ import Select from "@splunk/react-ui/Select";
 import Table from "@splunk/react-ui/Table";
 import Text from "@splunk/react-ui/Text";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
-import { apiFetch, apiGet, apiUpload, viewUrl } from "../api";
+import { apiFetch, apiGet, apiUpload, defaultWorkspaceId, viewUrl, workspaceLabel } from "../api";
 import {
     Actions,
     DropHint,
@@ -20,18 +20,18 @@ import {
 } from "../layout";
 
 const ACCEPT =
-    ".ckl,.cklb,.xml,application/json,text/xml,application/xml,*-results.xml";
+    ".ckl,.cklb,.zip,application/json,text/xml,application/xml,application/zip";
 
 function detectFormat(name) {
     const lower = String(name || "").toLowerCase();
+    if (lower.endsWith(".zip")) {
+        return "zip";
+    }
     if (lower.endsWith(".cklb")) {
         return "cklb";
     }
     if (lower.endsWith(".ckl")) {
         return "ckl";
-    }
-    if (lower.endsWith("-results.xml") || lower.endsWith("_results.xml")) {
-        return "xccdf-results";
     }
     return "";
 }
@@ -90,7 +90,8 @@ export default function ChecklistImportPanel() {
                     if (prev && list.some((c) => c._key === prev)) {
                         return prev;
                     }
-                    return list[0] ? list[0]._key : "";
+                    const def = list.find((c) => c._key === defaultWorkspaceId(list));
+                    return def ? def._key : list[0] ? list[0]._key : "";
                 });
             })
             .catch((err) =>
@@ -115,7 +116,7 @@ export default function ChecklistImportPanel() {
                 name: file.name,
                 format: fmt,
                 status: fmt ? "queued" : "error",
-                error: fmt ? "" : "Only .ckl and .cklb files are supported.",
+                error: fmt ? "" : "Only .ckl, .cklb, and .zip archives are supported.",
                 host: "",
                 checklists: 0,
                 reviews: 0,
@@ -173,6 +174,22 @@ export default function ChecklistImportPanel() {
                 item.key === row.key ? { ...item, status: "uploading", error: "" } : item
             )
         );
+        if (row.format === "zip") {
+            return readFileAsArrayBuffer(row.file)
+                .then((buffer) =>
+                    apiUpload("stig_imports", {
+                        query: {
+                            stig_collection_id: collectionId,
+                            format: "zip",
+                            source_uri: row.name,
+                        },
+                        contentType: "application/zip",
+                        body: buffer,
+                    })
+                )
+                .then((doc) => applyZipImportResult(row.key, doc))
+                .catch((err) => applyRowError(row.key, err.message));
+        }
         return readFile(row.file)
             .then((text) =>
                 apiUpload("stig_imports", {
@@ -185,36 +202,74 @@ export default function ChecklistImportPanel() {
                     body: text,
                 })
             )
-            .then((doc) => {
-                const checklists = (doc && doc.checklists) || [];
-                setRows((prev) =>
-                    prev.map((item) =>
-                        item.key === row.key
-                            ? {
-                                  ...item,
-                                  status: "done",
-                                  host: (doc.host && doc.host.hostname) || "",
-                                  checklists: checklists.length,
-                                  reviews: doc.finding_count || 0,
-                                  stats: doc.stats || null,
-                                  created: !!(doc.host && doc.host.created) ||
-                                      checklists.some((cl) => cl.created),
-                                  error: "",
-                              }
-                            : item
-                    )
-                );
-            })
-            .catch((err) => {
-                setRows((prev) =>
-                    prev.map((item) =>
-                        item.key === row.key
-                            ? { ...item, status: "error", error: err.message }
-                            : item
-                    )
-                );
-            });
+            .then((doc) => applySingleImportResult(row.key, doc))
+            .catch((err) => applyRowError(row.key, err.message));
     };
+
+    const applyRowError = (key, message) => {
+        setRows((prev) =>
+            prev.map((item) =>
+                item.key === key ? { ...item, status: "error", error: message } : item
+            )
+        );
+    };
+
+    const applySingleImportResult = (key, doc) => {
+        const checklists = (doc && doc.checklists) || [];
+        setRows((prev) =>
+            prev.map((item) =>
+                item.key === key
+                    ? {
+                          ...item,
+                          status: "done",
+                          host: (doc.host && doc.host.hostname) || "",
+                          checklists: checklists.length,
+                          reviews: doc.finding_count || 0,
+                          stats: doc.stats || null,
+                          created:
+                              !!(doc.host && doc.host.created) ||
+                              checklists.some((cl) => cl.created),
+                          error: "",
+                      }
+                    : item
+            )
+        );
+    };
+
+    const applyZipImportResult = (key, doc) => {
+        const results = (doc && doc.results) || [];
+        const summary = (doc && doc.summary) || {};
+        setRows((prev) =>
+            prev.map((item) =>
+                item.key === key
+                    ? {
+                          ...item,
+                          status: summary.failed ? "error" : "done",
+                          host: summary.total + " in archive",
+                          checklists: summary.succeeded || 0,
+                          reviews: results.reduce(
+                              (n, row) => n + (row.finding_count || 0),
+                              0
+                          ),
+                          stats: null,
+                          created: summary.created > 0,
+                          error: summary.failed
+                              ? summary.failed +
+                                " file(s) failed — expand via REST for details"
+                              : "",
+                      }
+                    : item
+            )
+        );
+    };
+
+    const readFileAsArrayBuffer = (file) =>
+        new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(reader.error || new Error("read failed"));
+            reader.readAsArrayBuffer(file);
+        });
 
     const startImport = () => {
         if (!collectionId) {
@@ -269,7 +324,7 @@ export default function ChecklistImportPanel() {
                             {collections.map((c) => (
                                 <Select.Option
                                     key={c._key}
-                                    label={c.name || c._key}
+                                    label={workspaceLabel(c)}
                                     value={c._key}
                                 />
                             ))}
@@ -315,9 +370,10 @@ export default function ChecklistImportPanel() {
             </div>
             <PagePad>
                 <p style={{ maxWidth: 760, marginTop: 0 }}>
-                    Drop STIG Viewer <code>.ckl</code> or <code>.cklb</code> files into a
-                    workspace. Each finding is indexed through HEC as{" "}
-                    <code>stig:finding</code>. DISA XCCDF benchmarks are imported in the{" "}
+                    Drop STIG Viewer <code>.ckl</code>, <code>.cklb</code>, or a{" "}
+                    <code>.zip</code> archive of checklists into a workspace. Each
+                    finding is indexed through HEC as <code>stig:finding</code>. DISA
+                    XCCDF benchmarks are imported in the{" "}
                     <Link onClick={() => document.getElementById("baselines")?.scrollIntoView()}>
                         Baselines
                     </Link>{" "}
@@ -325,6 +381,10 @@ export default function ChecklistImportPanel() {
                     <Link to={viewUrl("configuration")}>Configuration</Link>. Incoming
                     results overwrite matching checks unless the finding is locked in the
                     editor.
+                    <br />
+                    <strong>XCCDF scan results</strong> are not part of this collection
+                    builder — use <code>POST /stig_imports?format=xccdf-results</code> or
+                    HEC per README (no multi-file results archive yet).
                 </p>
                 {banner ? (
                     <Message
@@ -370,7 +430,7 @@ export default function ChecklistImportPanel() {
                         }
                     }}
                 >
-                    <DropTitle>Drop .ckl and .cklb files here</DropTitle>
+                    <DropTitle>Drop .ckl, .cklb, or .zip archives here</DropTitle>
                     <DropHint>
                         {collectionId
                             ? "Or click to browse. Existing hosts and checklists in this workspace are updated."

@@ -66,8 +66,8 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count (approx.) |
 |--------|-----------------|
-| done | 30 |
-| partial | 10 |
+| done | 31 |
+| partial | 9 |
 | missing | 15 |
 | n/a | 8 |
 
@@ -101,7 +101,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Asset metadata API | API: `/assets/{id}/metadata/...` | **partial** | `metadata` JSON string on host; no key-level REST. | `GET/PATCH` metadata keys or documented JSON patch pattern. | P2 | S |
 | Attach STIG to asset (assignment) | UI: Assign STIG on asset. API: `POST /assets/{id}/stigs`, `/collections/{id}/stigs/...` | **done** | **`POST /stig_hosts/{hostId}/stigs`** (idempotent checklist create + review spawn); **`GET .../checklists`**. STIG Editor **Assign STIG** when a host is selected. Duplicate assign returns **200** with `"created": false`. | Explicit “assign baseline to host” UX; idempotent create checklist. | P1 | S |
 | Remove STIG from asset | API: `DELETE .../stigs/{benchmarkId}` | **done** | **`DELETE /stig_hosts/{id}/stigs/{baselineIdOrStigId}`** or delete checklist (cascades reviews). | UI/API delete checklist by host+baseline. | P1 | — |
-| Bulk asset create / import builder | UI: Import CKL/XCCDF builds collection. API: `POST /collections/{id}/assets` | **partial** | `POST /stig_imports` creates host+baseline+checklist from CKL/CKLB; no collection-level XCCDF **results** archive. | Collection import wizard parity for CKL/CKLB; document gaps for XCCDF results. | P1 | M |
+| Bulk asset create / import builder | UI: Import CKL/XCCDF builds collection. API: `POST /collections/{id}/assets` | **done** | SplunkUI **Import → Checklists**: workspace picker (default workspace), multi-file queue, per-file status, `.zip` archive ingest. REST: `POST /stig_collections/{id}/imports` (`files[]` batch), `POST /stig_imports?format=zip`. Idempotent host/checklist updates via existing ingest apply. **Gap:** no STIG Manager–style multi-file **XCCDF results** archive (single-file `xccdf-results` + HEC only — see row E). | Collection import wizard parity for CKL/CKLB; document gaps for XCCDF results. | P1 | M |
 | Asset checklist retrieval | API: `/assets/{id}/checklists`, by STIG | **done** | **`GET /stig_hosts/{id}/checklists`** (ACL-aware). Filter by STIG only via client or `GET /stig_checklists?stig_collection_id=` + baseline metadata. | `GET /stig_hosts/{id}/checklists` or documented query pattern. | P2 | S |
 
 ### C. STIG library (baselines / revisions)
@@ -216,7 +216,8 @@ OpenAPI **tags** (approximate operation counts from `stig-manager.yaml`): Collec
 | `stig_baselines` | List, import, rules, delete, `jobs` chunk import |
 | `stig_checklists` | CRUD, export, `export_bulk` (by `checklist_ids` or `stig_collection_id` + filters) |
 | `stig_reviews` | List, get, patch (`ingest_lock`), batch (`/batch`) |
-| `stig_imports` | CKL/CKLB ingest, reconcile |
+| `stig_imports` | CKL/CKLB ingest, zip archive, reconcile |
+| `stig_collections/{id}/imports` | Collection import builder batch (`files[]`) or zip body |
 | `stig_settings` | Editor settings adapter |
 | `stig_findings` | Paginated workspace findings report (`stig_collection_id` query param) |
 | `stig_collections/{id}/metrics` | Workspace metrics subpath on collections handler |
