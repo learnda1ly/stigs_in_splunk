@@ -11,6 +11,7 @@ from models import (
     KV_STIG_CHECKLISTS,
     KV_STIG_HOSTS,
     KV_STIG_REVIEW_HISTORY,
+    KV_STIG_REVIEWS,
     dumps_json,
     kv_record,
     now_epoch,
@@ -18,7 +19,6 @@ from models import (
 from services import checklists as checklists_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
-from services import reviews as reviews_svc
 import review_workflow
 
 DEFAULT_HISTORY_LIMIT = 100
@@ -31,6 +31,7 @@ TRACKED_FIELDS = (
     "ingest_lock",
     "workflow_state",
     "package_id",
+    "reject_feedback",
 )
 
 MAX_SUMMARY_LEN = 240
@@ -225,6 +226,53 @@ def _history_allowed(
     return True
 
 
+def _host_by_id_for_labels(
+    service, collection_id: str, access_ctx: access.WorkspaceAccess
+) -> Dict[str, Dict[str, Any]]:
+    host_by_id: Dict[str, Dict[str, Any]] = {}
+    if not access_ctx.acl_label_ids:
+        return host_by_id
+    host_coll = kv_client.get_collection(service, KV_STIG_HOSTS)
+    for host in kv_client.query_all(host_coll, {"stig_collection_id": collection_id}):
+        key = host.get("_key")
+        if key:
+            host_by_id[str(key)] = host
+    return host_by_id
+
+
+def _require_visible_review(
+    service,
+    review_id: str,
+    session: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Load review only when checklist/workspace ACL allows (404 otherwise)."""
+    reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
+    rec = kv_client.get_by_key(reviews_coll, review_id)
+    if not rec:
+        raise KeyError(review_id)
+    checklist_id = rec.get("checklist_id")
+    if not checklist_id:
+        raise KeyError(review_id)
+    checklist = checklists_svc.get_checklist(service, str(checklist_id), session)
+    if not checklist:
+        raise KeyError(review_id)
+    collection_id = checklist.get("stig_collection_id") or ""
+    if not collection_id:
+        raise KeyError(review_id)
+    _rec, access_ctx, _grants = grants_svc.workspace_context(
+        service, collection_id, session
+    )
+    ctx = _context_for_review(service, rec, checklist=checklist)
+    host_by_id = _host_by_id_for_labels(service, collection_id, access_ctx)
+    if not _history_allowed(
+        {"host_id": ctx["host_id"], "baseline_id": ctx["baseline_id"]},
+        access_ctx,
+        host_by_id,
+    ):
+        raise KeyError(review_id)
+    return rec
+
+
 def _public_row(rec: Dict[str, Any]) -> Dict[str, Any]:
     out = dict(rec)
     raw = rec.get("changed_fields")
@@ -244,9 +292,7 @@ def list_review_history(
     session: Dict[str, Any],
     query: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    review = reviews_svc.get_review(service, review_id, session)
-    if not review:
-        raise KeyError(review_id)
+    _require_visible_review(service, review_id, session)
 
     query = query or {}
     limit = _parse_int(
@@ -312,13 +358,7 @@ def list_collection_review_history(
     rule_id_filter = _text(query.get("rule_id")).strip()
     review_id_filter = _text(query.get("review_id")).strip()
 
-    host_by_id: Dict[str, Dict[str, Any]] = {}
-    if access_ctx.acl_label_ids:
-        host_coll = kv_client.get_collection(service, KV_STIG_HOSTS)
-        for host in kv_client.query_all(host_coll, {"stig_collection_id": collection_id}):
-            key = host.get("_key")
-            if key:
-                host_by_id[str(key)] = host
+    host_by_id = _host_by_id_for_labels(service, collection_id, access_ctx)
 
     coll = kv_client.get_collection(service, KV_STIG_REVIEW_HISTORY)
     rows = kv_client.query_all(coll, {"stig_collection_id": collection_id})

@@ -32,9 +32,26 @@ if "splunk" not in sys.modules:
     sys.modules["splunk.persistconn"] = persistconn
     sys.modules["splunk.persistconn.application"] = application
 
+from services import checklists as checklists_svc  # noqa: E402
+from services import collections as collections_svc  # noqa: E402
 from services import review_history as history_svc  # noqa: E402
 from services import reviews as reviews_svc  # noqa: E402
 import stig_rest_handler  # noqa: E402
+
+
+def _scoped_access(host_ids):
+    return history_svc.access.WorkspaceAccess(
+        can_read=True,
+        can_write=False,
+        manage_grants=False,
+        edit_collection=False,
+        edit_access_principals=False,
+        grant_role="restricted",
+        acl_host_ids=set(host_ids),
+        acl_baseline_ids=None,
+        acl_label_ids=None,
+        admin_bypass=False,
+    )
 
 
 class ReviewHistoryLogicTests(unittest.TestCase):
@@ -115,13 +132,90 @@ class ReviewHistoryLogicTests(unittest.TestCase):
             {"_key": "h1", "review_id": "r1", "created_at": 10, "summary": "old"},
             {"_key": "h2", "review_id": "r1", "created_at": 20, "summary": "new"},
         ]
-        with patch.object(reviews_svc, "get_review", return_value={"_key": "r1"}), patch.object(
-            history_svc.kv_client, "get_collection"
-        ) as mock_gc, patch.object(history_svc.kv_client, "query_all", return_value=rows):
+        with patch.object(
+            history_svc, "_require_visible_review", return_value={"_key": "r1"}
+        ), patch.object(history_svc.kv_client, "get_collection") as mock_gc, patch.object(
+            history_svc.kv_client, "query_all", return_value=rows
+        ):
             mock_gc.return_value = MagicMock()
             out = history_svc.list_review_history(service, "r1", session)
         self.assertEqual(out["history"][0]["summary"], "new")
         self.assertEqual(out["pagination"]["total"], 2)
+
+    def test_list_review_history_404_when_checklist_not_visible(self):
+        service = MagicMock()
+        session = {"user": "restricted", "capabilities": {"stig_read": True}}
+        with patch.object(
+            history_svc,
+            "_require_visible_review",
+            side_effect=KeyError("r-secret"),
+        ):
+            with self.assertRaises(KeyError):
+                history_svc.list_review_history(service, "r-secret", session)
+
+    def test_require_visible_review_denies_out_of_scope_host(self):
+        service = MagicMock()
+        session = {"user": "restricted", "capabilities": {"stig_read": True}}
+        review = {
+            "_key": "r1",
+            "checklist_id": "cl1",
+            "baseline_id": "b1",
+            "host_id": "h2",
+        }
+        checklist = {
+            "_key": "cl1",
+            "stig_collection_id": "ws1",
+            "host_id": "h2",
+            "baseline_id": "b1",
+        }
+        reviews_coll = MagicMock()
+        with patch.object(history_svc.kv_client, "get_collection", return_value=reviews_coll), patch.object(
+            history_svc.kv_client, "get_by_key", return_value=review
+        ), patch.object(
+            history_svc.checklists_svc, "get_checklist", return_value=checklist
+        ), patch.object(
+            history_svc.grants_svc,
+            "workspace_context",
+            return_value=({"_key": "ws1"}, _scoped_access(["h1"]), []),
+        ), patch.object(history_svc, "_host_by_id_for_labels", return_value={}):
+            with self.assertRaises(KeyError):
+                history_svc._require_visible_review(service, "r1", session)
+
+    def test_collection_history_filters_by_acl_host_ids(self):
+        service = MagicMock()
+        session = {"user": "restricted", "capabilities": {"stig_read": True}}
+        rows = [
+            {
+                "_key": "a",
+                "stig_collection_id": "ws1",
+                "host_id": "h1",
+                "baseline_id": "b1",
+                "rule_id": "V-1",
+                "created_at": 5,
+            },
+            {
+                "_key": "b",
+                "stig_collection_id": "ws1",
+                "host_id": "h2",
+                "baseline_id": "b1",
+                "rule_id": "V-2",
+                "created_at": 6,
+            },
+        ]
+        with patch.object(
+            history_svc.collections_svc, "get_collection", return_value={"_key": "ws1", "name": "Lab"}
+        ), patch.object(history_svc.grants_svc, "query_grants", return_value=[]), patch.object(
+            history_svc.access, "user_can_read_collection", return_value=True
+        ), patch.object(
+            history_svc.grants_svc,
+            "workspace_context",
+            return_value=({"_key": "ws1"}, _scoped_access(["h1"]), []),
+        ), patch.object(history_svc, "_host_by_id_for_labels", return_value={}), patch.object(
+            history_svc.kv_client, "get_collection"
+        ), patch.object(history_svc.kv_client, "query_all", return_value=rows):
+            out = history_svc.list_collection_review_history(service, "ws1", session)
+        self.assertEqual(len(out["history"]), 1)
+        self.assertEqual(out["history"][0]["host_id"], "h1")
 
     def test_collection_history_filters_host_and_rule(self):
         service = MagicMock()
@@ -175,6 +269,92 @@ class ReviewHistoryLogicTests(unittest.TestCase):
             )
         self.assertEqual(len(out["history"]), 1)
         self.assertEqual(out["history"][0]["_key"], "a")
+
+    def test_delete_history_for_collection(self):
+        service = MagicMock()
+        coll = MagicMock()
+        rows = [{"_key": "h1"}, {"_key": "h2"}]
+        with patch.object(history_svc.kv_client, "get_collection", return_value=coll), patch.object(
+            history_svc.kv_client, "query_all", return_value=rows
+        ), patch.object(history_svc.kv_client, "delete_record") as mock_delete:
+            removed = history_svc.delete_history_for_collection(service, "ws1")
+        self.assertEqual(removed, 2)
+        self.assertEqual(mock_delete.call_count, 2)
+
+    def test_cascade_delete_removes_review_history(self):
+        service = MagicMock()
+        with patch.object(collections_svc, "kv_client") as mock_kv, patch.object(
+            collections_svc.review_history_svc,
+            "delete_history_for_collection",
+            return_value=3,
+        ) as mock_hist_del:
+            mock_kv.get_collection.return_value = MagicMock()
+            mock_kv.query_all.return_value = []
+            removed = collections_svc._cascade_delete_workspace_children(
+                service, "ws1", "admin"
+            )
+        self.assertEqual(removed["review_history"], 3)
+        mock_hist_del.assert_called_once_with(service, "ws1")
+
+
+class ApplyReviewSeedsHistoryTests(unittest.TestCase):
+    @patch.object(checklists_svc, "review_history_svc")
+    @patch.object(checklists_svc, "kv_client")
+    @patch.object(checklists_svc, "get_checklist")
+    @patch.object(checklists_svc, "match_review_seed")
+    def test_ingest_apply_records_history(
+        self, mock_match, mock_get_cl, mock_kv, mock_hist
+    ):
+        rec = {
+            "_key": "r1",
+            "rule_id": "SV-1",
+            "workflow_state": "draft",
+            "status": "not_reviewed",
+            "finding_details": "",
+            "comments": "",
+        }
+        stored = {**rec, "status": "open", "finding_details": "scan"}
+        coll = MagicMock()
+        mock_kv.get_collection.return_value = coll
+        mock_kv.query_all.return_value = [rec]
+        mock_kv.update_record.return_value = stored
+        mock_kv.kv_record.side_effect = lambda r: r
+        mock_get_cl.return_value = {"_key": "cl1", "stig_collection_id": "ws1"}
+        mock_match.return_value = {"status": "open", "finding_details": "scan"}
+
+        result = checklists_svc.apply_review_seeds(
+            MagicMock(), "cl1", {}, "ingest", {}
+        )
+        self.assertEqual(result["updated"], 1)
+        mock_hist.record_review_change.assert_called_once()
+        self.assertEqual(mock_hist.record_review_change.call_args[1]["action"], "ingest")
+
+    @patch.object(checklists_svc, "review_history_svc")
+    @patch.object(checklists_svc, "kv_client")
+    @patch.object(checklists_svc, "get_checklist")
+    @patch.object(checklists_svc, "match_review_seed")
+    def test_ingest_locked_skips_history(
+        self, mock_match, mock_get_cl, mock_kv, mock_hist
+    ):
+        rec = {
+            "_key": "r1",
+            "rule_id": "SV-1",
+            "ingest_lock": True,
+            "workflow_state": "draft",
+            "status": "open",
+        }
+        coll = MagicMock()
+        mock_kv.get_collection.return_value = coll
+        mock_kv.query_all.return_value = [rec]
+        mock_get_cl.return_value = {"_key": "cl1"}
+        mock_match.return_value = {"status": "not_a_finding"}
+
+        result = checklists_svc.apply_review_seeds(
+            MagicMock(), "cl1", {}, "ingest", {}
+        )
+        self.assertEqual(result["locked"], 1)
+        mock_kv.update_record.assert_not_called()
+        mock_hist.record_review_change.assert_not_called()
 
 
 class ReviewHistoryRestTests(unittest.TestCase):

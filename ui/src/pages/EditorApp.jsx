@@ -117,6 +117,7 @@ export default function EditorApp() {
     const [rejectFeedback, setRejectFeedback] = useState("");
     const [reviewHistory, setReviewHistory] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyError, setHistoryError] = useState(null);
     const [finding, setFinding] = useState("");
     const [comments, setComments] = useState("");
     const [status, setStatus] = useState("not_reviewed");
@@ -480,15 +481,35 @@ export default function EditorApp() {
     useEffect(() => {
         if (!selected || !selected.review || !selected.review._key) {
             setReviewHistory([]);
-            return;
+            setHistoryError(null);
+            return undefined;
         }
+        const reviewKey = selected.review._key;
+        let cancelled = false;
         setHistoryLoading(true);
-        apiGet("stig_reviews/" + selected.review._key + "/history", { limit: 40 })
-            .then((data) =>
-                setReviewHistory(Array.isArray(data.history) ? data.history : [])
-            )
-            .catch(() => setReviewHistory([]))
-            .finally(() => setHistoryLoading(false));
+        setHistoryError(null);
+        apiGet("stig_reviews/" + reviewKey + "/history", { limit: 40 })
+            .then((data) => {
+                if (cancelled) {
+                    return;
+                }
+                setReviewHistory(Array.isArray(data.history) ? data.history : []);
+            })
+            .catch((err) => {
+                if (cancelled) {
+                    return;
+                }
+                setReviewHistory([]);
+                setHistoryError(err.message || "Failed to load review history");
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setHistoryLoading(false);
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
     }, [selected && selected.review._key, selected && selected.review.updated_at]);
 
     const doneCount = items.filter((item) => reviewIsValid(item.review, reviewRequirements)).length;
@@ -1691,6 +1712,9 @@ export default function EditorApp() {
                                 ) : (
                                     <MetaLine>No recorded changes yet for this finding.</MetaLine>
                                 )}
+                                {historyError ? (
+                                    <Message appearance="warning">{historyError}</Message>
+                                ) : null}
                             </ControlGroup>
                             <Actions>
                                 <Button

@@ -478,12 +478,16 @@ Append-only audit of **assessor-visible** review changes (not a full document sn
 | `action` | string | `update` \| `submit` \| `accept` \| `reject` \| `ingest` \| `upgrade` |
 | `previous_status`, `new_status` | string | Assessor status |
 | `previous_workflow_state`, `new_workflow_state` | string | Governance state |
-| `changed_fields` | string | JSON array of changed field names (`status`, `finding_details`, `comments`, `ingest_lock`, `workflow_state`, `package_id`) |
+| `changed_fields` | string | JSON array of changed field names (`status`, `finding_details`, `comments`, `ingest_lock`, `workflow_state`, `package_id`, `reject_feedback`) |
 | `summary` | string | Short human-readable line (bounded length; no full finding text) |
 | `actor` | string | Splunk username |
 | `created_at` | time | Event time |
 
 **Ingest:** `apply_review_seeds` records `action=ingest` when an incoming checklist/HEC apply changes a review. Rows are **not** written when ingest skips a review (`ingest_lock` or non-draft workflow). History writes are synchronous KV inserts (cheap); large zip imports may produce many rows.
+
+**Governance:** `submit` / `accept` / `reject` always append a history row when the REST action succeeds, even if assessor field values are unchanged; `reject_feedback` is included in `changed_fields` when it changes.
+
+**Workspace list:** `GET /stig_collections/{id}/review-history` loads all KV rows for the workspace then filters and paginates in the handler (acceptable for P2; very large histories may be slow—use per-review history or query filters).
 
 **Retention:** cascade workspace delete removes history rows for that `stig_collection_id`.
 
