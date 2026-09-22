@@ -99,12 +99,12 @@ def patch_metadata(
     if body.get("clear") is True:
         metadata = empty_metadata()
     else:
+        if "metadata" in body and body.get("metadata") is None:
+            raise ValueError("metadata must be a JSON object")
         incoming = body.get("metadata")
-        if incoming is None and "metadata" not in body and not body.get("clear"):
+        if incoming is None:
             raise ValueError("metadata object is required (or clear: true)")
         replace = bool(body.get("replace"))
-        if incoming is None and body.get("clear") is not True:
-            incoming = {}
         existing = parse_metadata_from_collection(rec)
         metadata = merge_metadata(existing, normalize_metadata(incoming), replace=replace)
 

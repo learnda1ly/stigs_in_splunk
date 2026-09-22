@@ -244,7 +244,7 @@ export SPLUNK_PASSWORD='your-admin-password'
 
 ## Search
 
-Use `| inputlookup stig_reviews` (and related stanzas in `package/default/transforms.conf`) with app context **stigs_in_splunk**. See spec.md §12.
+Use `| inputlookup stig_reviews` (and related stanzas in `package/default/transforms.conf`, including `stig_collections` for workspace `metadata`) with app context **stigs_in_splunk**. Lookups are **not** grant-filtered—REST `/stig_*` enforces workspace ACL. See [spec.md §12](spec.md#12-splunk-search-reporting).
 
 ## Collection metrics and findings report
 

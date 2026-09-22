@@ -679,7 +679,7 @@ Import responses:
 | POST | `/stig_collections/{id}/imports` | JSON `{files: [{source_uri, format?, content\|content_base64}]}` **or** raw zip body (`format=zip` query or PK magic). Batch CKL/CKLB/XCCDF-results collection import; workspace **write** required. |
 | GET/POST/DELETE | `/stig_collections/{id}/baseline_defaults` | Workspace default `baseline_id` per `stig_id` (`default_baseline_map` on collection) |
 | GET/PATCH | `/stig_collections/{id}/review_requirements` | Workspace review validation policy (`review_requirements` JSON on collection). **GET** returns `{stig_collection_id, review_requirements, defaults}`. **PATCH** body `{review_requirements: {...}}` or flat policy fields; requires workspace **write**. |
-| GET/PATCH | `/stig_collections/{id}/metadata` | Optional workspace metadata (`metadata` JSON on collection). **GET** returns `{stig_collection_id, metadata}` (empty object when unset). **PATCH** requires workspace **write**; body `{metadata: {...}}` shallow-merges keys (set a key to JSON `null` to remove). `{replace: true, metadata: {...}}` replaces the entire object. `{clear: true}` removes all keys. Values must be JSON-serializable; non-object `metadata` returns **400**. |
+| GET/PATCH | `/stig_collections/{id}/metadata` | Optional workspace metadata (`metadata` JSON on collection). **GET** returns `{stig_collection_id, metadata}` (empty object when unset). **PATCH** requires workspace **write**; body `{metadata: {...}}` shallow-merges keys (set a key to JSON `null` to remove). `{replace: true, metadata: {...}}` replaces the entire object. `{clear: true}` removes all keys. Top-level `"metadata": null` returns **400** (use `clear: true` to wipe). Values must be JSON-serializable; non-object `metadata` returns **400**. |
 | POST/PUT | `/stig_collections/{id}/upgrade_checklists` | `{baseline_id, from_baseline_id?, stig_id?}` — bulk upgrade matching checklists in workspace |
 
 POST validates: host belongs to workspace; baseline exists; baseline has rules.
@@ -774,7 +774,9 @@ JSON adapter over **`stigs_in_splunk_settings.conf`** `[general]` (see §4.3.1).
 
 **Do not** rely on `| rest .../storage/collections/data/...` for reviews: that endpoint returns a **flat JSON array**, not Splunk REST `entry[]`, so typical `rest` + `spath` patterns return **zero rows**.
 
-**Do** use kvstore lookups from `transforms.conf` with app context **`stigs_in_splunk`**:
+**Do** use kvstore lookups from `transforms.conf` with app context **`stigs_in_splunk`**.
+
+**ACL note:** KV `inputlookup` stanzas (including `stig_collections`) return rows for **all** workspaces in the collection. They are **not** filtered by workspace grants or REST `access_principals`. Any Splunk user who can run searches against this app can read lookup fields (for example workspace `name` and `metadata`). Use persist **`/stig_*` REST** when grant-scoped access is required.
 
 All review rows:
 
@@ -812,6 +814,15 @@ One baseline’s rules:
 ```
 
 Enrich with checklist/host via `lookup` on `stig_checklists` / custom fields as needed.
+
+Workspace metadata (REST `GET/PATCH .../metadata` stores JSON in KV; lookup exposes the raw string column):
+
+```spl
+| inputlookup stig_collections
+| eval metadata=coalesce(metadata, "{}")
+| search metadata="*moderate*"
+| table _key name description metadata
+```
 
 ---
 

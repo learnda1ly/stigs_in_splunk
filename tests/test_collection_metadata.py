@@ -156,6 +156,53 @@ class CollectionMetadataRestTests(unittest.TestCase):
             )
 
     @patch("services.grants.workspace_context")
+    @patch.object(meta_svc, "kv_client")
+    @patch.object(meta_svc, "collections_svc")
+    def test_patch_replace_drops_prior_keys(self, mock_collections, mock_kv, mock_workspace):
+        mock_workspace.return_value = (
+            {"_key": "ws1"},
+            MagicMock(can_read=True, can_write=True),
+            [],
+        )
+        mock_collections.get_collection.return_value = {
+            "_key": "ws1",
+            "metadata": '{"old": true, "keep": false}',
+        }
+        coll = MagicMock()
+        mock_kv.get_collection.return_value = coll
+        mock_kv.update_record.return_value = {"_key": "ws1"}
+        mock_kv.kv_record.side_effect = lambda r: r
+
+        with patch.object(meta_svc, "audit"):
+            out = meta_svc.patch_metadata(
+                MagicMock(),
+                "ws1",
+                {"replace": True, "metadata": {"only": "new"}},
+                "owner",
+                {"user": "owner"},
+            )
+        self.assertEqual(out["metadata"], {"only": "new"})
+        self.assertNotIn("old", out["metadata"])
+
+    @patch("services.grants.workspace_context")
+    @patch.object(meta_svc, "collections_svc")
+    def test_patch_rejects_null_metadata(self, mock_collections, mock_workspace):
+        mock_workspace.return_value = (
+            {"_key": "ws1"},
+            MagicMock(can_read=True, can_write=True),
+            [],
+        )
+        mock_collections.get_collection.return_value = {"_key": "ws1"}
+        with self.assertRaises(ValueError):
+            meta_svc.patch_metadata(
+                MagicMock(),
+                "ws1",
+                {"metadata": None},
+                "owner",
+                {"user": "owner"},
+            )
+
+    @patch("services.grants.workspace_context")
     @patch.object(meta_svc, "collections_svc")
     def test_patch_requires_body(self, mock_collections, mock_workspace):
         mock_workspace.return_value = (
