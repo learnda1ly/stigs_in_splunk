@@ -254,7 +254,9 @@ export default function ChecklistImportPanel() {
                 key: parentKey + ":" + name + ":" + index,
                 file: null,
                 name,
-                format: entry.format || "ckl",
+                format: entry.format || (entry.source_uri || "").endsWith(".cklb")
+                    ? "cklb"
+                    : "ckl",
                 status: ok ? "done" : "error",
                 error: ok ? "" : entry.error || "Import failed",
                 host: ok ? (entry.host && entry.host.hostname) || "—" : "—",

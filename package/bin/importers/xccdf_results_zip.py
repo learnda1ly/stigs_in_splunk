@@ -1,18 +1,13 @@
-"""Walk zip archives for OpenSCAP / Evaluate-STIG XCCDF TestResult XML files."""
+"""Classify and list XCCDF TestResult XML inside zip archives."""
 
 from __future__ import annotations
 
-import io
-import zipfile
-from typing import Iterator, List, Optional, Tuple, Union
+import xml.etree.ElementTree as ET
+from typing import Iterator, List, Optional, Tuple
 
-from importers.checklist_zip import (
-    MAX_CHECKLIST_FILES,
-    MAX_TOTAL_UNCOMPRESSED,
-    _open_zip,
-    _read_member_bytes,
-)
-from importers.stig_zip import MAX_DEPTH, looks_like_zip, _norm
+from importers.checklist_zip import MAX_CHECKLIST_FILES
+from importers.stig_zip import _norm
+from models import strip_ns
 
 # Same cap as checklist archive ingest (shared batch limit).
 MAX_RESULT_FILES = MAX_CHECKLIST_FILES
@@ -32,20 +27,29 @@ _SKIP_SUBSTR = (
     "_ds.xml",
 )
 
-ZipSource = Union[bytes, bytearray]
-
 
 def _looks_like_test_result_xml(raw: bytes) -> bool:
     sample = raw[:16384].lstrip()
-    if b"TestResult" not in sample:
+    if b"TestResult" not in sample or b"rule-result" not in sample:
         return False
-    if b"rule-result" not in sample:
-        return False
-    # DISA Manual STIG benchmark XML (no scan results).
     if b"Manual-xccdf" in sample or b"manual-xccdf" in sample.lower():
         if b"<TestResult" not in sample:
             return False
-    return True
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return False
+    has_test_result = False
+    has_rule_result = False
+    for el in root.iter():
+        tag = strip_ns(el.tag)
+        if tag == "TestResult":
+            has_test_result = True
+        if tag == "rule-result":
+            has_rule_result = True
+        if has_test_result and has_rule_result:
+            return True
+    return has_test_result and has_rule_result
 
 
 def is_xccdf_results_member(name: str, raw: bytes) -> bool:
@@ -68,46 +72,20 @@ def iter_xccdf_results_files(
     _count: Optional[List[int]] = None,
     _total_uncompressed: Optional[List[int]] = None,
 ) -> Iterator[Tuple[str, bytes]]:
-    if not looks_like_zip(data):
-        raise ValueError("invalid zip archive")
-    if _count is None:
-        _count = [0]
-    if _total_uncompressed is None:
-        _total_uncompressed = [0]
-    prefix = (source_prefix or "").strip()
-    if prefix and not prefix.endswith("/"):
-        prefix = prefix + "/"
-    try:
-        archive = _open_zip(data)
-    except (zipfile.BadZipFile, OSError) as err:
-        raise ValueError(f"invalid zip: {err}") from err
-    with archive:
-        for info in archive.infolist():
-            if info.is_dir():
-                continue
-            member = info.filename
-            norm = _norm(member)
-            raw = _read_member_bytes(archive, info, total_budget=_total_uncompressed)
-            nested = norm.endswith(".zip") and depth < MAX_DEPTH
-            if nested and looks_like_zip(raw):
-                nested_prefix = prefix + member
-                yield from iter_xccdf_results_files(
-                    raw,
-                    source_prefix=nested_prefix,
-                    depth=depth + 1,
-                    _count=_count,
-                    _total_uncompressed=_total_uncompressed,
-                )
-                continue
-            if not is_xccdf_results_member(member, raw):
-                continue
-            _count[0] += 1
-            if _count[0] > MAX_RESULT_FILES:
-                raise ValueError(
-                    f"zip contains more than {MAX_RESULT_FILES} XCCDF results files"
-                )
-            path = prefix + member
-            yield path, raw
+    from importers.import_archive_zip import iter_archive_import_members
+
+    yield from (
+        (m.path, m.content)
+        for m in iter_archive_import_members(
+            data,
+            source_prefix=source_prefix,
+            include_checklists=False,
+            include_xccdf_results=True,
+            depth=depth,
+            _import_count=_count,
+            _total_uncompressed=_total_uncompressed,
+        )
+    )
 
 
 def list_xccdf_results_files(

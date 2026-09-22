@@ -6,7 +6,8 @@ import base64
 from typing import Any, Dict, List
 
 import audit
-from importers.checklist_zip import checklist_format, list_checklist_files
+from importers.checklist_zip import checklist_format
+from importers.import_archive_zip import list_archive_import_members
 from importers.xccdf_results_zip import list_xccdf_results_files
 from importers.events import events_from_parsed
 from importers.ingest import detect_format, parse_ingest
@@ -78,6 +79,7 @@ def _public_import_row(rec: Dict[str, Any], *, status: str = "ok", error: str = 
     ]
     row["stats"] = rec.get("stats") or {}
     row["finding_count"] = int(rec.get("finding_count") or 0)
+    row["locked"] = int(rec.get("locked") or 0)
     row["created"] = _entry_created(rec)
     errors = rec.get("errors") or []
     if errors:
@@ -309,32 +311,26 @@ def import_checklist_zip(
     if not body:
         raise ValueError("empty zip body")
     prefix = source_uri or "archive.zip"
-    checklist_members = list_checklist_files(body, source_prefix=prefix)
-    results_members = list_xccdf_results_files(body, source_prefix=prefix)
-    if not checklist_members and not results_members:
+    members = list_archive_import_members(
+        body,
+        source_prefix=prefix,
+        include_checklists=True,
+        include_xccdf_results=True,
+    )
+    if not members:
         raise ValueError(
             "zip contains no .ckl/.cklb checklists or XCCDF TestResult XML files"
         )
-    entries: List[Dict[str, Any]] = []
-    for path, raw in checklist_members:
-        entries.append(
-            {
-                "source_uri": path,
-                "format": checklist_format(path),
-                "content": raw,
-            }
-        )
-    for path, raw in results_members:
-        entries.append(
-            {"source_uri": path, "format": "xccdf-results", "content": raw}
-        )
-    if len(entries) > MAX_BATCH_FILES:
-        raise ValueError(f"zip exceeds {MAX_BATCH_FILES} importable files")
+    checklist_count = sum(1 for m in members if m.format in {"ckl", "cklb"})
+    results_count = sum(1 for m in members if m.format == "xccdf-results")
+    entries = [
+        {"source_uri": m.path, "format": m.format, "content": m.content} for m in members
+    ]
     batch = import_checklist_batch(service, session, username, collection_id, entries)
     batch["archive"] = {
         "source_uri": prefix,
-        "member_count": len(entries),
-        "checklist_members": len(checklist_members),
-        "results_members": len(results_members),
+        "member_count": len(members),
+        "checklist_members": checklist_count,
+        "results_members": results_count,
     }
     return batch

@@ -35,6 +35,7 @@ if "splunk" not in sys.modules:
     sys.modules["splunk.persistconn.application"] = application
 
 import stig_rest_handler  # noqa: E402
+from importers import import_archive_zip  # noqa: E402
 from importers import xccdf_results_zip  # noqa: E402
 from services import imports as imports_svc  # noqa: E402
 
@@ -64,6 +65,16 @@ def _results_zip(*members: tuple[str, str]) -> bytes:
     return buf.getvalue()
 
 
+def _mixed_zip() -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as outer:
+        with open(os.path.join(FIXTURES, "minimal.ckl"), "rb") as handle:
+            outer.writestr("hosts/web-01.ckl", handle.read())
+        with open(RESULTS_XML, "rb") as handle:
+            outer.writestr("scans/scan-host-01-results.xml", handle.read())
+    return buf.getvalue()
+
+
 class TestXccdfResultsZipWalker(unittest.TestCase):
     def test_list_members_from_zip(self):
         data = _results_zip(
@@ -78,6 +89,23 @@ class TestXccdfResultsZipWalker(unittest.TestCase):
         self.assertIn("bundle.zip/host-a-results.xml", paths)
         self.assertIn("bundle.zip/nested/host-b-results.xml", paths)
 
+    def test_nested_zip_results(self):
+        inner = io.BytesIO()
+        with zipfile.ZipFile(inner, "w") as zf:
+            with open(RESULTS_XML, "rb") as handle:
+                zf.writestr("inner/host-results.xml", handle.read())
+        outer = io.BytesIO()
+        with zipfile.ZipFile(outer, "w") as zf:
+            zf.writestr("nested.zip", inner.getvalue())
+        members = import_archive_zip.list_archive_import_members(
+            outer.getvalue(),
+            source_prefix="outer.zip",
+            include_checklists=False,
+            include_xccdf_results=True,
+        )
+        self.assertEqual(len(members), 1)
+        self.assertIn("nested.zip/inner/host-results.xml", members[0].path)
+
     def test_skips_manual_xccdf_baseline(self):
         data = _results_zip(
             ("U_RHEL_8_V2R6_Manual-xccdf.xml", "baseline"),
@@ -87,8 +115,8 @@ class TestXccdfResultsZipWalker(unittest.TestCase):
         self.assertEqual(len(members), 1)
         self.assertTrue(members[0][0].endswith("host-results.xml"))
 
-    @patch.object(xccdf_results_zip, "MAX_RESULT_FILES", 1)
-    def test_max_files_cap(self):
+    @patch("importers.import_archive_zip.MAX_ARCHIVE_IMPORT_FILES", 1)
+    def test_max_files_cap_during_traversal(self):
         data = _results_zip(
             ("a-results.xml", "default"),
             ("b-results.xml", "default"),
@@ -100,9 +128,18 @@ class TestXccdfResultsZipWalker(unittest.TestCase):
     def test_member_size_cap(self):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("big-results.xml", b"<TestResult><rule-result/></TestResult>" + b"x" * 200)
+            zf.writestr(
+                "big-results.xml",
+                b"<TestResult><rule-result/></TestResult>" + b"x" * 200,
+            )
         with self.assertRaises(ValueError):
             xccdf_results_zip.list_xccdf_results_files(buf.getvalue())
+
+    def test_mixed_archive_members_in_one_pass(self):
+        members = import_archive_zip.list_archive_import_members(_mixed_zip())
+        self.assertEqual(len(members), 2)
+        formats = {m.format for m in members}
+        self.assertEqual(formats, {"ckl", "xccdf-results"})
 
 
 class TestXccdfResultsArchiveService(unittest.TestCase):
@@ -138,6 +175,7 @@ class TestXccdfResultsArchiveService(unittest.TestCase):
                 "checklists": [{"_key": "c1", "created": True}],
                 "stats": {"fail": 1},
                 "finding_count": 3,
+                "locked": 0,
             },
             ValueError("baseline not found for stig Example_STIG"),
         ]
@@ -154,6 +192,59 @@ class TestXccdfResultsArchiveService(unittest.TestCase):
         self.assertEqual(out["summary"]["succeeded"], 1)
         self.assertEqual(out["summary"]["failed"], 1)
         mock_write.assert_called()
+
+    @patch.object(imports_svc.hec_svc, "emit_findings", return_value={"indexed": 3})
+    @patch.object(imports_svc.apply_svc, "apply_finding_events")
+    @patch.object(imports_svc.collections_svc, "get_collection", return_value={"name": "Lab"})
+    @patch.object(imports_svc.grants_svc, "require_workspace_write")
+    def test_mixed_zip_integration(self, _mock_grant, _mock_coll, mock_apply, _mock_hec):
+        mock_apply.return_value = {
+            "applied": 1,
+            "locked": 0,
+            "checklists": [{"host_id": "h1", "created": True, "hostname": "web-01"}],
+            "errors": [],
+            "host_created": True,
+        }
+        out = imports_svc.import_checklist_zip(
+            MagicMock(),
+            _session(),
+            "alice",
+            "col1",
+            _mixed_zip(),
+            source_uri="mixed.zip",
+        )
+        self.assertEqual(out["archive"]["checklist_members"], 1)
+        self.assertEqual(out["archive"]["results_members"], 1)
+        self.assertEqual(out["summary"]["total"], 2)
+        self.assertEqual(mock_apply.call_count, 2)
+
+    @patch.object(imports_svc.hec_svc, "emit_findings", return_value={"indexed": 3})
+    @patch.object(imports_svc.apply_svc, "apply_finding_events")
+    @patch.object(imports_svc.collections_svc, "get_collection", return_value={"name": "Lab"})
+    @patch.object(imports_svc.grants_svc, "require_workspace_write")
+    def test_archive_apply_preserves_ingest_lock(
+        self, _mock_grant, _mock_coll, mock_apply, _mock_hec
+    ):
+        mock_apply.return_value = {
+            "applied": 0,
+            "locked": 2,
+            "checklists": [{"host_id": "h1", "created": False, "hostname": "scan-host-01"}],
+            "errors": [],
+            "host_created": False,
+        }
+        out = imports_svc.import_xccdf_results_zip(
+            MagicMock(),
+            _session(),
+            "alice",
+            "col1",
+            _results_zip(("scan-host-01-results.xml", "default")),
+            source_uri="scans.zip",
+        )
+        self.assertEqual(out["summary"]["succeeded"], 1)
+        row = out["results"][0]
+        self.assertEqual(row["format"], "xccdf-results")
+        self.assertEqual(row["locked"], 2)
+        self.assertEqual(mock_apply.call_count, 1)
 
 
 class TestXccdfResultsArchiveRest(unittest.TestCase):
