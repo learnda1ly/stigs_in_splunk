@@ -77,6 +77,11 @@ def _normalize_id_list(value: Any) -> List[str]:
     return []
 
 
+def normalize_acl_id_list(value: Any) -> List[str]:
+    """Parse grant ACL id lists from KV JSON or API arrays."""
+    return _normalize_id_list(value)
+
+
 def _validate_acl_labels(service, collection_id: str, label_ids: List[str]) -> None:
     if label_ids:
         labels_svc.validate_label_ids(service, collection_id, label_ids)

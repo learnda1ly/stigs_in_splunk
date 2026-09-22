@@ -7,6 +7,7 @@ import os
 import sys
 import types
 import unittest
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
@@ -178,17 +179,36 @@ def _patch_kv(kv: _CloneKv):
 
 class TestCloneOptions(unittest.TestCase):
     def test_defaults(self):
-        opts = clone_svc.parse_clone_options({})
+        opts, coerced = clone_svc.parse_clone_options({})
         self.assertTrue(opts["copy_hosts"])
         self.assertTrue(opts["copy_reviews"])
         self.assertFalse(opts["copy_grants"])
+        self.assertEqual(coerced, [])
 
-    def test_shallow_clone_flags(self):
-        opts = clone_svc.parse_clone_options(
+    def test_shallow_clone_flags_coerced(self):
+        opts, coerced = clone_svc.parse_clone_options(
             {"copy_hosts": True, "copy_checklists": False, "copy_reviews": True}
         )
         self.assertFalse(opts["copy_checklists"])
         self.assertFalse(opts["copy_reviews"])
+        self.assertTrue(any("copy_reviews forced" in c for c in coerced))
+
+    def test_contradictory_explicit_flags_rejected(self):
+        opts, _ = clone_svc.parse_clone_options(
+            {"copy_hosts": False, "copy_reviews": True}
+        )
+        with self.assertRaises(ValueError):
+            clone_svc.validate_clone_request(
+                {"copy_hosts": False, "copy_reviews": True},
+                opts,
+                [],
+            )
+
+    def test_copy_hosts_false_without_explicit_reviews_ok(self):
+        opts, coerced = clone_svc.parse_clone_options({"copy_hosts": False})
+        clone_svc.validate_clone_request({"copy_hosts": False}, opts, [])
+        self.assertFalse(opts["copy_reviews"])
+        self.assertTrue(coerced)
 
 
 class TestCollectionCloneService(unittest.TestCase):
@@ -203,33 +223,54 @@ class TestCollectionCloneService(unittest.TestCase):
         for p in reversed(self.patches):
             p.stop()
 
+    @contextmanager
+    def _with_collections_kv(self):
+        patchers = [
+            patch(
+                "services.collection_clone.collections_svc.get_collection",
+                side_effect=lambda _s, cid: self.kv.tables["stig_collections"].get(
+                    cid
+                ),
+            ),
+            patch(
+                "services.collections.kv_client.get_collection",
+                side_effect=self.kv.get_collection,
+            ),
+            patch(
+                "services.collections.kv_client.query_all",
+                side_effect=self.kv.query_all,
+            ),
+            patch(
+                "services.collections.kv_client.get_by_key",
+                side_effect=self.kv.get_by_key,
+            ),
+            patch(
+                "services.collections.kv_client.insert_record",
+                side_effect=self.kv.insert_record,
+            ),
+            patch(
+                "services.collections.kv_client.update_record",
+                side_effect=self.kv.update_record,
+            ),
+            patch(
+                "services.collections.kv_client.delete_record",
+                side_effect=self.kv.delete_record,
+            ),
+        ]
+        for patcher in patchers:
+            patcher.start()
+        try:
+            yield
+        finally:
+            for patcher in reversed(patchers):
+                patcher.stop()
+
     @patch("services.collection_clone.audit.log_event")
     @patch("services.collections.audit.log_event")
     @patch("services.collections.find_default_collection", return_value=None)
     def test_deep_clone_remaps_ids(self, _def, _audit_create, mock_audit) -> None:
         alice = _session()
-        with patch(
-            "services.collection_clone.collections_svc.get_collection",
-            side_effect=lambda _s, cid: self.kv.tables["stig_collections"].get(cid),
-        ), patch(
-            "services.collections.kv_client.get_collection",
-            side_effect=self.kv.get_collection,
-        ), patch(
-            "services.collections.kv_client.query_all",
-            side_effect=self.kv.query_all,
-        ), patch(
-            "services.collections.kv_client.get_by_key",
-            side_effect=self.kv.get_by_key,
-        ), patch(
-            "services.collections.kv_client.insert_record",
-            side_effect=self.kv.insert_record,
-        ), patch(
-            "services.collections.kv_client.update_record",
-            side_effect=self.kv.update_record,
-        ), patch(
-            "services.collections.kv_client.delete_record",
-            side_effect=self.kv.delete_record,
-        ):
+        with self._with_collections_kv():
             result = clone_svc.clone_collection(
                 self.service,
                 "ws1",
@@ -268,20 +309,7 @@ class TestCollectionCloneService(unittest.TestCase):
     @patch("services.collections.find_default_collection", return_value=None)
     def test_without_reviews(self, _def, _a, _b) -> None:
         alice = _session()
-        with patch(
-            "services.collection_clone.collections_svc.get_collection",
-            side_effect=lambda _s, cid: self.kv.tables["stig_collections"].get(cid),
-        ), patch("services.collections.kv_client.get_collection", side_effect=self.kv.get_collection), patch(
-            "services.collections.kv_client.query_all", side_effect=self.kv.query_all
-        ), patch(
-            "services.collections.kv_client.get_by_key", side_effect=self.kv.get_by_key
-        ), patch(
-            "services.collections.kv_client.insert_record", side_effect=self.kv.insert_record
-        ), patch(
-            "services.collections.kv_client.update_record", side_effect=self.kv.update_record
-        ), patch(
-            "services.collections.kv_client.delete_record", side_effect=self.kv.delete_record
-        ):
+        with self._with_collections_kv():
             result = clone_svc.clone_collection(
                 self.service,
                 "ws1",
@@ -323,6 +351,162 @@ class TestCollectionCloneService(unittest.TestCase):
                 "alice",
                 alice,
             )
+
+    @patch("services.collection_clone.audit.log_event")
+    @patch("services.collections.audit.log_event")
+    @patch("services.collections.find_default_collection", return_value=None)
+    def test_shallow_clone_skips_checklists(self, _d, _a, _b) -> None:
+        alice = _session()
+        with self._with_collections_kv():
+            result = clone_svc.clone_collection(
+                self.service,
+                "ws1",
+                {"name": "Shallow", "copy_checklists": False},
+                "alice",
+                alice,
+            )
+        dest_id = result["stig_collection_id"]
+        checklists = [
+            c
+            for c in self.kv.tables["stig_checklists"].values()
+            if c.get("stig_collection_id") == dest_id
+        ]
+        self.assertEqual(checklists, [])
+        self.assertEqual(result["summary"]["hosts"], 1)
+
+    @patch("services.collection_clone.audit.log_event")
+    @patch("services.collections.audit.log_event")
+    @patch("services.collections.find_default_collection", return_value=None)
+    def test_copy_labels_false_clears_host_label_ids(self, _d, _a, _b) -> None:
+        alice = _session()
+        with self._with_collections_kv():
+            result = clone_svc.clone_collection(
+                self.service,
+                "ws1",
+                {"name": "No labels", "copy_labels": False},
+                "alice",
+                alice,
+            )
+        dest_id = result["stig_collection_id"]
+        hosts = [
+            h
+            for h in self.kv.tables["stig_hosts"].values()
+            if h.get("stig_collection_id") == dest_id
+        ]
+        self.assertEqual(json.loads(hosts[0]["label_ids"]), [])
+        self.assertEqual(result["summary"]["labels"], 0)
+
+    @patch("services.collection_clone.audit.log_event")
+    @patch("services.collections.audit.log_event")
+    @patch("services.collections.find_default_collection", return_value=None)
+    def test_copy_grants_remaps_host_acl(self, _d, _a, _b) -> None:
+        alice = _session()
+        self.kv.tables["stig_collection_grants"]["g2"] = {
+            "_key": "g2",
+            "stig_collection_id": "ws1",
+            "principal": "user:bob",
+            "grant_role": "restricted",
+            "acl_host_ids": '["h1"]',
+            "acl_baseline_ids": "[]",
+            "acl_labels": "[]",
+        }
+        with self._with_collections_kv():
+            result = clone_svc.clone_collection(
+                self.service,
+                "ws1",
+                {"name": "With grants", "copy_grants": True},
+                "alice",
+                alice,
+            )
+        dest_id = result["stig_collection_id"]
+        new_host = result["id_map"]["hosts"]["h1"]
+        grants = [
+            g
+            for g in self.kv.tables["stig_collection_grants"].values()
+            if g.get("stig_collection_id") == dest_id
+            and g.get("principal") == "user:bob"
+        ]
+        self.assertEqual(len(grants), 1)
+        self.assertEqual(json.loads(grants[0]["acl_host_ids"]), [new_host])
+
+    def test_copy_grants_without_hosts_rejected(self) -> None:
+        alice = _session()
+        self.kv.tables["stig_collection_grants"]["g2"] = {
+            "_key": "g2",
+            "stig_collection_id": "ws1",
+            "principal": "user:bob",
+            "grant_role": "restricted",
+            "acl_host_ids": '["h1"]',
+            "acl_baseline_ids": "[]",
+            "acl_labels": "[]",
+        }
+        with self.assertRaises(ValueError):
+            clone_svc.clone_collection(
+                self.service,
+                "ws1",
+                {"name": "Bad", "copy_grants": True, "copy_hosts": False},
+                "alice",
+                alice,
+            )
+
+    @patch("services.collection_clone.audit.log_event")
+    @patch("services.collections.audit.log_event")
+    @patch("services.collections.find_default_collection", return_value=None)
+    def test_unique_name_suffix(self, _d, _a, _b) -> None:
+        alice = _session()
+        self.kv.tables["stig_collections"]["existing"] = {
+            "_key": "existing",
+            "name": "Cloned",
+            "access_principals": "[]",
+        }
+        with self._with_collections_kv():
+            result = clone_svc.clone_collection(
+                self.service,
+                "ws1",
+                {"name": "Cloned"},
+                "alice",
+                alice,
+            )
+        self.assertEqual(result["stig_collection"]["name"], "Cloned (2)")
+
+    @patch("services.collection_clone.audit.log_event")
+    @patch("services.collections.audit.log_event")
+    @patch(
+        "services.collections.find_default_collection",
+        return_value={"_key": "ws1", "is_default": True},
+    )
+    def test_rollback_removes_destination_on_failure(self, _d, _a, mock_audit) -> None:
+        alice = _session()
+        real_insert = self.kv.insert_record
+
+        def fail_on_checklist(coll, record):
+            if record.get("host_id") and record.get("baseline_id"):
+                raise RuntimeError("simulated checklist failure")
+            return real_insert(coll, record)
+
+        with self._with_collections_kv():
+            with patch(
+                "services.collection_clone.kv_client.insert_record",
+                side_effect=fail_on_checklist,
+            ):
+                with self.assertRaises(RuntimeError):
+                    clone_svc.clone_collection(
+                        self.service,
+                        "ws1",
+                        {"name": "Rollback"},
+                        "alice",
+                        alice,
+                    )
+        dest_names = [
+            r.get("name")
+            for r in self.kv.tables["stig_collections"].values()
+            if (r.get("name") or "").startswith("Rollback")
+        ]
+        self.assertEqual(dest_names, [])
+        rollback_failed = [
+            c for c in mock_audit.call_args_list if c.args[0] == "clone_rollback_failed"
+        ]
+        self.assertEqual(rollback_failed, [])
 
 
 class TestCollectionCloneRest(unittest.TestCase):

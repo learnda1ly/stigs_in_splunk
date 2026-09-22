@@ -32,6 +32,8 @@ export default function TransferApp() {
     const [cloneName, setCloneName] = useState("");
     const [cloneCopyReviews, setCloneCopyReviews] = useState(true);
     const [cloneCopyGrants, setCloneCopyGrants] = useState(false);
+    // Clone UI always uses API defaults (full host/checklist copy).
+    const cloneIncludesHostsAndLabels = true;
 
     const destOptions = useMemo(
         () => (workspaces || []).filter((ws) => ws && ws._key !== sourceId),
@@ -132,6 +134,8 @@ export default function TransferApp() {
                     method: "POST",
                     body: {
                         name,
+                        copy_hosts: true,
+                        copy_labels: true,
                         copy_reviews: cloneCopyReviews,
                         copy_grants: cloneCopyGrants,
                     },
@@ -291,9 +295,17 @@ export default function TransferApp() {
                             }
                         />
                     </ControlGroup>
-                    <ControlGroup label="Copy grants">
+                    <ControlGroup
+                        label="Copy grants"
+                        help={
+                            cloneIncludesHostsAndLabels
+                                ? "Remaps host and label ACL scopes in copied grants."
+                                : "Requires copying hosts and labels (full workspace clone)."
+                        }
+                    >
                         <Switch
                             selected={cloneCopyGrants}
+                            disabled={!cloneIncludesHostsAndLabels || busy}
                             onClick={() => setCloneCopyGrants((v) => !v)}
                         />
                     </ControlGroup>
