@@ -37,6 +37,7 @@ from services import assignment as assignment_svc
 from services import imports as imports_svc
 from services import reconcile as reconcile_svc
 from services import reporting as reporting_svc
+from services import review_history as review_history_svc
 from services import reviews as reviews_svc
 from services import revision_upgrade as revision_upgrade_svc
 from services import settings as settings_svc
@@ -422,6 +423,18 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error("not found", status=404)
             except ValueError as exc:
                 return _error(str(exc), status=400)
+
+        if len(parts) == 2 and parts[1] == "review-history":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            try:
+                return _json_response(
+                    review_history_svc.list_collection_review_history(
+                        service, key, session, query
+                    )
+                )
+            except KeyError:
+                return _error("not found", status=404)
 
         if len(parts) == 2 and parts[1] == "imports":
             if method != "POST":
@@ -1342,6 +1355,18 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return _json_response(result)
 
         key = parts[0]
+        if len(parts) == 2 and parts[1] == "history":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            try:
+                return _json_response(
+                    review_history_svc.list_review_history(
+                        service, key, session, query
+                    )
+                )
+            except KeyError:
+                return _error("not found", status=404)
+
         if len(parts) == 2 and parts[1] in ("submit", "accept", "reject"):
             action = parts[1]
             if method not in ("POST", "PATCH", "PUT"):

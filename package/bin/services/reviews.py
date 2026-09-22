@@ -15,6 +15,7 @@ from services import checklists as checklists_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
 from services import review_requirements as review_requirements_svc
+from services import review_history as review_history_svc
 
 MAX_BATCH_REVIEWS = 500
 
@@ -151,6 +152,9 @@ def _workflow_action(
         key,
         username,
         {"workflow_state": stored.get("workflow_state")},
+    )
+    review_history_svc.record_review_change(
+        service, existing, stored, username, action=action
     )
     return validation.annotate_review(stored, policy)
 
@@ -370,6 +374,9 @@ def update_review(
     patch["updated_by"] = username
     stored = kv_client.update_record(coll, key, kv_record(patch))
     audit.log_event("update", "stig_review", key, username, {"status": stored.get("status")})
+    review_history_svc.record_review_change(
+        service, existing, stored, username, action="update"
+    )
     return validation.annotate_review(stored, policy)
 
 

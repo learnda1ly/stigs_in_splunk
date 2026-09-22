@@ -115,6 +115,8 @@ export default function EditorApp() {
     const [busy, setBusy] = useState(false);
     const [banner, setBanner] = useState(null);
     const [rejectFeedback, setRejectFeedback] = useState("");
+    const [reviewHistory, setReviewHistory] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
     const [finding, setFinding] = useState("");
     const [comments, setComments] = useState("");
     const [status, setStatus] = useState("not_reviewed");
@@ -473,6 +475,20 @@ export default function EditorApp() {
         setFinding(selected.review.finding_details || "");
         setComments(selected.review.comments || "");
         setStatus(selected.review.status || "not_reviewed");
+    }, [selected && selected.review._key, selected && selected.review.updated_at]);
+
+    useEffect(() => {
+        if (!selected || !selected.review || !selected.review._key) {
+            setReviewHistory([]);
+            return;
+        }
+        setHistoryLoading(true);
+        apiGet("stig_reviews/" + selected.review._key + "/history", { limit: 40 })
+            .then((data) =>
+                setReviewHistory(Array.isArray(data.history) ? data.history : [])
+            )
+            .catch(() => setReviewHistory([]))
+            .finally(() => setHistoryLoading(false));
     }, [selected && selected.review._key, selected && selected.review.updated_at]);
 
     const doneCount = items.filter((item) => reviewIsValid(item.review, reviewRequirements)).length;
@@ -1648,6 +1664,33 @@ export default function EditorApp() {
                                     onChange={(e, { value }) => setRejectFeedback(value)}
                                     placeholder="Optional feedback when rejecting"
                                 />
+                            </ControlGroup>
+                            <ControlGroup label="Review history">
+                                {historyLoading ? (
+                                    <WaitSpinner size="small" />
+                                ) : reviewHistory.length ? (
+                                    <PreBlock>
+                                        {reviewHistory.map((entry) => {
+                                            const when = entry.created_at
+                                                ? new Date(
+                                                      Number(entry.created_at) * 1000
+                                                  )
+                                                      .toISOString()
+                                                      .replace("T", " ")
+                                                      .slice(0, 19)
+                                                : "—";
+                                            return (
+                                                when +
+                                                " · " +
+                                                (entry.actor || "—") +
+                                                " · " +
+                                                (entry.summary || entry.action || "change")
+                                            );
+                                        }).join("\n")}
+                                    </PreBlock>
+                                ) : (
+                                    <MetaLine>No recorded changes yet for this finding.</MetaLine>
+                                )}
                             </ControlGroup>
                             <Actions>
                                 <Button

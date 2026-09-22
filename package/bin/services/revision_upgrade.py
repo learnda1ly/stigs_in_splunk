@@ -19,6 +19,7 @@ from models import (
 from services import baselines as baselines_svc
 from services import checklists as checklists_svc
 from services import grants as grants_svc
+from services import review_history as review_history_svc
 
 
 _VERSION_RE = re.compile(r"^v?(\d+)\s*r\s*(\d+)$", re.IGNORECASE)
@@ -210,7 +211,15 @@ def upgrade_checklist(
             updated, outcome = _merge_review_from_prior(
                 prior, rule, new_baseline_id, username, ts
             )
-            kv_client.update_record(reviews_coll, prior["_key"], kv_record(updated))
+            stored = kv_client.update_record(reviews_coll, prior["_key"], kv_record(updated))
+            review_history_svc.record_review_change(
+                service,
+                prior,
+                stored,
+                username,
+                action="upgrade",
+                checklist=checklist,
+            )
             stats[outcome] = stats.get(outcome, 0) + 1
             remaining = [r for r in remaining if r.get("_key") != prior.get("_key")]
             continue
