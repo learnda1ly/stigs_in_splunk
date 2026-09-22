@@ -65,6 +65,7 @@ Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
 
 - **STIG Editor** — workspace + host filters, finding list, status, details, comments
 - **Collection review** — one baseline rule across all hosts in a workspace (batch save)
+- **STIG library** — browse imported benchmarks grouped by `stig_id`, revision metadata, and rule detail (`GET /stig_baselines/hierarchy` and related persist paths)
 - **Import** — checklists (`.ckl` / `.cklb` / `.zip` archive → HEC and KV; multi-file queue in UI) and STIG baselines (single XCCDF, CKL/CKLB, or a DISA product/quarterly zip via chunked persist REST `/stig_baselines/jobs`) on one page with **Checklists** and **Baselines** sections
 - **Export** — CKL / CKLB download; bulk zip by selection or workspace archive (`POST /stig_collections/{id}/archive/ckl|cklb`)
 - **Configuration** — UCC-generated page for workspaces and editor/HEC settings. A **Default** workspace is created automatically; checklist imports with no workspace go there until you move the host. The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
@@ -93,7 +94,7 @@ Assign `stig_user` or `stig_admin`, or grant capabilities `stig_read`, `stig_wri
 https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 ```
 
-Resources: `stig_collections` (including `/{id}/grants`, `/{id}/baseline_defaults`, `/{id}/review_requirements`, `/{id}/metrics`, `/{id}/findings`), `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_assignment_rules`.
+Resources: `stig_collections` (including `/{id}/grants`, `/{id}/baseline_defaults`, `/{id}/review_requirements`, `/{id}/metrics`, `/{id}/findings`), `stig_hosts`, `stig_baselines` (including `/hierarchy`, `/by_stig/{stigId}`, `/rule/{ruleKey}`, `/{id}/rules/{ruleRef}`), `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_assignment_rules`.
 
 **Delete workspace:** `DELETE /stig_collections/{id}` requires **stig_admin**. If the workspace still has hosts, checklists, grants, or assignment rows, the API returns **409** unless you pass `?cascade=true` (or JSON `{"cascade": true}`), which removes those workspace-scoped rows and leaves **global baselines** unchanged. The UCC **Workspaces** tab only deletes empty workspaces (Splunk’s table delete confirm); use REST for cascade.
 

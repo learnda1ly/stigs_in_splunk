@@ -1,0 +1,273 @@
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Button from "@splunk/react-ui/Button";
+import Heading from "@splunk/react-ui/Heading";
+import Message from "@splunk/react-ui/Message";
+import Table from "@splunk/react-ui/Table";
+import Text from "@splunk/react-ui/Text";
+import WaitSpinner from "@splunk/react-ui/WaitSpinner";
+import { apiGet } from "../api";
+import { Brand, BrandKicker, Header, PagePad, Shell } from "../layout";
+
+function revisionLabel(rev) {
+    const parts = [
+        rev.version || "—",
+        rev.release_info || "",
+        rev.rule_count != null ? rev.rule_count + " rules" : "",
+    ].filter(Boolean);
+    return parts.join(" · ");
+}
+
+export default function LibraryApp() {
+    const [hierarchy, setHierarchy] = useState(null);
+    const [selectedStig, setSelectedStig] = useState("");
+    const [selectedBaseline, setSelectedBaseline] = useState("");
+    const [rules, setRules] = useState([]);
+    const [ruleDetail, setRuleDetail] = useState(null);
+    const [filter, setFilter] = useState("");
+    const [loading, setLoading] = useState(true);
+    const [rulesLoading, setRulesLoading] = useState(false);
+    const [error, setError] = useState("");
+
+    const benchmarks = hierarchy?.benchmarks || [];
+
+    const filteredBenchmarks = useMemo(() => {
+        const q = filter.trim().toLowerCase();
+        if (!q) {
+            return benchmarks;
+        }
+        return benchmarks.filter((row) => {
+            const hay = [
+                row.stig_id,
+                row.title,
+                row.stig_name,
+                row.latest_version,
+            ]
+                .join(" ")
+                .toLowerCase();
+            return hay.includes(q);
+        });
+    }, [benchmarks, filter]);
+
+    const selectedBenchmark = useMemo(() => {
+        const bench = benchmarks.find((b) => b.stig_id === selectedStig);
+        if (!bench) {
+            return null;
+        }
+        const rev =
+            bench.revisions.find((r) => r.baseline_id === selectedBaseline) ||
+            bench.revisions[0];
+        return rev || null;
+    }, [benchmarks, selectedStig, selectedBaseline]);
+
+    const loadHierarchy = useCallback(async () => {
+        setLoading(true);
+        setError("");
+        try {
+            const data = await apiGet("stig_baselines/hierarchy");
+            setHierarchy(data);
+        } catch (err) {
+            setError(String(err.message || err));
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadHierarchy();
+    }, [loadHierarchy]);
+
+    useEffect(() => {
+        const bid = selectedBaseline;
+        if (!bid) {
+            setRules([]);
+            setRuleDetail(null);
+            return;
+        }
+        setRulesLoading(true);
+        setError("");
+        apiGet("stig_baselines/" + bid + "/rules")
+            .then((rows) => setRules(Array.isArray(rows) ? rows : []))
+            .catch((err) => setError(String(err.message || err)))
+            .finally(() => setRulesLoading(false));
+    }, [selectedBaseline]);
+
+    function selectBenchmark(row) {
+        setSelectedStig(row.stig_id);
+        setSelectedBaseline(row.latest_baseline_id);
+        setRuleDetail(null);
+    }
+
+    function selectRevision(rev) {
+        setSelectedBaseline(rev.baseline_id);
+        setRuleDetail(null);
+    }
+
+    async function openRule(rule) {
+        setError("");
+        try {
+            const detail = await apiGet(
+                "stig_baselines/rule/" + encodeURIComponent(rule._key)
+            );
+            setRuleDetail(detail);
+        } catch (err) {
+            setError(String(err.message || err));
+        }
+    }
+
+    const activeBench = benchmarks.find((b) => b.stig_id === selectedStig);
+
+    return (
+        <Shell>
+            <Header>
+                <Brand>
+                    <BrandKicker>STIG in Splunk</BrandKicker>
+                    <Heading level={1}>STIG library</Heading>
+                </Brand>
+                <Button label="Refresh" onClick={loadHierarchy} />
+            </Header>
+            <PagePad>
+                {error ? <Message type="error">{error}</Message> : null}
+                {loading ? (
+                    <WaitSpinner size="large" />
+                ) : (
+                    <>
+                        <Text
+                            placeholder="Filter benchmarks…"
+                            value={filter}
+                            onChange={(_, { value }) => setFilter(value)}
+                        />
+                        <Table>
+                            <Table.Head>
+                                <Table.HeadCell>STIG / benchmark</Table.HeadCell>
+                                <Table.HeadCell>Revisions</Table.HeadCell>
+                                <Table.HeadCell>Latest</Table.HeadCell>
+                            </Table.Head>
+                            <Table.Body>
+                                {filteredBenchmarks.map((row) => (
+                                    <Table.Row
+                                        key={row.stig_id}
+                                        onClick={() => selectBenchmark(row)}
+                                        data-test-selected={
+                                            selectedStig === row.stig_id
+                                                ? "yes"
+                                                : "no"
+                                        }
+                                    >
+                                        <Table.Cell>
+                                            <div>
+                                                <strong>{row.stig_id}</strong>
+                                            </div>
+                                            <div>{row.title}</div>
+                                        </Table.Cell>
+                                        <Table.Cell>{row.revision_count}</Table.Cell>
+                                        <Table.Cell>
+                                            {row.latest_version || "—"}
+                                        </Table.Cell>
+                                    </Table.Row>
+                                ))}
+                            </Table.Body>
+                        </Table>
+                        {activeBench ? (
+                            <>
+                                <Heading level={3}>
+                                    Revisions — {activeBench.stig_id}
+                                </Heading>
+                                <Table>
+                                    <Table.Head>
+                                        <Table.HeadCell>Version</Table.HeadCell>
+                                        <Table.HeadCell>Rules</Table.HeadCell>
+                                        <Table.HeadCell>Fingerprint</Table.HeadCell>
+                                    </Table.Head>
+                                    <Table.Body>
+                                        {activeBench.revisions.map((rev) => (
+                                            <Table.Row
+                                                key={rev.baseline_id}
+                                                onClick={() => selectRevision(rev)}
+                                            >
+                                                <Table.Cell>
+                                                    {revisionLabel(rev)}
+                                                </Table.Cell>
+                                                <Table.Cell>
+                                                    {rev.rule_count}
+                                                </Table.Cell>
+                                                <Table.Cell>
+                                                    <code>
+                                                        {(
+                                                            rev.content_fingerprint ||
+                                                            ""
+                                                        ).slice(0, 12)}
+                                                        …
+                                                    </code>
+                                                </Table.Cell>
+                                            </Table.Row>
+                                        ))}
+                                    </Table.Body>
+                                </Table>
+                            </>
+                        ) : null}
+                        {selectedBaseline ? (
+                            <>
+                                <Heading level={3}>
+                                    Rules
+                                    {selectedBenchmark
+                                        ? " — " + revisionLabel(selectedBenchmark)
+                                        : ""}
+                                </Heading>
+                                {rulesLoading ? (
+                                    <WaitSpinner />
+                                ) : (
+                                    <Table>
+                                        <Table.Head>
+                                            <Table.HeadCell>Rule</Table.HeadCell>
+                                            <Table.HeadCell>Title</Table.HeadCell>
+                                            <Table.HeadCell>Severity</Table.HeadCell>
+                                        </Table.Head>
+                                        <Table.Body>
+                                            {rules.slice(0, 200).map((rule) => (
+                                                <Table.Row
+                                                    key={rule._key}
+                                                    onClick={() => openRule(rule)}
+                                                >
+                                                    <Table.Cell>
+                                                        {rule.rule_id ||
+                                                            rule.group_id}
+                                                    </Table.Cell>
+                                                    <Table.Cell>
+                                                        {rule.rule_title}
+                                                    </Table.Cell>
+                                                    <Table.Cell>
+                                                        {rule.severity}
+                                                    </Table.Cell>
+                                                </Table.Row>
+                                            ))}
+                                        </Table.Body>
+                                    </Table>
+                                )}
+                                {rules.length > 200 ? (
+                                    <Message type="info">
+                                        Showing first 200 rules. Use REST for full
+                                        export.
+                                    </Message>
+                                ) : null}
+                            </>
+                        ) : null}
+                        {ruleDetail ? (
+                            <>
+                                <Heading level={3}>Rule detail</Heading>
+                                <pre
+                                    style={{
+                                        maxHeight: "240px",
+                                        overflow: "auto",
+                                        fontSize: "12px",
+                                    }}
+                                >
+                                    {JSON.stringify(ruleDetail, null, 2)}
+                                </pre>
+                            </>
+                        ) : null}
+                    </>
+                )}
+            </PagePad>
+        </Shell>
+    );
+}

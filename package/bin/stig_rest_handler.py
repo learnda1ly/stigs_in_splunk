@@ -20,6 +20,7 @@ import access
 import kv_client
 from importers.ingest import detect_format
 from services import baselines as baselines_svc
+from services import baseline_library as baseline_library_svc
 from services import baseline_jobs as baseline_jobs_svc
 from services import checklists as checklists_svc
 from services import baseline_defaults as baseline_defaults_svc
@@ -862,6 +863,43 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return self._baseline_jobs(
                 method, parts[1:], query, payload, service, username
             )
+
+        if parts == ["hierarchy"]:
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            return _json_response(baseline_library_svc.list_hierarchy(service))
+
+        if len(parts) >= 2 and parts[0] == "by_stig":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            stig_id = "/".join(parts[1:])
+            entry = baseline_library_svc.get_benchmark(service, stig_id)
+            if not entry:
+                return _error("not found", status=404)
+            return _json_response(entry)
+
+        if len(parts) == 2 and parts[0] == "rule":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            detail = baseline_library_svc.get_rule_by_key(service, parts[1])
+            if not detail:
+                return _error("not found", status=404)
+            return _json_response(detail)
+
+        if len(parts) == 3 and parts[1] == "rules":
+            baseline_id = parts[0]
+            rule_ref = parts[2]
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            detail = baseline_library_svc.get_baseline_rule(
+                service,
+                baseline_id,
+                rule_ref,
+                group_id=str(query.get("group_id") or ""),
+            )
+            if not detail:
+                return _error("not found", status=404)
+            return _json_response(detail)
 
         if len(parts) == 2 and parts[1] == "rules":
             baseline_id = parts[0]
