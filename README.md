@@ -69,7 +69,7 @@ Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
 - **Collection review** — one baseline rule across all hosts in a workspace (batch save)
 - **STIG library** — browse imported benchmarks grouped by `stig_id`, revision metadata, and rule detail (`GET /stig_baselines/hierarchy` and related persist paths). The SplunkUI table shows the first **200** rules per revision; use `GET /stig_baselines/{id}/rules` for the full list.
 - **Import** — checklists (`.ckl` / `.cklb` / `.zip` archive → HEC and KV; multi-file queue in UI) and STIG baselines (single XCCDF, CKL/CKLB, or a DISA product/quarterly zip via chunked persist REST `/stig_baselines/jobs`) on one page with **Checklists** and **Baselines** sections
-- **Export** — CKL / CKLB download; bulk zip by selection or workspace archive (`POST /stig_collections/{id}/archive/ckl|cklb`)
+- **Export** — CKL / CKLB / XCCDF results download; bulk zip by selection or workspace archive (`POST /stig_collections/{id}/archive/ckl|cklb|xccdf`)
 - **Asset labels** — workspace label catalog (create/rename/delete) and host assignment (per-host toggles and bulk assign/remove); **Workspace grants** shows label names when picking ACL scope
 - **Configuration** — UCC-generated page for workspaces and **Editor & ingest** settings (`stigs_in_splunk_settings.conf` `[general]`). A **Default** workspace is created automatically; checklist imports with no workspace go there until you move the host. The HEC token stays on the Splunk `stig_findings` input and is never stored in app settings or returned to the browser. Field reference: [spec.md §4.3.1](spec.md#431-app-settings-stigs_in_splunk_settingsconf--stig_settings).
 

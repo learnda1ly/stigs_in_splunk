@@ -40,7 +40,17 @@ function fileNameFor(row, fmt) {
     if (ver) {
         name += "_" + ver;
     }
+    if (fmt === "xccdf") {
+        return name + "-results.xml";
+    }
     return name + "." + (fmt === "ckl" ? "ckl" : "cklb");
+}
+
+function contentTypeForFormat(fmt) {
+    if (fmt === "cklb") {
+        return "application/json";
+    }
+    return "application/xml";
 }
 
 function enrichRows(checklists, hosts, baselines, collections) {
@@ -159,7 +169,7 @@ export default function ExportApp() {
                 downloadText(
                     fileNameFor(row, format),
                     text,
-                    format === "ckl" ? "application/xml" : "application/json"
+                    contentTypeForFormat(format)
                 );
             });
         } else {
@@ -232,6 +242,10 @@ export default function ExportApp() {
                         >
                             <Select.Option label="CKLB (JSON)" value="cklb" />
                             <Select.Option label="CKL (XML)" value="ckl" />
+                            <Select.Option
+                                label="XCCDF results (XML)"
+                                value="xccdf"
+                            />
                         </Select>
                     </ControlGroup>
                     <Button

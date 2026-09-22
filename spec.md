@@ -602,11 +602,13 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 
 ### 10.2 Export
 
-`GET /stig_checklists/{id}/export?format=cklb|ckl`
+`GET /stig_checklists/{id}/export?format=cklb|ckl|xccdf`
 
 - Join checklist + host + baseline metadata + baseline rules + reviews.
 - Match reviews to rules primarily by `group_id` (PoC).
-- Response: JSON string (CKLB) or XML string (CKL); appropriate `Content-Type`.
+- **CKLB / CKL:** STIG Viewer–compatible checklist files (JSON or XML).
+- **XCCDF (`format=xccdf`):** OpenSCAP / Evaluate-STIG–shaped **results** XML (`TestResult` + `rule-result` per rule). Not a full SCAP source data stream or Manual STIG benchmark bundle. Baseline rules with no resolvable XCCDF rule `idref` are **omitted** (CKL/CKLB still emit those rule rows).
+- Response: JSON string (CKLB) or XML string (CKL or XCCDF); appropriate `Content-Type`.
 
 ---
 
@@ -639,6 +641,7 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 | GET | `/stig_collections/{id}/poam` | `format?` (`json`, `csv`, `xlsx`) | POA&M-style export for governance-open findings. |
 | POST/PUT | `/stig_collections/{id}/archive/ckl` | Query or JSON `host_id?`, `baseline_id?` | Zip archive of all CKL checklists in the workspace (grant ACL applied). **400** when no checklists match. **404** when workspace hidden. Response JSON: `{filename, format, count, files, content_base64, stig_collection_id, filters}`. Zip entry names: `{hostname}_{stig_id}_{version}.ckl`. |
 | POST/PUT | `/stig_collections/{id}/archive/cklb` | Same filters as CKL archive | Same as CKL archive with `.cklb` entries. |
+| POST/PUT | `/stig_collections/{id}/archive/xccdf` | Same filters as CKL archive | Zip of XCCDF **results** (`TestResult` + `rule-result` per checklist) derived from KV reviews. Not a full SCAP source data stream or Manual STIG benchmark bundle. Zip entry names: `{hostname}_{stig_id}_{version}-results.xml`. Response `format`: `xccdf`. Per-checklist: `GET /stig_checklists/{id}/export?format=xccdf`. |
 | POST/PUT | `/stig_collections/{src}/export-to/{dst}` | JSON `{host_ids: [string]}` | Bulk transfer hosts from `src` to `dst` workspace. Checklists follow each host (host row updated before checklists; single-host rollback on checklist failure). Rejects move when destination already has same hostname (case-insensitive), per-host `error`: `destination_hostname_collision`. **403** without write on either workspace (checked before the loop); **404** when workspace missing/hidden; **400** when `host_ids` empty or `src` equals `dst`. Per-host `results` (`moved`, `skipped`, `error`); `summary` counts. Hosts are processed in order with **no request-level rollback**—successful moves stay committed if later ids fail. **201** when `summary.moved > 0` (even if some hosts failed/skipped), else **200**. Audit: `transfer` on `stig_host` per successful move. |
 | POST/PUT | `/stig_collections/{id}/clone` | JSON `{name?, description?, access_principals?, copy_hosts?, copy_checklists?, copy_reviews?, copy_grants?, copy_labels?, copy_metadata?, copy_baseline_defaults?, copy_review_requirements?, options?}` | Clone workspace to a new `stig_collection`. Requires workspace **read** on source and **`stig_write`** (or admin) to create destination. **201** with `{stig_collection_id, stig_collection, source_stig_collection_id, options, summary, id_map}`; optional `options_coerced` when dependent flags were adjusted. **400** for contradictory explicit flags (e.g. `copy_reviews` true with `copy_hosts` false) or `copy_grants` without `copy_hosts`/`copy_labels` when source grants use `acl_host_ids`/`acl_labels`. Grant ACL ids are remapped 1:1; empty remaps never widen restricted scope. **Global baselines are not copied** (checklists keep `baseline_id` references). On failure after destination create, rolls back with cascade delete; audit `clone_rollback_failed` if rollback fails. Audit: `clone` on destination workspace; `create` on each cloned host. **Defaults** when flags omitted: `copy_hosts`, `copy_checklists`, `copy_reviews`, `copy_labels`, `copy_metadata`, `copy_baseline_defaults`, `copy_review_requirements` = **true**; `copy_grants` = **false**. Implicit coupling: `copy_hosts` false forces checklists/reviews off (listed in `options_coerced`). Optional `name` defaults to `{source name} (clone)` with numeric suffix if taken. STIG Manager aliases: `options.grants`, `options.stigMappings` (`withReviews` / `withoutReviews`). |
 
@@ -707,8 +710,8 @@ Import responses:
 | GET | `/stig_checklists` | Query `stig_collection_id?` |
 | POST | `/stig_checklists` | `{stig_collection_id, host_id, baseline_id?, stig_id?, title?, mode?, target_data?}` → spawns reviews. Duplicate host+baseline → **400**. Prefer **`POST /stig_hosts/{id}/stigs`** for idempotent assign. |
 | GET/PATCH/DELETE | `/stig_checklists/{id}` | DELETE cascades reviews |
-| GET | `/stig_checklists/{id}/export` | Query `format=cklb|ckl` |
-| POST/PUT | `/stig_checklists/export_bulk` | JSON `{checklist_ids?, stig_collection_id?, format, host_id?, baseline_id?}` | Zip of multiple checklists. Either `checklist_ids` **or** `stig_collection_id` (workspace-scoped, optional host/baseline filters). Workspace-scoped calls use the same read ACL as archive export: missing or unreadable workspace → **404** (not **403**). **400** when filters match no checklists. Same zip/filename rules as collection archive. |
+| GET | `/stig_checklists/{id}/export` | Query `format=cklb|ckl|xccdf` — CKLB/CKL checklist files or XCCDF **results** XML (see §10.2; not a SCAP bundle). |
+| POST/PUT | `/stig_checklists/export_bulk` | JSON `{checklist_ids?, stig_collection_id?, format, host_id?, baseline_id?}` | Zip of multiple checklists (`format`: `ckl`, `cklb`, or `xccdf`). Either `checklist_ids` **or** `stig_collection_id` (workspace-scoped, optional host/baseline filters). Workspace-scoped calls use the same read ACL as archive export: missing or unreadable workspace → **404** (not **403**). **400** when filters match no checklists. Same zip/filename rules as collection archive. |
 | POST/PUT | `/stig_checklists/{id}/upgrade` | `{baseline_id}` — same `stig_id`, newer revision; merge reviews when `check_content_hash` matches |
 | POST | `/stig_imports` | Query `format=ckl\|cklb\|zip\|xccdf-results-zip\|xccdf-results`, `source_uri`, `stig_collection_id`; raw body (see §11.4.1) |
 | POST | `/stig_collections/{id}/imports` | JSON `{files: [{source_uri, format?, content\|content_base64}]}` **or** raw zip body (`format=zip` query or PK magic). Batch CKL/CKLB/XCCDF-results collection import; workspace **write** required. |

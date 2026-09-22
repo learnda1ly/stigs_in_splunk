@@ -653,10 +653,10 @@ paths:
         required: true
         schema:
           type: string
-          enum: [ckl, cklb]
+          enum: [ckl, cklb, xccdf]
     post:
       tags: [Checklists]
-      summary: Export workspace checklists as zip archive
+      summary: Export workspace checklists as zip archive (CKL, CKLB, or XCCDF results XML)
       operationId: exportCollectionArchive
       x-splunk-capability: stig_write
       requestBody:
@@ -1570,7 +1570,7 @@ paths:
   /stig_checklists/export_bulk:
     post:
       tags: [Checklists]
-      summary: Bulk export checklists to zip
+      summary: Bulk export checklists to zip (CKL, CKLB, or XCCDF results XML)
       operationId: exportChecklistsBulk
       x-splunk-capability: stig_write
       requestBody:
@@ -1591,7 +1591,7 @@ paths:
                   type: string
                 format:
                   type: string
-                  enum: [ckl, cklb]
+                  enum: [ckl, cklb, xccdf]
                 host_id:
                   type: string
                 baseline_id:
@@ -1697,15 +1697,18 @@ paths:
       - $ref: "#/components/parameters/checklistId"
     get:
       tags: [Checklists]
-      summary: Export single checklist CKL or CKLB
+      summary: Export single checklist as CKL, CKLB, or XCCDF results XML
       operationId: exportChecklist
       parameters:
         - name: format
           in: query
           schema:
             type: string
-            enum: [ckl, cklb]
+            enum: [ckl, cklb, xccdf]
             default: cklb
+          description: |
+            `xccdf` emits OpenSCAP-shaped TestResult XML (results only, not a full SCAP
+            data stream bundle).
       responses:
         "200":
           content:

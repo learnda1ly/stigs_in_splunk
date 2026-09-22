@@ -517,7 +517,9 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error(str(exc), status=400)
             return _json_response(rec, status=_batch_import_http_status(rec))
 
-        if len(parts) == 3 and parts[1] == "archive" and parts[2] in ("ckl", "cklb"):
+        archive_fmt = parts[2].lower().replace("_", "-") if len(parts) > 2 else ""
+        archive_formats = {"ckl", "cklb", "xccdf", "xccdf-results", "xccdfresults"}
+        if len(parts) == 3 and parts[1] == "archive" and archive_fmt in archive_formats:
             if method not in ("POST", "PUT"):
                 return _error("method not allowed", status=405)
             body = _body_json(payload)
@@ -1297,9 +1299,11 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error("method not allowed", status=405)
             fmt = query.get("format") or "cklb"
             content = checklists_svc.export_checklist(service, checklist_id, fmt, session)
-            ctype = (
-                "application/json" if fmt.lower() == "cklb" else "application/xml"
-            )
+            fmt_lower = (fmt or "").lower().replace("_", "-")
+            if fmt_lower == "cklb":
+                ctype = "application/json"
+            else:
+                ctype = "application/xml"
             return {
                 "payload": content,
                 "status": 200,
