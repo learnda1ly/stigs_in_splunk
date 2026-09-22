@@ -250,6 +250,16 @@ export SPLUNK_PASSWORD='your-admin-password'
 
 Use `| inputlookup stig_reviews` (and related stanzas in `package/default/transforms.conf`, including `stig_collections` for workspace `metadata`) with app context **stigs_in_splunk**. Lookups are **not** grant-filtered—REST `/stig_*` enforces workspace ACL. See [spec.md §12](spec.md#12-splunk-search-reporting).
 
+## Audit index and dashboard
+
+Mutation audit events are logged to `stigs_in_splunk.audit` and, when enabled, indexed as `index=stig_audit` / `sourcetype=stig:audit`. Open the **Audit** nav view (**STIG audit** Simple XML dashboard) or search:
+
+```spl
+index=stig_audit sourcetype=stig:audit | table _time action user object workspace_id
+```
+
+Index, HTTP input, and clustered deploy notes: [docs/audit-index.md](docs/audit-index.md).
+
 ## Collection metrics and findings report
 
 SplunkUI **Collection dashboard** (`stig_collection_dashboard_ui`) shows workspace-scoped review metrics, an open-findings report with CSV export, aggregated findings by group/rule/CCI, unreviewed rules/assets reports, and POA&M CSV/XLSX export.

@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from splunk.persistconn.application import PersistentServerConnectionApplication
 
 import access
+import audit
 import kv_client
 from importers.ingest import detect_format
 from services import baselines as baselines_svc
@@ -123,7 +124,12 @@ class StigRestHandler(PersistentServerConnectionApplication):
     def handle(self, in_string: str) -> Dict[str, Any]:
         try:
             payload = json.loads(in_string)
-            return self._dispatch(payload)
+            session = payload.get("session") or {}
+            audit.set_indexing_context(session.get("authtoken") or "")
+            try:
+                return self._dispatch(payload)
+            finally:
+                audit.clear_indexing_context()
         except Exception as exc:
             logger.error("rest_error %s", traceback.format_exc())
             return _error(str(exc), status=500)

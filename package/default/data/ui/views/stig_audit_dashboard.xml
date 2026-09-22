@@ -1,0 +1,46 @@
+<dashboard version="1.1" hideEdit="true">
+  <label>STIG audit</label>
+  <description>Recent mutation audit events from the stigs_in_splunk app (index stig_audit, sourcetype stig:audit). If the index is empty, confirm the stig_audit index and HTTP input are enabled — see docs/audit-index.md.</description>
+  <row>
+    <panel>
+      <title>Recent audit actions</title>
+      <table>
+        <search>
+          <query>index=stig_audit sourcetype=stig:audit
+| table _time action user object workspace_id entity_type entity_id
+| sort - _time
+| head 200</query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Actions over time</title>
+      <chart>
+        <search>
+          <query>index=stig_audit sourcetype=stig:audit
+| timechart span=1h count by action</query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">column</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top actors (7 days)</title>
+      <table>
+        <search>
+          <query>index=stig_audit sourcetype=stig:audit
+| stats count AS actions BY user
+| sort - actions
+| head 20</query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+</dashboard>

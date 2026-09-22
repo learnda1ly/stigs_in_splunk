@@ -32,7 +32,7 @@ This document is the **authoritative requirements spec** for the Splunk app **`s
 
 - Custom SplunkUI **settings** page (use the UCC Configuration page).
 - Search macros, CIM Vulnerability datamodel, eventtypes for ingested STIG events.
-- Full audit **dashboard** (logs only in PoC).
+- ~~Full audit **dashboard** (logs only in PoC).~~ **implemented** — see §14 and [docs/audit-index.md](docs/audit-index.md).
 - XCCDF **results** import mapping to review status (pass/fail → open/not_a_finding).
 - ~~Review **merge** across STIG revisions when `check_content_hash` matches~~ **implemented** — see §11.4 `upgrade` endpoints.
 - ~~Cascading delete of hosts/checklists when a **stig_collection** is deleted~~ **implemented** — see §11.1 `DELETE` with `?cascade=true`.
@@ -892,7 +892,7 @@ Each mutation: INFO line `stig_audit {"action","entity_type","entity_id","user",
 
 Actions include: `create`, `update`, `delete`, `delete_blocked`, `import`, `import_deduplicated`.
 
-Phase 2 may index `_internal` or dedicated index; PoC uses splunkd log only.
+**Indexed audit (optional but shipped):** the same mutations also emit JSON events to index **`stig_audit`** with sourcetype **`stig:audit`** via the app HTTP input `stig_audit` (HEC) or `/services/receivers/simple` during authenticated REST. If the index or input is unavailable, only splunkd logging occurs. Event fields include `action`, `user`, `entity_type`, `entity_id`, `object`, `workspace_id`, `details`, and `time`. Admin setup: [docs/audit-index.md](docs/audit-index.md). Splunk Web dashboard **`stig_audit_dashboard`** (nav **Audit**) lists recent actions.
 
 ---
 
@@ -1000,5 +1000,5 @@ curl $AUTH "$BASE/stig_checklists/CHECKLIST_ID/export?format=cklb"
 - Ingested findings → CIM / macros / dashboards.
 - ~~Cross-revision review merge using `check_content_hash`~~ (see §11.4 `upgrade`).
 - Workspace-scoped baselines or sharing model.
-- Stronger audit (dedicated index, UI).
+- ~~Stronger audit (dedicated index, UI).~~ (see §14, `stig_audit` index + **STIG audit** dashboard).
 - KV cleanup jobs; cascade deletes; bulk review update.

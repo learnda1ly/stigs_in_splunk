@@ -57,10 +57,47 @@ def emit_findings(
 
 def lookup_hec_token(session_key: str = "") -> str:
     """Resolve the stig_findings HEC token without exposing it to the UI."""
-    token = _token_from_rest(session_key)
+    return lookup_hec_token_for_input(HEC_INPUT_NAME, HEC_STANZA, session_key)
+
+
+def lookup_hec_token_for_input(
+    input_name: str, stanza: str, session_key: str = ""
+) -> str:
+    token = _token_from_rest(input_name, session_key)
     if token:
         return token
-    return _token_from_inputs_conf()
+    return _token_from_inputs_conf(stanza)
+
+
+def emit_indexed_events(
+    events: List[Dict[str, Any]],
+    *,
+    index: str,
+    sourcetype: str,
+    session_key: str = "",
+    hec_input_name: str = HEC_INPUT_NAME,
+    hec_stanza: str = HEC_STANZA,
+    source: str = APP_NAME,
+) -> Dict[str, Any]:
+    """Index JSON events via HEC (preferred) or receivers/simple."""
+    if not events:
+        return {"indexed": 0, "via": "none"}
+    url = DEFAULT_HEC_URL
+    token = lookup_hec_token_for_input(hec_input_name, hec_stanza, session_key)
+    if token:
+        try:
+            sent = _post_hec(url, token, events, index, sourcetype, source)
+            return {
+                "indexed": sent,
+                "via": "hec",
+                "index": index,
+                "sourcetype": sourcetype,
+            }
+        except Exception as exc:
+            fallback = _post_receivers(events, index, sourcetype, source, session_key)
+            fallback["hec_error"] = str(exc)
+            return fallback
+    return _post_receivers(events, index, sourcetype, source, session_key)
 
 
 def _entry_token(data: Any) -> str:
@@ -76,13 +113,13 @@ def _entry_token(data: Any) -> str:
     return ""
 
 
-def _token_from_rest(session_key: str) -> str:
+def _token_from_rest(input_name: str, session_key: str) -> str:
     if not _HAS_SPLUNK_REST or not session_key:
         return ""
     paths = (
-        f"/servicesNS/nobody/{APP_NAME}/data/inputs/http/{HEC_INPUT_NAME}",
-        f"/services/data/inputs/http/{HEC_INPUT_NAME}",
-        "/servicesNS/nobody/splunk_httpinput/data/inputs/http/" + HEC_INPUT_NAME,
+        f"/servicesNS/nobody/{APP_NAME}/data/inputs/http/{input_name}",
+        f"/services/data/inputs/http/{input_name}",
+        "/servicesNS/nobody/splunk_httpinput/data/inputs/http/" + input_name,
     )
     for path in paths:
         try:
@@ -107,19 +144,26 @@ def _token_from_rest(session_key: str) -> str:
     return ""
 
 
-def _token_from_inputs_conf() -> str:
+def _token_from_inputs_conf(stanza: str) -> str:
     home = os.environ.get("SPLUNK_HOME") or ""
     candidates = []
+    app_inputs = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "default",
+        "inputs.conf",
+    )
+    candidates.append(app_inputs)
     if home:
         candidates.extend(
             [
                 os.path.join(home, "etc", "apps", APP_NAME, "local", "inputs.conf"),
+                os.path.join(home, "etc", "apps", APP_NAME, "default", "inputs.conf"),
                 os.path.join(home, "etc", "apps", "splunk_httpinput", "local", "inputs.conf"),
                 os.path.join(home, "etc", "system", "local", "inputs.conf"),
             ]
         )
     for path in candidates:
-        token = _parse_stanza_token(path, HEC_STANZA)
+        token = _parse_stanza_token(path, stanza)
         if token:
             return token
     return ""

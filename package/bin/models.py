@@ -26,6 +26,10 @@ KV_STIG_HOST_BASELINE_ASSIGNMENTS = "stig_host_baseline_assignments"
 
 DEFAULT_INGEST_INDEX = "stig"
 DEFAULT_INGEST_SOURCETYPE = "stig:finding"
+DEFAULT_AUDIT_INDEX = "stig_audit"
+DEFAULT_AUDIT_SOURCETYPE = "stig:audit"
+AUDIT_HEC_INPUT_NAME = "stig_audit"
+AUDIT_HEC_STANZA = "http://stig_audit"
 DEFAULT_HEC_URL = "https://localhost:8088/services/collector/event"
 DEFAULT_RECONCILE_EARLIEST = "-15m"
 
