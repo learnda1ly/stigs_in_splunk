@@ -340,6 +340,27 @@ class StigRestHandler(PersistentServerConnectionApplication):
             except ValueError as exc:
                 return _error(str(exc), status=400)
 
+        if len(parts) == 3 and parts[1] == "archive" and parts[2] in ("ckl", "cklb"):
+            if method not in ("POST", "PUT"):
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            try:
+                result = checklists_svc.export_collection_archive(
+                    service,
+                    key,
+                    parts[2],
+                    session,
+                    host_id=body.get("host_id") or query.get("host_id"),
+                    baseline_id=body.get("baseline_id") or query.get("baseline_id"),
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+            return _json_response(result)
+
         if len(parts) == 2 and parts[1] == "poam":
             if method != "GET":
                 return _error("method not allowed", status=405)
@@ -804,9 +825,27 @@ class StigRestHandler(PersistentServerConnectionApplication):
             if isinstance(ids, str):
                 ids = [part.strip() for part in ids.split(",") if part.strip()]
             fmt = body.get("format") or query.get("format") or "cklb"
-            return _json_response(
-                checklists_svc.export_checklists_bulk(service, ids, fmt, session)
-            )
+            collection_id = (
+                body.get("stig_collection_id") or query.get("stig_collection_id") or ""
+            ).strip()
+            try:
+                return _json_response(
+                    checklists_svc.export_checklists_bulk(
+                        service,
+                        ids if not collection_id else None,
+                        fmt,
+                        session,
+                        stig_collection_id=collection_id or None,
+                        host_id=body.get("host_id") or query.get("host_id"),
+                        baseline_id=body.get("baseline_id") or query.get("baseline_id"),
+                    )
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
 
         if parts and parts[0] == "summary":
             if method != "GET":
