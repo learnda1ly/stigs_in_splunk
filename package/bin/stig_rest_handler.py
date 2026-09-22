@@ -530,41 +530,17 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     return _json_response(out, status=201 if created else 200)
                 if method == "DELETE" and len(parts) == 3:
                     baseline_ref = parts[2]
-                    host = hosts_svc.get_host(service, key, session)
-                    if not host:
-                        return _error("not found", status=404)
-                    collection_id = host.get("stig_collection_id") or ""
-                    baseline_id = (baseline_ref or "").strip()
-                    baseline = baselines_svc.get_baseline(service, baseline_id)
-                    if not baseline:
-                        baseline = baselines_svc.find_baseline_by_stig(
-                            service, baseline_ref
+                    try:
+                        result = checklists_svc.unassign_stig_from_host(
+                            service, key, baseline_ref, username, session
                         )
-                        baseline_id = (baseline or {}).get("_key") or ""
-                    if not baseline_id:
-                        return _error("baseline not found", status=404)
-                    existing = checklists_svc.find_checklist(
-                        service,
-                        session,
-                        collection_id,
-                        key,
-                        baseline_id,
-                    )
-                    if not existing:
+                    except KeyError:
                         return _error("not found", status=404)
-                    if not access.user_has_stig_admin(session):
-                        try:
-                            grants_svc.require_workspace_write(
-                                service, collection_id, session
-                            )
-                        except PermissionError as exc:
-                            return _error(str(exc), status=403)
-                    checklists_svc.delete_checklist(
-                        service, existing["_key"], username, session
-                    )
-                    return _json_response(
-                        {"deleted": existing["_key"], "baseline_id": baseline_id}
-                    )
+                    except PermissionError as exc:
+                        return _error(str(exc), status=403)
+                    except ValueError as exc:
+                        return _error(str(exc), status=400)
+                    return _json_response(result)
                 return _error("method not allowed", status=405)
 
         if method == "GET":

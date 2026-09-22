@@ -66,8 +66,8 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count (approx.) |
 |--------|-----------------|
-| done | 25 |
-| partial | 13 |
+| done | 26 |
+| partial | 12 |
 | missing | 16 |
 | n/a | 8 |
 
@@ -102,7 +102,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Attach STIG to asset (assignment) | UI: Assign STIG on asset. API: `POST /assets/{id}/stigs`, `/collections/{id}/stigs/...` | **done** | **`POST /stig_hosts/{hostId}/stigs`** (idempotent checklist create + review spawn); **`GET .../checklists`**. STIG Editor **Assign STIG** when a host is selected. Duplicate assign returns **200** with `"created": false`. | Explicit “assign baseline to host” UX; idempotent create checklist. | P1 | S |
 | Remove STIG from asset | API: `DELETE .../stigs/{benchmarkId}` | **done** | **`DELETE /stig_hosts/{id}/stigs/{baselineIdOrStigId}`** or delete checklist (cascades reviews). | UI/API delete checklist by host+baseline. | P1 | — |
 | Bulk asset create / import builder | UI: Import CKL/XCCDF builds collection. API: `POST /collections/{id}/assets` | **partial** | `POST /stig_imports` creates host+baseline+checklist from CKL/CKLB; no collection-level XCCDF **results** archive. | Collection import wizard parity for CKL/CKLB; document gaps for XCCDF results. | P1 | M |
-| Asset checklist retrieval | API: `/assets/{id}/checklists`, by STIG | **partial** | **`GET /stig_hosts/{id}/checklists`** plus `GET /stig_checklists?stig_collection_id=`. | `GET /stig_hosts/{id}/checklists` or documented query pattern. | P2 | S |
+| Asset checklist retrieval | API: `/assets/{id}/checklists`, by STIG | **done** | **`GET /stig_hosts/{id}/checklists`** (ACL-aware). Filter by STIG only via client or `GET /stig_checklists?stig_collection_id=` + baseline metadata. | `GET /stig_hosts/{id}/checklists` or documented query pattern. | P2 | S |
 
 ### C. STIG library (baselines / revisions)
 

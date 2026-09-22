@@ -603,7 +603,7 @@ Default `access_principals` on create: `["user:<creator>"]` if omitted. The Defa
 | GET | `/stig_hosts/{id}` | — | Host document |
 | GET | `/stig_hosts/{id}/checklists` | — | Checklists for this host (respects grants/ACL) |
 | POST | `/stig_hosts/{id}/stigs` | — | `{baseline_id}` **or** `{stig_id}` (workspace default / catalog resolution). Creates checklist + spawns reviews; **200** + `"created": false` when already assigned (idempotent). **201** + `"created": true` on first assign. |
-| DELETE | `/stig_hosts/{id}/stigs/{baselineIdOrStigId}` | — | Deletes matching checklist (cascades reviews). Requires workspace **write** (or **stig_admin**). |
+| DELETE | `/stig_hosts/{id}/stigs/{baselineIdOrStigId}` | — | Removes **one** checklist: path segment is baseline KV `_key` **or** logical `stig_id` resolved like POST assign (workspace default → catalog). Does **not** delete other revision checklists for the same `stig_id`; pass each revision’s baseline `_key` to remove multiples. Requires workspace **write**. |
 | PATCH/DELETE | `/stig_hosts/{id}` | — | PATCH fields optional; DELETE requires **stig_admin** |
 
 DELETE requires **stig_admin**. Writes require workspace **stig_write** access.

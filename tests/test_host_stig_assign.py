@@ -240,6 +240,177 @@ class TestAssignStigToHost(unittest.TestCase):
         mock_resolve.assert_called_once()
         self.assertEqual(checklist["baseline_id"], "default_base")
 
+    @patch("services.checklists.audit.log_event")
+    @patch("services.checklists.grants_svc.workspace_context")
+    @patch("services.checklists.baseline_defaults_svc.resolve_baseline_id", return_value="default_base")
+    @patch("services.checklists.validation.persistable_valid", return_value=False)
+    @patch("services.checklists.baselines_svc.list_baseline_rules")
+    @patch("services.checklists.baselines_svc.get_baseline")
+    @patch("services.checklists.hosts_svc.get_host")
+    @patch("services.checklists.grants_svc.require_workspace_write")
+    @patch("services.checklists.kv_client.batch_insert")
+    @patch("services.checklists.kv_client.insert_record")
+    @patch("services.checklists.kv_client.query_all")
+    @patch("services.checklists.kv_client.get_collection")
+    def test_assign_idempotent_via_stig_id_only(
+        self,
+        mock_get_coll,
+        mock_query_all,
+        mock_insert,
+        mock_batch,
+        mock_require_write,
+        mock_get_host,
+        mock_get_baseline,
+        mock_list_rules,
+        _mock_valid,
+        mock_resolve,
+        mock_workspace_context,
+        mock_audit,
+    ):
+        mock_get_host.return_value = self.host
+        mock_list_rules.return_value = self.rules
+
+        def _get_baseline(_svc, key):
+            if key == "default_base":
+                return {**self.baseline, "_key": "default_base"}
+            return None
+
+        mock_get_baseline.side_effect = _get_baseline
+        mock_get_coll.side_effect = self.kv.get_collection
+        mock_query_all.side_effect = self.kv.query_all
+        mock_insert.side_effect = self.kv.insert_record
+        mock_batch.side_effect = self.kv.batch_insert
+        coll = {"_key": "ws1"}
+        ctx = access.resolve_workspace_access(coll, self.session)
+        mock_workspace_context.return_value = (coll, ctx, [])
+
+        first, created_first = checklists_svc.assign_stig_to_host(
+            self.service, "host1", {"stig_id": "Example_STIG"}, "writer", self.session
+        )
+        second, created_second = checklists_svc.assign_stig_to_host(
+            self.service, "host1", {"stig_id": "Example_STIG"}, "writer", self.session
+        )
+        self.assertTrue(created_first)
+        self.assertFalse(created_second)
+        self.assertEqual(first["_key"], second["_key"])
+        self.assertEqual(mock_resolve.call_count, 2)
+
+    @patch("services.checklists.delete_checklist")
+    @patch("services.checklists.find_checklist")
+    @patch("services.checklists.resolve_baseline_ref", return_value="old_rev")
+    @patch("services.checklists.hosts_svc.get_host")
+    @patch("services.checklists.grants_svc.require_workspace_write")
+    def test_unassign_stig_id_uses_shared_resolver(
+        self,
+        mock_require,
+        mock_get_host,
+        mock_resolve,
+        mock_find,
+        mock_delete,
+    ):
+        mock_get_host.return_value = self.host
+        mock_find.return_value = {"_key": "cl1", "baseline_id": "old_rev"}
+        result = checklists_svc.unassign_stig_from_host(
+            self.service, "host1", "Example_STIG", "writer", self.session
+        )
+        mock_resolve.assert_called_once_with(self.service, "ws1", "Example_STIG")
+        mock_find.assert_called_once_with(
+            self.service, self.session, "ws1", "host1", "old_rev"
+        )
+        mock_delete.assert_called_once()
+        self.assertEqual(result["baseline_id"], "old_rev")
+
+    @patch("services.checklists.baselines_svc.find_baseline_by_stig")
+    @patch("services.checklists.baseline_defaults_svc.resolve_baseline_id", return_value="old_rev")
+    @patch("services.checklists.baselines_svc.get_baseline", return_value=None)
+    def test_resolve_baseline_ref_does_not_use_catalog_latest(
+        self, mock_get, mock_resolve, mock_find_latest
+    ):
+        bid = checklists_svc.resolve_baseline_ref(
+            self.service, "ws1", "Example_STIG"
+        )
+        self.assertEqual(bid, "old_rev")
+        mock_resolve.assert_called_once()
+        mock_find_latest.assert_not_called()
+
+    @patch("services.checklists.audit.log_event")
+    @patch("services.checklists.grants_svc.workspace_context")
+    @patch("services.checklists.hosts_svc.get_host")
+    @patch("services.checklists.kv_client.query_all")
+    @patch("services.checklists.kv_client.get_collection")
+    def test_duplicate_host_baseline_rows_pick_acl_visible(
+        self,
+        mock_get_coll,
+        mock_query_all,
+        mock_get_host,
+        mock_workspace_context,
+        mock_audit,
+    ):
+        self.kv.checklists["cl_hidden"] = {
+            "_key": "cl_hidden",
+            "stig_collection_id": "ws1",
+            "host_id": "host1",
+            "baseline_id": "base1",
+        }
+        self.kv.checklists["cl_visible"] = {
+            "_key": "cl_visible",
+            "stig_collection_id": "ws1",
+            "host_id": "host1",
+            "baseline_id": "base1",
+        }
+        mock_get_host.return_value = self.host
+        mock_get_coll.side_effect = self.kv.get_collection
+        mock_query_all.side_effect = self.kv.query_all
+        coll = {"_key": "ws1"}
+        grants = [
+            {
+                "principal": "user:writer",
+                "grant_role": "restricted",
+                "acl_host_ids": '["host1"]',
+                "acl_baseline_ids": '["base1"]',
+            }
+        ]
+        ctx = access.resolve_workspace_access(coll, self.session, grants)
+        mock_workspace_context.return_value = (coll, ctx, grants)
+
+        with patch(
+            "services.checklists.grants_svc.require_workspace_write"
+        ), patch(
+            "services.checklists.baselines_svc.get_baseline",
+            return_value={"_key": "base1"},
+        ):
+            checklist, created = checklists_svc.assign_stig_to_host(
+                self.service,
+                "host1",
+                {"baseline_id": "base1"},
+                "writer",
+                self.session,
+            )
+        self.assertFalse(created)
+        self.assertEqual(checklist["_key"], "cl_hidden")
+        integrity_calls = [
+            c
+            for c in mock_audit.call_args_list
+            if c.args and c.args[0] == "data_integrity"
+        ]
+        self.assertEqual(len(integrity_calls), 1)
+
+    @patch("services.checklists.list_checklists")
+    @patch("services.checklists.hosts_svc.get_host")
+    def test_list_checklists_for_host_uses_acl_filtered_collection_list(
+        self, mock_get_host, mock_list
+    ):
+        mock_get_host.return_value = self.host
+        mock_list.return_value = [
+            {"_key": "cl1", "host_id": "host1", "baseline_id": "base1"},
+            {"_key": "cl2", "host_id": "host2", "baseline_id": "base1"},
+        ]
+        rows = checklists_svc.list_checklists_for_host(
+            self.service, "host1", self.session
+        )
+        mock_list.assert_called_once_with(self.service, self.session, "ws1")
+        self.assertEqual([r["_key"] for r in rows], ["cl1"])
+
 
 if __name__ == "__main__":
     unittest.main()

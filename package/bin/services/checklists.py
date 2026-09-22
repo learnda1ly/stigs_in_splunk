@@ -138,11 +138,35 @@ def _resolve_checklist_baseline_id(
     return baseline_id
 
 
+def resolve_baseline_ref(
+    service,
+    collection_id: str,
+    baseline_ref: str,
+) -> str:
+    """Resolve a REST path segment: KV baseline `_key` or logical `stig_id`.
+
+    Uses the same precedence as POST assign: explicit baseline row → workspace
+    `default_baseline_map` → versioned catalog match → latest revision.
+    """
+    ref = (baseline_ref or "").strip()
+    if not ref:
+        raise ValueError("baseline reference is required")
+    if baselines_svc.get_baseline(service, ref):
+        return ref
+    return _resolve_checklist_baseline_id(
+        service,
+        {"stig_id": ref, "benchmark_id": ref},
+        collection_id,
+    )
+
+
 def _find_existing_checklist_row(
     service,
     collection_id: str,
     host_id: str,
     baseline_id: str,
+    session: Optional[Dict[str, Any]] = None,
+    username: str = "system",
 ) -> Optional[Dict[str, Any]]:
     checklist_coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
     rows = kv_client.query_all(
@@ -155,7 +179,27 @@ def _find_existing_checklist_row(
     )
     if not rows:
         return None
-    return rows[0]
+    if len(rows) > 1:
+        audit.log_event(
+            "data_integrity",
+            "stig_checklist",
+            host_id,
+            username,
+            {
+                "issue": "duplicate_host_baseline",
+                "count": len(rows),
+                "baseline_id": baseline_id,
+                "checklist_ids": [r.get("_key") for r in rows],
+            },
+        )
+    ordered = sorted(rows, key=lambda rec: rec.get("_key") or "")
+    if session is not None:
+        ctx = _access_context(service, collection_id, session)
+        for rec in ordered:
+            if access.checklist_allowed(rec, ctx):
+                return rec
+        return None
+    return ordered[0]
 
 
 def _spawn_checklist_with_reviews(
@@ -256,7 +300,7 @@ def assign_stig_to_host(
     _require_collection(service, collection_id, session, write=True)
 
     existing = _find_existing_checklist_row(
-        service, collection_id, host_id, baseline_id
+        service, collection_id, host_id, baseline_id, session=session, username=username
     )
     if existing:
         ctx = _access_context(service, collection_id, session)
@@ -291,6 +335,48 @@ def assign_stig_to_host(
         review_seeds=review_seeds,
     )
     return stored, True
+
+
+def unassign_stig_from_host(
+    service,
+    host_id: str,
+    baseline_ref: str,
+    username: str,
+    session: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Remove one host×baseline assignment (checklist + reviews).
+
+    ``baseline_ref`` is either a baseline KV ``_key`` or a logical ``stig_id``.
+    Resolution matches POST assign. Only the checklist for that resolved
+    ``baseline_id`` is removed; other revision checklists for the same ``stig_id``
+    on the host require DELETE with each revision's explicit baseline ``_key``.
+    """
+    host = hosts_svc.get_host(service, host_id, session)
+    if not host:
+        raise KeyError(host_id)
+    collection_id = host.get("stig_collection_id") or ""
+    if not collection_id:
+        raise ValueError("host has no stig_collection_id")
+
+    try:
+        baseline_id = resolve_baseline_ref(service, collection_id, baseline_ref)
+    except ValueError as exc:
+        raise KeyError(baseline_ref) from exc
+
+    _require_collection(service, collection_id, session, write=True)
+    existing = find_checklist(service, session, collection_id, host_id, baseline_id)
+    if not existing:
+        raise KeyError("checklist")
+
+    delete_checklist(service, existing["_key"], username, session)
+    audit.log_event(
+        "unassign",
+        "stig_checklist",
+        existing["_key"],
+        username,
+        {"baseline_id": baseline_id, "baseline_ref": baseline_ref},
+    )
+    return {"deleted": existing["_key"], "baseline_id": baseline_id}
 
 
 def apply_review_seeds(
