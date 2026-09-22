@@ -31,6 +31,7 @@ from services import collection_transfer as collection_transfer_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
 from services import labels as labels_svc
+from services import host_metadata as host_metadata_svc
 from services import hosts as hosts_svc
 from services import assignment as assignment_svc
 from services import imports as imports_svc
@@ -750,6 +751,33 @@ class StigRestHandler(PersistentServerConnectionApplication):
         key = parts[0]
         if len(parts) >= 2:
             sub = parts[1]
+            if sub == "metadata":
+                if method == "GET" and len(parts) == 2:
+                    try:
+                        return _json_response(
+                            host_metadata_svc.get_metadata(service, key, session)
+                        )
+                    except KeyError:
+                        return _error("not found", status=404)
+                    except PermissionError as exc:
+                        return _error(str(exc), status=403)
+                    except ValueError as exc:
+                        return _error(str(exc), status=400)
+                if method in ("POST", "PUT", "PATCH") and len(parts) == 2:
+                    body = _body_json(payload)
+                    try:
+                        return _json_response(
+                            host_metadata_svc.patch_metadata(
+                                service, key, body, username, session
+                            )
+                        )
+                    except KeyError:
+                        return _error("not found", status=404)
+                    except PermissionError as exc:
+                        return _error(str(exc), status=403)
+                    except ValueError as exc:
+                        return _error(str(exc), status=400)
+                return _error("method not allowed", status=405)
             if sub == "checklists" and method == "GET":
                 try:
                     rows = checklists_svc.list_checklists_for_host(
