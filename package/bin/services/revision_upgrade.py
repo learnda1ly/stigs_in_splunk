@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import audit
@@ -17,6 +18,10 @@ from models import (
 )
 from services import baselines as baselines_svc
 from services import checklists as checklists_svc
+from services import grants as grants_svc
+
+
+_VERSION_RE = re.compile(r"^v?(\d+)\s*r\s*(\d+)$", re.IGNORECASE)
 
 
 def _stig_id_key(value: Any) -> str:
@@ -33,24 +38,51 @@ def _rule_identity(rule: Dict[str, Any]) -> Tuple[str, str]:
 def match_review_for_rule(
     reviews: List[Dict[str, Any]], rule: Dict[str, Any]
 ) -> Optional[Dict[str, Any]]:
-    """Locate the prior review row for a new baseline rule (group_id + rule_id)."""
+    """Locate the prior review row for a new baseline rule (composite group_id + rule_id)."""
     gid, rid = _rule_identity(rule)
-    if gid and rid:
-        for rec in reviews:
-            if (
-                str(rec.get("group_id") or "") == gid
-                and str(rec.get("rule_id") or "") == rid
-            ):
-                return rec
-    if rid:
-        for rec in reviews:
-            if str(rec.get("rule_id") or "") == rid:
-                return rec
-    if gid:
-        for rec in reviews:
-            if str(rec.get("group_id") or "") == gid:
-                return rec
+    if not (gid and rid):
+        return None
+    for rec in reviews:
+        if (
+            str(rec.get("group_id") or "") == gid
+            and str(rec.get("rule_id") or "") == rid
+        ):
+            return rec
     return None
+
+
+def parse_dis_version(version: Any) -> Optional[Tuple[int, int]]:
+    text = str(version or "").strip().replace(" ", "")
+    if not text:
+        return None
+    match = _VERSION_RE.match(text)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def assert_newer_baseline_revision(
+    old_baseline: Dict[str, Any], new_baseline: Dict[str, Any]
+) -> None:
+    """Reject downgrades or ambiguous same-revision picks (explicit upgrade only)."""
+    old_ver = parse_dis_version(old_baseline.get("version"))
+    new_ver = parse_dis_version(new_baseline.get("version"))
+    if old_ver and new_ver:
+        if new_ver <= old_ver:
+            raise ValueError(
+                "target baseline must be a newer revision "
+                f"(current {old_baseline.get('version')}, "
+                f"requested {new_baseline.get('version')})"
+            )
+        return
+    old_imp = float(old_baseline.get("imported_at") or 0)
+    new_imp = float(new_baseline.get("imported_at") or 0)
+    if new_imp > old_imp:
+        return
+    raise ValueError(
+        "target baseline must be newer than the checklist baseline "
+        "(compare version labels such as V2R7 or import the newer revision later)"
+    )
 
 
 def _governed_row(rec: Dict[str, Any]) -> bool:
@@ -89,6 +121,8 @@ def _merge_review_from_prior(
     patch["status"] = "not_reviewed"
     patch["workflow_state"] = review_workflow.DEFAULT_WORKFLOW_STATE
     patch["finding_details"] = ""
+    patch["comments"] = ""
+    patch["reject_feedback"] = ""
     patch["valid"] = validation.persistable_valid(patch)
     return patch, "reset"
 
@@ -152,6 +186,8 @@ def upgrade_checklist(
             "new baseline must be another revision of the same stig_id "
             f"(was {old_baseline.get('stig_id')}, got {new_baseline.get('stig_id')})"
         )
+
+    assert_newer_baseline_revision(old_baseline, new_baseline)
 
     new_rules = baselines_svc.list_baseline_rules(service, new_baseline_id)
     if not new_rules:
@@ -239,6 +275,8 @@ def upgrade_collection_checklists(
     new_baseline = baselines_svc.get_baseline(service, new_baseline_id)
     if not new_baseline:
         raise KeyError(new_baseline_id)
+
+    grants_svc.require_workspace_write(service, collection_id, session)
 
     want_stig = _stig_id_key(stig_id or new_baseline.get("stig_id"))
     from_id = (from_baseline_id or "").strip()

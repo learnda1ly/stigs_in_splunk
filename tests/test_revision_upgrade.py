@@ -197,6 +197,8 @@ class TestRevisionUpgrade(unittest.TestCase):
         reset = self.kv.reviews["r2"]
         self.assertEqual(reset["status"], "not_reviewed")
         self.assertEqual(reset["finding_details"], "")
+        self.assertEqual(reset["comments"], "")
+        self.assertEqual(reset.get("reject_feedback"), "")
         self.assertEqual(reset["check_content_hash"], "hash_b_changed")
 
     @patch("services.revision_upgrade.audit.log_event")
@@ -259,11 +261,12 @@ class TestRevisionUpgrade(unittest.TestCase):
         self.assertEqual(accepted["finding_details"], "accepted work")
 
     @patch("services.revision_upgrade.audit.log_event")
+    @patch("services.revision_upgrade.grants_svc.require_workspace_write")
     @patch("services.revision_upgrade.upgrade_checklist")
     @patch("services.revision_upgrade.checklists_svc.list_checklists")
     @patch("services.revision_upgrade.baselines_svc.get_baseline")
     def test_collection_bulk_upgrade_filters_workspace(
-        self, mock_get_bl, mock_list_cls, mock_upgrade, _audit
+        self, mock_get_bl, mock_list_cls, mock_upgrade, _mock_require, _audit
     ):
         mock_get_bl.return_value = self.baselines["base_v2"]
         mock_list_cls.return_value = [
@@ -295,6 +298,158 @@ class TestRevisionUpgrade(unittest.TestCase):
         )
         self.assertEqual(out["upgraded"], 2)
         self.assertEqual(mock_upgrade.call_count, 2)
+
+    @patch("services.revision_upgrade.grants_svc.require_workspace_write")
+    @patch("services.revision_upgrade.baselines_svc.get_baseline")
+    def test_collection_bulk_requires_workspace_write(self, mock_get_bl, mock_require):
+        mock_get_bl.return_value = self.baselines["base_v2"]
+        mock_require.side_effect = PermissionError("write required")
+        with self.assertRaises(PermissionError):
+            upgrade_svc.upgrade_collection_checklists(
+                self.service,
+                "ws1",
+                "base_v2",
+                "reader",
+                {"user": "reader"},
+            )
+        mock_require.assert_called_once()
+
+    @patch("services.revision_upgrade.audit.log_event")
+    @patch("services.revision_upgrade.checklists_svc.get_checklist")
+    @patch("services.revision_upgrade.baselines_svc.list_baseline_rules")
+    @patch("services.revision_upgrade.baselines_svc.get_baseline")
+    @patch("services.revision_upgrade.kv_client")
+    def test_submitted_preserved_on_hash_mismatch(
+        self, mock_kv, mock_get_bl, mock_list_rules, mock_get_cl, _audit
+    ):
+        mock_kv.get_collection.side_effect = self.kv.get_collection
+        mock_kv.query_all.side_effect = self.kv.query_all
+        mock_kv.update_record.side_effect = self.kv.update_record
+        mock_kv.insert_record.side_effect = self.kv.insert_record
+        mock_kv.delete_record.side_effect = self.kv.delete_record
+        mock_kv.kv_record.side_effect = self.kv.kv_record
+
+        mock_get_cl.return_value = dict(self.kv.checklists["cl1"])
+        mock_get_bl.side_effect = lambda _s, key: dict(self.baselines[key])
+        mock_list_rules.return_value = [
+            {
+                "group_id": "V-2",
+                "rule_id": "SV-2",
+                "rule_version": "1.1",
+                "check_content_hash": "hash_b_changed",
+            }
+        ]
+
+        self._seed_reviews(
+            [
+                {
+                    "group_id": "V-2",
+                    "rule_id": "SV-2",
+                    "rule_version": "1.0",
+                    "check_content_hash": "hash_b",
+                    "status": "open",
+                    "finding_details": "awaiting accept",
+                    "comments": "note",
+                    "workflow_state": "submitted",
+                    "ingest_lock": False,
+                }
+            ]
+        )
+
+        result = upgrade_svc.upgrade_checklist(
+            self.service, "cl1", "base_v2", "writer", self.session
+        )
+        self.assertEqual(result["preserved"], 1)
+        row = self.kv.reviews["r1"]
+        self.assertEqual(row["workflow_state"], "submitted")
+        self.assertEqual(row["finding_details"], "awaiting accept")
+        self.assertEqual(row["comments"], "note")
+
+    @patch("services.revision_upgrade.audit.log_event")
+    @patch("services.revision_upgrade.checklists_svc.get_checklist")
+    @patch("services.revision_upgrade.baselines_svc.list_baseline_rules")
+    @patch("services.revision_upgrade.baselines_svc.get_baseline")
+    @patch("services.revision_upgrade.kv_client")
+    def test_orphan_review_removed_when_rule_dropped(
+        self, mock_kv, mock_get_bl, mock_list_rules, mock_get_cl, _audit
+    ):
+        mock_kv.get_collection.side_effect = self.kv.get_collection
+        mock_kv.query_all.side_effect = self.kv.query_all
+        mock_kv.update_record.side_effect = self.kv.update_record
+        mock_kv.insert_record.side_effect = self.kv.insert_record
+        mock_kv.delete_record.side_effect = self.kv.delete_record
+        mock_kv.kv_record.side_effect = self.kv.kv_record
+
+        mock_get_cl.return_value = dict(self.kv.checklists["cl1"])
+        mock_get_bl.side_effect = lambda _s, key: dict(self.baselines[key])
+        mock_list_rules.return_value = list(self.rules_v1)
+
+        self._seed_reviews(
+            [
+                {
+                    "group_id": "V-1",
+                    "rule_id": "SV-1",
+                    "rule_version": "1.2",
+                    "check_content_hash": "hash_a",
+                    "status": "not_a_finding",
+                    "workflow_state": "draft",
+                },
+                {
+                    "group_id": "V-2",
+                    "rule_id": "SV-2",
+                    "rule_version": "1.0",
+                    "check_content_hash": "hash_b",
+                    "status": "open",
+                    "workflow_state": "draft",
+                },
+                {
+                    "group_id": "V-99",
+                    "rule_id": "SV-99",
+                    "rule_version": "1.0",
+                    "check_content_hash": "hash_old",
+                    "status": "open",
+                    "workflow_state": "draft",
+                },
+            ]
+        )
+
+        result = upgrade_svc.upgrade_checklist(
+            self.service, "cl1", "base_v2", "writer", self.session
+        )
+        self.assertEqual(result["removed"], 1)
+        self.assertNotIn("r3", self.kv.reviews)
+
+    def test_match_review_requires_composite_key(self):
+        reviews = [
+            {"_key": "a", "group_id": "V-1", "rule_id": "SV-2"},
+            {"_key": "b", "group_id": "V-2", "rule_id": "SV-2"},
+        ]
+        rule = {"group_id": "V-2", "rule_id": "SV-2"}
+        matched = upgrade_svc.match_review_for_rule(reviews, rule)
+        self.assertEqual(matched["_key"], "b")
+        self.assertIsNone(
+            upgrade_svc.match_review_for_rule(reviews, {"group_id": "V-2", "rule_id": ""})
+        )
+
+    @patch("services.revision_upgrade.checklists_svc.get_checklist")
+    @patch("services.revision_upgrade.baselines_svc.get_baseline")
+    def test_rejects_downgrade_revision(self, mock_get_bl, mock_get_cl):
+        checklist = dict(self.kv.checklists["cl1"])
+        checklist["baseline_id"] = "base_v2"
+        mock_get_cl.return_value = checklist
+        mock_get_bl.side_effect = lambda _s, key: dict(self.baselines[key])
+        with self.assertRaises(ValueError) as ctx:
+            upgrade_svc.upgrade_checklist(
+                self.service, "cl1", "base_v1", "writer", self.session
+            )
+        self.assertIn("newer", str(ctx.exception).lower())
+
+
+class TestRevisionVersionParse(unittest.TestCase):
+    def test_parse_dis_version(self):
+        self.assertEqual(upgrade_svc.parse_dis_version("V2R7"), (2, 7))
+        self.assertEqual(upgrade_svc.parse_dis_version("v1 r2"), (1, 2))
+        self.assertIsNone(upgrade_svc.parse_dis_version("unknown"))
 
 
 if __name__ == "__main__":

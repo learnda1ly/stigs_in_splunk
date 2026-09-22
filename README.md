@@ -150,7 +150,9 @@ curl -k -u admin:changeme -X POST \
   -d '{"baseline_id":"NEW_BASELINE_KV_KEY","from_baseline_id":"OLD_BASELINE_KV_KEY"}'
 ```
 
-The STIG Editor also exposes **Upgrade revision** when a host is selected.
+The STIG Editor also exposes **Upgrade revision** when a host is selected (confirmation dialog; only baselines newer than the current revision).
+
+Upgrade is **not atomic** across KV rows—if a request fails mid-way, re-run the same upgrade after resolving the error.
 
 Reconcile indexed findings into KV (same job as the 5-minute saved search):
 

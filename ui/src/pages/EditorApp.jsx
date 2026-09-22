@@ -54,6 +54,29 @@ import { loadVimSetting, persistVimSetting } from "../vim/settings";
 import { VimGlobalStyle } from "../vim/styles";
 import { useEditorKeys } from "../vim/useEditorKeys";
 
+function parseDisVersion(version) {
+    const text = String(version || "").trim().replace(/\s+/g, "");
+    const match = text.match(/^v?(\d+)r(\d+)$/i);
+    if (!match) {
+        return null;
+    }
+    return [parseInt(match[1], 10), parseInt(match[2], 10)];
+}
+
+function baselineIsNewer(candidate, current) {
+    if (!candidate || !current || candidate._key === current._key) {
+        return false;
+    }
+    const cVer = parseDisVersion(candidate.version);
+    const curVer = parseDisVersion(current.version);
+    if (cVer && curVer) {
+        return cVer[0] > curVer[0] || (cVer[0] === curVer[0] && cVer[1] > curVer[1]);
+    }
+    const cImp = Number(candidate.imported_at || 0);
+    const curImp = Number(current.imported_at || 0);
+    return cImp > curImp;
+}
+
 function lookupRule(rulesByKey, rev) {
     return (
         rulesByKey[rev.rule_id] ||
@@ -159,7 +182,8 @@ export default function EditorApp() {
         return allBaselines.filter(
             (b) =>
                 b._key !== cl.baseline_id &&
-                String(b.stig_id || "").toLowerCase() === stigKey
+                String(b.stig_id || "").toLowerCase() === stigKey &&
+                baselineIsNewer(b, current)
         );
     }, [activeUpgradeChecklist, allBaselines]);
 
@@ -969,6 +993,32 @@ export default function EditorApp() {
                                 disabled={busy || !upgradeBaselineId || !activeUpgradeChecklist}
                                 onClick={() => {
                                     const clId = activeUpgradeChecklist._key;
+                                    const fromBl =
+                                        allBaselines.find(
+                                            (b) => b._key === activeUpgradeChecklist.baseline_id
+                                        ) || {};
+                                    const toBl =
+                                        allBaselines.find((b) => b._key === upgradeBaselineId) ||
+                                        {};
+                                    const fromLabel =
+                                        (fromBl.version || fromBl._key || "?") +
+                                        (fromBl.title ? " · " + fromBl.title : "");
+                                    const toLabel =
+                                        (toBl.version || toBl._key || "?") +
+                                        (toBl.title ? " · " + toBl.title : "");
+                                    const confirmMsg =
+                                        "Upgrade checklist \"" +
+                                        (activeUpgradeChecklist.title || clId) +
+                                        "\" from " +
+                                        fromLabel +
+                                        " to " +
+                                        toLabel +
+                                        "?\n\nMatching check content keeps review state. " +
+                                        "Changed rules reset editable drafts (including comments). " +
+                                        "Removed rules delete reviews. This cannot be undone automatically.";
+                                    if (!window.confirm(confirmMsg)) {
+                                        return;
+                                    }
                                     setBusy(true);
                                     apiFetch("stig_checklists/" + clId + "/upgrade", {
                                         method: "POST",

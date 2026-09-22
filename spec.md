@@ -627,12 +627,15 @@ Import responses:
 | GET/PATCH/DELETE | `/stig_checklists/{id}` | DELETE cascades reviews |
 | GET | `/stig_checklists/{id}/export` | Query `format=cklb|ckl` |
 | POST/PUT | `/stig_checklists/{id}/upgrade` | `{baseline_id}` — same `stig_id`, newer revision; merge reviews when `check_content_hash` matches |
+| POST | `/stig_imports` | Query `format=ckl|cklb|xccdf-results`, `source_uri`, `stig_collection_id`; raw body (see §11.4.1) |
 | GET/POST/DELETE | `/stig_collections/{id}/baseline_defaults` | Workspace default `baseline_id` per `stig_id` (`default_baseline_map` on collection) |
 | POST/PUT | `/stig_collections/{id}/upgrade_checklists` | `{baseline_id, from_baseline_id?, stig_id?}` — bulk upgrade matching checklists in workspace |
 
 POST validates: host belongs to workspace; baseline exists; baseline has rules.
 
-**Revision upgrade:** does not run automatically on baseline import. Call `upgrade` explicitly after importing a newer Manual STIG revision. For each rule in the target baseline, the prior review is matched by `group_id` / `rule_id`. When `check_content_hash` is unchanged, assessor fields and `workflow_state` carry forward. When the hash changed and the row is editable draft (not `ingest_lock`, `workflow_state=draft`), `status` resets to `not_reviewed` and finding details clear for re-assessment. Locked or submitted/accepted rows keep assessor content on hash mismatch (metadata still updates). Orphan reviews for removed rules are deleted; new rules spawn `not_reviewed` rows. Requires workspace **write** (same as checklist PATCH).
+**Revision upgrade:** does not run automatically on baseline import. Call `upgrade` explicitly after importing a newer Manual STIG revision. The target baseline must be a **newer** DISA-style revision (`VxRy` compared numerically, else `imported_at` on the baseline row). For each rule in the target baseline, the prior review is matched by composite `(group_id, rule_id)` only. When `check_content_hash` is unchanged, assessor fields and `workflow_state` carry forward. When the hash changed and the row is editable draft (not `ingest_lock`, `workflow_state=draft`), `status` resets to `not_reviewed` and assessor text (`finding_details`, `comments`, `reject_feedback`) clears for re-assessment. Locked or submitted/accepted rows keep assessor content on hash mismatch (metadata still updates). Orphan reviews for removed rules are deleted; new rules spawn `not_reviewed` rows. Requires workspace **write** (same as checklist PATCH). Bulk upgrade calls `require_workspace_write` before listing targets (403 for read-only callers).
+
+**Non-atomic upgrade:** reviews are updated one KV row at a time, then the checklist `baseline_id` is updated last. A mid-request KV failure can leave reviews on the new baseline while the checklist still references the old baseline (or the inverse). Re-run `upgrade` with the same target after fixing the error, or restore from backup; there is no multi-document transaction.
 
 ### 11.4.1 Checklist file import and HEC ingest
 
