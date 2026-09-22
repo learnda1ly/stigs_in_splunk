@@ -26,6 +26,7 @@ from services import checklists as checklists_svc
 from services import baseline_defaults as baseline_defaults_svc
 from services import review_requirements as review_requirements_svc
 from services import collection_metadata as collection_metadata_svc
+from services import collection_transfer as collection_transfer_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
 from services import labels as labels_svc
@@ -304,6 +305,24 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return self._collection_labels(
                 method, key, parts[2:], payload, service, session, username
             )
+
+        if len(parts) == 3 and parts[1] == "export-to":
+            if method not in ("POST", "PUT"):
+                return _error("method not allowed", status=405)
+            dest_id = parts[2]
+            body = _body_json(payload)
+            try:
+                result = collection_transfer_svc.export_hosts_to_collection(
+                    service, key, dest_id, body, username, session
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+            status = 201 if int((result.get("summary") or {}).get("moved") or 0) else 200
+            return _json_response(result, status=status)
 
         if len(parts) == 2 and parts[1] == "upgrade_checklists":
             if method not in ("POST", "PUT"):
@@ -760,7 +779,16 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return _json_response(rec)
         if method in ("PATCH", "POST", "PUT"):
             body = _body_json(payload)
-            updated = hosts_svc.update_host(service, key, body, username, session)
+            try:
+                updated = hosts_svc.update_host(
+                    service, key, body, username, session
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
             return _json_response(updated)
         if method == "DELETE":
             if not access.user_has_stig_admin(session):

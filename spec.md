@@ -613,10 +613,11 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 | GET | `/stig_collections/{id}/poam` | `format?` (`json`, `csv`, `xlsx`) | POA&M-style export for governance-open findings. |
 | POST/PUT | `/stig_collections/{id}/archive/ckl` | Query or JSON `host_id?`, `baseline_id?` | Zip archive of all CKL checklists in the workspace (grant ACL applied). **400** when no checklists match. **404** when workspace hidden. Response JSON: `{filename, format, count, files, content_base64, stig_collection_id, filters}`. Zip entry names: `{hostname}_{stig_id}_{version}.ckl`. |
 | POST/PUT | `/stig_collections/{id}/archive/cklb` | Same filters as CKL archive | Same as CKL archive with `.cklb` entries. |
+| POST/PUT | `/stig_collections/{src}/export-to/{dst}` | JSON `{host_ids: [string]}` | Bulk transfer hosts from `src` to `dst` workspace. Checklists follow each host (host row updated before checklists; single-host rollback on checklist failure). Rejects move when destination already has same hostname (case-insensitive), per-host `error`: `destination_hostname_collision`. **403** without write on either workspace (checked before the loop); **404** when workspace missing/hidden; **400** when `host_ids` empty or `src` equals `dst`. Per-host `results` (`moved`, `skipped`, `error`); `summary` counts. Hosts are processed in order with **no request-level rollback**—successful moves stay committed if later ids fail. **201** when `summary.moved > 0` (even if some hosts failed/skipped), else **200**. Audit: `transfer` on `stig_host` per successful move. |
 
 Default `access_principals` on create: `["user:<creator>"]` if omitted. The Default holding workspace uses `[]` (any user with STIG caps).
 
-`POST /stig_imports` may omit `stig_collection_id`; the Default workspace is used. Move a host with `POST /stig_hosts/{id}` `{stig_collection_id}` (checklists follow the host).
+`POST /stig_imports` may omit `stig_collection_id`; the Default workspace is used. Move a host with `PATCH /stig_hosts/{id}` `{stig_collection_id}` (checklists follow the host; reviews stay keyed by `checklist_id`). Bulk move: `POST /stig_collections/{src}/export-to/{dst}` with JSON `{host_ids: [...]}` — requires workspace **write** on source and destination; returns per-host `results` and `summary`; emits audit `transfer` per moved host. On move, `label_ids` are kept only when the label exists in the destination workspace; grants are not copied.
 
 #### Grants (`/stig_collections/{id}/grants`)
 
