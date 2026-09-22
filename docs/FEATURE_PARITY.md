@@ -66,8 +66,8 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count (approx.) |
 |--------|-----------------|
-| done | 26 |
-| partial | 12 |
+| done | 27 |
+| partial | 11 |
 | missing | 16 |
 | n/a | 8 |
 
@@ -143,7 +143,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Collection archive export CKL | API: `POST .../archive/ckl` | **partial** | `GET /stig_checklists/{id}/export?format=ckl`; bulk `stig_checklists/export_bulk` zip. | Workspace-scoped bulk export; filename conventions (tests). | P1 | — |
 | Collection archive export CKLB | API: `POST .../archive/cklb` | **partial** | Same as CKL for CKLB. | Bulk zip includes all checklists in workspace filter. | P1 | — |
 | Collection archive export XCCDF | API: `POST .../archive/xccdf` | **missing** | — | Optional XCCDF results export from KV state. | P2 | L |
-| STIGMan Watcher integration | [stigman-watcher](https://github.com/NUWCDIVNPT/stigman-watcher) | **partial** | HEC + `events.py` fat events; reconcile job every 5m. | Document event schema; parity with Watcher POST fields. | P1 | S |
+| STIGMan Watcher integration | [stigman-watcher](https://github.com/NUWCDIVNPT/stigman-watcher) | **done** | HEC + `events.py` fat events; reconcile every 5m. Event schema and Watcher POST field parity documented in [watcher-hec.md](watcher-hec.md). | Document event schema; parity with Watcher POST fields. | P1 | S |
 | Async import/export jobs | API: `/jobs`, `/jobs/{jobId}/runs`, tasks | **partial** | `/stig_baselines/jobs` chunk upload only. | Extend job pattern for large collection import/export if needed. | P2 | M |
 | Evaluate-STIG / API automation | OpenAPI entire surface | **partial** | Custom `/stig_*` only; no OpenAPI publish. | Optional `docs/openapi.yaml` for Splunk REST; versioning policy. | P2 | M |
 
