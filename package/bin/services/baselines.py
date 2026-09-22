@@ -101,13 +101,19 @@ def _orphan_rule_summary(rule: Dict[str, Any]) -> Dict[str, Any]:
 def gc_orphan_baseline_rules(
     service, username: str, *, execute: bool = False
 ) -> Dict[str, Any]:
-    """Report or delete orphan baseline rules. Does not touch checklists or reviews."""
+    """Report or delete orphan baseline rules. Does not touch checklists or reviews.
+
+    Orphan rows without a KV ``_key`` appear in ``orphan_count`` / ``orphans`` but
+    cannot be deleted; ``skipped_no_key_count`` reports how many were skipped on execute.
+    """
     orphans = find_orphan_baseline_rules(service)
+    skipped_no_key = sum(1 for r in orphans if not (r.get("_key") or "").strip())
     result: Dict[str, Any] = {
         "dry_run": not execute,
         "orphan_count": len(orphans),
         "orphans": [_orphan_rule_summary(r) for r in orphans],
         "deleted_count": 0,
+        "skipped_no_key_count": skipped_no_key,
     }
     if not execute:
         return result
@@ -115,24 +121,26 @@ def gc_orphan_baseline_rules(
     rules_coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
     deleted = 0
     for rule in orphans:
-        key = rule.get("_key")
+        key = (rule.get("_key") or "").strip()
         if not key:
             continue
         kv_client.delete_record(rules_coll, key)
         deleted += 1
 
-    audit.log_event(
-        "gc_orphan_rules",
-        "stig_baseline_rules",
-        None,
-        username,
-        {
-            "deleted_count": deleted,
-            "orphan_count": len(orphans),
-        },
-    )
     result["dry_run"] = False
     result["deleted_count"] = deleted
+    if deleted > 0:
+        audit.log_event(
+            "gc_orphan_rules",
+            "stig_baseline_rules",
+            None,
+            username,
+            {
+                "deleted_count": deleted,
+                "orphan_count": len(orphans),
+                "skipped_no_key_count": skipped_no_key,
+            },
+        )
     return result
 
 

@@ -111,7 +111,8 @@ class TestOrphanBaselineRulesGcService(unittest.TestCase):
         self.assertEqual(report["orphans"], [])
         self.assertEqual(report["deleted_count"], 0)
 
-    def test_orphans_detected(self):
+    @patch("services.baselines.audit.log_event")
+    def test_orphans_detected(self, mock_audit):
         self.kv.tables["stig_baseline_rules"]["orph1"] = {
             "_key": "orph1",
             "baseline_id": "gone",
@@ -131,6 +132,7 @@ class TestOrphanBaselineRulesGcService(unittest.TestCase):
         )
         self.assertEqual(report["orphan_count"], 2)
         self.assertEqual(len(self.kv.tables["stig_baseline_rules"]), 3)
+        mock_audit.assert_not_called()
 
     @patch("services.baselines.audit.log_event")
     def test_execute_deletes_only_orphans(self, mock_audit):
@@ -149,6 +151,31 @@ class TestOrphanBaselineRulesGcService(unittest.TestCase):
         self.assertNotIn("orph1", self.kv.tables["stig_baseline_rules"])
         mock_audit.assert_called_once()
         self.assertEqual(mock_audit.call_args[0][0], "gc_orphan_rules")
+
+    @patch("services.baselines.audit.log_event")
+    def test_execute_with_no_orphans_does_not_audit(self, mock_audit):
+        report = baselines_svc.gc_orphan_baseline_rules(
+            self.service, "admin", execute=True
+        )
+        self.assertFalse(report["dry_run"])
+        self.assertEqual(report["deleted_count"], 0)
+        mock_audit.assert_not_called()
+
+    @patch("services.baselines.audit.log_event")
+    @patch("services.baselines.find_orphan_baseline_rules")
+    def test_execute_skips_orphans_without_key(
+        self, mock_find, mock_audit
+    ):
+        mock_find.return_value = [
+            {"baseline_id": "gone", "rule_id": "SV-1", "group_id": "V-1"}
+        ]
+        report = baselines_svc.gc_orphan_baseline_rules(
+            self.service, "admin", execute=True
+        )
+        self.assertEqual(report["orphan_count"], 1)
+        self.assertEqual(report["deleted_count"], 0)
+        self.assertEqual(report["skipped_no_key_count"], 1)
+        mock_audit.assert_not_called()
 
     def test_parse_execute_flag_defaults_dry_run(self):
         self.assertFalse(baselines_svc.parse_orphan_gc_execute_flag({}, {}))
@@ -216,7 +243,7 @@ class TestOrphanBaselineRulesGcRest(unittest.TestCase):
         self.assertEqual(resp["status"], 200)
         self.assertTrue(mock_gc.call_args.kwargs.get("execute"))
 
-    def test_non_admin_denied(self):
+    def test_non_admin_post_denied(self):
         handler = stig_rest_handler.StigRestHandler("", "")
         payload = {
             "method": "POST",
@@ -228,6 +255,22 @@ class TestOrphanBaselineRulesGcRest(unittest.TestCase):
             "rest_path": "stig_baselines/gc_orphan_rules",
             "query": [],
             "payload": {},
+        }
+        with patch.object(stig_rest_handler.kv_client, "connect", return_value=MagicMock()):
+            resp = handler.handle(json.dumps(payload))
+        self.assertEqual(resp["status"], 403)
+
+    def test_non_admin_get_denied(self):
+        handler = stig_rest_handler.StigRestHandler("", "")
+        payload = {
+            "method": "GET",
+            "session": {
+                "authtoken": "token",
+                "user": "reader",
+                "capabilities": {"stig_read": True, "stig_write": True},
+            },
+            "rest_path": "stig_baselines/gc_orphan_rules",
+            "query": [],
         }
         with patch.object(stig_rest_handler.kv_client, "connect", return_value=MagicMock()):
             resp = handler.handle(json.dumps(payload))
