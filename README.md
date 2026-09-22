@@ -6,6 +6,8 @@ See [spec.md](spec.md) for the full build specification.
 
 For a gap backlog vs [STIG Manager](https://github.com/NUWCDIVNPT/stig-manager) (reference only), see [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md).
 
+REST contract (OpenAPI 3): [docs/openapi.yaml](docs/openapi.yaml) and [docs/api.md](docs/api.md).
+
 Watcher / HEC **`stig:finding`** event schema (STIGMan Watcher parity): [docs/watcher-hec.md](docs/watcher-hec.md).
 
 ## Build with Splunk UCC
@@ -94,6 +96,8 @@ Assign `stig_user` or `stig_admin`, or grant capabilities `stig_read`, `stig_wri
 ```text
 https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 ```
+
+**API contract:** [docs/openapi.yaml](docs/openapi.yaml) (OpenAPI 3) and [docs/api.md](docs/api.md). `info.version` tracks `package/app.manifest`; update the YAML when persist routes change in `package/bin/stig_rest_handler.py`.
 
 Resources: `stig_collections` (including `/{id}/grants`, `/{id}/baseline_defaults`, `/{id}/review_requirements`, `/{id}/metadata`, `/{id}/metrics`, `/{id}/findings`), `stig_hosts` (including `/{id}/metadata` for asset JSON metadata), `stig_baselines` (including `/hierarchy`, `/by_stig/{stigId}`, `/rule/{ruleKey}`, `/{id}/rules/{ruleRef}`), `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_assignment_rules`, `stig_settings` (app configuration JSON adapter; see [spec.md §11.7](spec.md#117-stig_settings-app-configuration-adapter)).
 
