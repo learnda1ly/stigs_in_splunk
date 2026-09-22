@@ -167,7 +167,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 |---------|-------------------------|--------|-----------|-----------------------------|-----|------|
 | OpenAPI 3 contract | `stig-manager.yaml` | **missing** | Undocumented persist REST conventions. | Publish Splunk REST OpenAPI or markdown reference generated from handler. | P2 | M |
 | Live state / SSE | API: `/op/state/sse` | **n/a** | Splunk Web polling or custom SSE if needed. | Document refresh strategy in UI. | P2 | S |
-| App configuration API | API: `/op/configuration` | **partial** | UCC `stigs_in_splunk_settings.conf`; `GET/POST /stig_settings` (no HEC token). | Settings documented in globalConfig + spec. | P1 | — |
+| App configuration API | API: `/op/configuration` | **done** | UCC `stigs_in_splunk_settings.conf` `[general]` + `GET/POST|PATCH /stig_settings` JSON adapter (`services/settings.py`). **HEC token** only on `[http://stig_findings]` input — never in conf or REST. Field catalog: `globalConfig.yaml` tab **Editor & ingest**, spec §4.3.1 / §11.7, README. Legacy KV `stig_editor_settings` fallback documented. | Settings documented in globalConfig + spec. | P1 | — |
 | Horizontal scale / stateless API | Container scale-out | **n/a** | Splunk KV on search head; scale via Splunk architecture. | Deployment guide for SHC/KV. | — | — |
 | MySQL persistence | Required | **n/a** | KV store collections. | — | — | — |
 | Packaging & install | Docker / binaries | **done** | UCC build, tarball, `link-splunk-app.sh`. | Reproducible CI build artifact. | P0 | — |
