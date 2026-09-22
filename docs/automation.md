@@ -94,6 +94,29 @@ Use when a scanner agent already posts **one event per rule** (same shape as [ST
 
 Field-level schema, `result` → review status mapping, and fat vs slim events: **[watcher-hec.md](watcher-hec.md)**.
 
+Minimal HEC post (one slim finding; expand fields per [watcher-hec.md](watcher-hec.md)):
+
+```bash
+curl -k "https://localhost:8088/services/collector/event" \
+  -H "Authorization: Splunk YOUR_HEC_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "index": "stig",
+    "sourcetype": "stig:finding",
+    "event": {
+      "assetName": "web-01.example.mil",
+      "benchmarkId": "RHEL_9_STIG",
+      "collectionId": "COLLECTION_ID",
+      "ruleId": "SV-123456r1_rule",
+      "groupId": "V-123456",
+      "result": "fail",
+      "detail": "Permission denied on /etc/shadow"
+    }
+  }'
+```
+
+Reconcile indexed findings into KV (management port, `stig_write`):
+
 ```bash
 curl -k -u admin:changeme -X POST \
   "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_imports/reconcile?earliest=-15m"
