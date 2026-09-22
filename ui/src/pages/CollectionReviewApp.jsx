@@ -26,7 +26,7 @@ import {
     Shell,
     Toolbar,
 } from "../layout";
-import { STATUS_LABELS, StatusChip, reviewIsValid } from "../status";
+import { STATUS_LABELS, StatusChip, reviewIsValid, reviewValidationIssues, DEFAULT_REVIEW_REQUIREMENTS, normalizeReviewRequirements } from "../status";
 
 const CellInput = styled.textarea`
     box-sizing: border-box;
@@ -82,6 +82,9 @@ function emptyRow(host, checklist, review) {
 export default function CollectionReviewApp() {
     const [collections, setCollections] = useState([]);
     const [collectionId, setCollectionId] = useState("");
+    const [reviewRequirements, setReviewRequirements] = useState(
+        DEFAULT_REVIEW_REQUIREMENTS
+    );
     const [hosts, setHosts] = useState([]);
     const [checklists, setChecklists] = useState([]);
     const [baselines, setBaselines] = useState([]);
@@ -118,6 +121,7 @@ export default function CollectionReviewApp() {
         if (!cid) {
             setHosts([]);
             setChecklists([]);
+            setReviewRequirements(DEFAULT_REVIEW_REQUIREMENTS);
             return;
         }
         setLoading(true);
@@ -125,8 +129,15 @@ export default function CollectionReviewApp() {
             apiGet("stig_hosts", { stig_collection_id: cid }),
             apiGet("stig_checklists", { stig_collection_id: cid }),
             apiGet("stig_baselines"),
+            apiGet("stig_collections/" + cid + "/review_requirements"),
         ])
-            .then(([hs, cls, bl]) => {
+            .then(([hs, cls, bl, reqBody]) => {
+                setReviewRequirements(
+                    normalizeReviewRequirements(
+                        (reqBody && reqBody.review_requirements) ||
+                            DEFAULT_REVIEW_REQUIREMENTS
+                    )
+                );
                 setHosts(Array.isArray(hs) ? hs : []);
                 setChecklists(Array.isArray(cls) ? cls : []);
                 setBaselines(Array.isArray(bl) ? bl : []);
@@ -273,6 +284,27 @@ export default function CollectionReviewApp() {
         if (!pending.length) {
             setBanner({ type: "warning", text: "No changes to save." });
             return;
+        }
+        for (let i = 0; i < pending.length; i += 1) {
+            const row = pending[i];
+            const issues = reviewValidationIssues(
+                {
+                    status: row.status,
+                    finding_details: row.finding,
+                    comments: row.comments,
+                },
+                reviewRequirements
+            );
+            if (issues.length) {
+                setBanner({
+                    type: "error",
+                    text:
+                        (row.hostname || row.hostId) +
+                        ": " +
+                        (issues[0].message || "Review validation failed"),
+                });
+                return;
+            }
         }
         setBusy(true);
         const body = {
@@ -447,10 +479,14 @@ export default function CollectionReviewApp() {
                         </Table.Head>
                         <Table.Body>
                             {rows.map((row) => {
-                                const complete = reviewIsValid({
-                                    finding_details: row.finding,
-                                    comments: row.comments,
-                                });
+                                const complete = reviewIsValid(
+                                    {
+                                        status: row.status,
+                                        finding_details: row.finding,
+                                        comments: row.comments,
+                                    },
+                                    reviewRequirements
+                                );
                                 const rowId = row.review
                                     ? row.review._key
                                     : row.checklistId;

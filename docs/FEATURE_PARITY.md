@@ -125,9 +125,9 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Asset review workspace (single STIG) | UI: Evaluation tab. API: `GET/PATCH .../reviews/{assetId}/{ruleId}` | **done** | STIG Editor (React): rule list, status, details, comments, progress. | Status immediate save; details/comments require write; keyboard/vim optional. | P0 | — |
 | Collection review workspace (one rule, many assets) | UI: Collection Review. API: batch-oriented review GETs | **done** | SplunkUI **Collection review** view (`stig_collection_review_ui`); batch field PATCH; submit/accept/reject still **partial** (STIG Editor only). | New SplunkUI view: pick baseline+rule, edit rows per host; batch PATCH API. | P0 | L |
 | Review status enum | Open / NAF / N/A / Not Reviewed | **done** | Same canonical statuses; CKL/CKLB mapping on export. | Round-trip export tests. | P0 | — |
-| Review detail & comments | API: review body fields | **done** | `finding_details`, `comments`; UI validation via `reviewIsValid`. | Align required-field policy with collection settings (future). | P0 | — |
+| Review detail & comments | API: review body fields | **done** | `finding_details`, `comments`; `valid` / `validation_errors` from workspace `review_requirements`. | Required-field policy configurable per workspace (see Collection review requirements). | P0 | — |
 | Save vs submit vs accept/reject | UI: Submit, Accept, Reject with feedback | **done** | `workflow_state` on `stig_reviews`; REST submit/accept/reject + governance batch; STIG Editor UI; owner/manager grants + `review_accept_principals`; ingest skips non-draft rows; metrics use governance open findings. Collection review UI: **partial** (no governance buttons). | Optional workflow fields on `stig_reviews` + UI actions; owner-only accept/reject. | P1 | L |
-| Collection review requirements | UI: Collection Settings `(?)` | **partial** | Client-side “complete” = non-empty details or comments; not configurable per workspace. | Workspace settings for required fields, min comment length, etc. | P1 | M |
+| Collection review requirements | UI: Collection Settings `(?)` | **done** | KV `review_requirements` JSON on `stig_collections`; REST `GET/PATCH .../review_requirements`; SplunkUI **Review requirements**; server validation on review PATCH/submit; Editor + Collection review read policy. Default preserves legacy “details or comments” rule. | Workspace settings for required fields, min comment length, etc. | P1 | M |
 | Review history | API: `/collections/{id}/review-history`, stats | **missing** | Only `updated_at` / `updated_by` on review. | History collection or indexed audit; UI timeline per rule. | P2 | L |
 | Review aging rules | API: `/collections/{id}/tasks/review-aging/config` | **missing** | — | Scheduled search or KV flags for stale reviews; optional notifications. | P2 | M |
 | Cross-asset review resources (drag-drop) | UI: Review Resources panel | **missing** | — | Show other hosts’ same rule review in editor sidebar; copy action. | P2 | M |
@@ -222,6 +222,8 @@ OpenAPI **tags** (approximate operation counts from `stig-manager.yaml`): Collec
 | `stig_collections/{id}/metrics` | Workspace metrics subpath on collections handler |
 | `stig_collections/{id}/findings` | Workspace findings subpath on collections handler |
 | `stig_collections/{id}/findings/aggregate` | Governance-open findings counts by group, rule, CCI |
+| `stig_collections/{id}/baseline_defaults` | Workspace default baseline per STIG id |
+| `stig_collections/{id}/review_requirements` | Workspace review validation policy (GET/PATCH) |
 | `stig_collections/{id}/poam` | POA&M-style CSV/XLSX/JSON export |
 | `stig_collections/{id}/unreviewed/rules` | Unreviewed rule counts with host coverage |
 | `stig_collections/{id}/unreviewed/assets` | Unreviewed counts per host with per-baseline breakdown |

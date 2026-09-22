@@ -635,6 +635,7 @@ Import responses:
 | POST/PUT | `/stig_checklists/{id}/upgrade` | `{baseline_id}` — same `stig_id`, newer revision; merge reviews when `check_content_hash` matches |
 | POST | `/stig_imports` | Query `format=ckl|cklb|xccdf-results`, `source_uri`, `stig_collection_id`; raw body (see §11.4.1) |
 | GET/POST/DELETE | `/stig_collections/{id}/baseline_defaults` | Workspace default `baseline_id` per `stig_id` (`default_baseline_map` on collection) |
+| GET/PATCH | `/stig_collections/{id}/review_requirements` | Workspace review validation policy (`review_requirements` JSON on collection). **GET** returns `{stig_collection_id, review_requirements, defaults}`. **PATCH** body `{review_requirements: {...}}` or flat policy fields; requires workspace **write**. |
 | POST/PUT | `/stig_collections/{id}/upgrade_checklists` | `{baseline_id, from_baseline_id?, stig_id?}` — bulk upgrade matching checklists in workspace |
 
 POST validates: host belongs to workspace; baseline exists; baseline has rules.
@@ -670,7 +671,19 @@ Requires **`stig_write`**.
 | POST | `/stig_reviews/{id}/reject` | `{reject_feedback?}` — returns review to `draft` |
 | POST | `/stig_reviews/batch` | Field batch: `{reviews: [{_key, ...}]}` **or** governance: `{action, review_ids[], reject_feedback?}` (mutually exclusive; max 500 ids). Both return `{updated: [...], errors: [...], summary: {total, succeeded, failed}}`; governance adds `action`. |
 
-Updates require workspace **write** access via parent checklist. Content PATCH is allowed only in `workflow_state=draft` (except `stig_admin`). Validate `status` against allowed set; accept internal or CKLB status strings on input. `ingest_lock=true` blocks HEC/reconcile from overwriting that finding. See **FEATURE_PARITY.md** for the state machine.
+Updates require workspace **write** access via parent checklist. Content PATCH is allowed only in `workflow_state=draft` (except `stig_admin`). Validate `status` against allowed set; accept internal or CKLB status strings on input. Content PATCH and submit enforce the workspace **`review_requirements`** policy (see below); invalid rows return **400** with a message derived from `validation_errors`. `ingest_lock=true` blocks HEC/reconcile from overwriting that finding. See **FEATURE_PARITY.md** for the state machine.
+
+**Review requirements policy** (stored on `stig_collections.review_requirements` as JSON):
+
+| Field | Type | Default | Meaning |
+|-------|------|---------|---------|
+| `require_finding_details` | bool | `false` | Trimmed finding details required (min length below). |
+| `require_comments` | bool | `false` | Trimmed comments required (min length below). |
+| `min_finding_details_length` | int | `0` | Minimum trimmed length when `require_finding_details` is true (implicit minimum 1). |
+| `min_comments_length` | int | `0` | Minimum trimmed length when `require_comments` is true (implicit minimum 1). |
+| `applies_to_statuses` | string[] | `[]` | When empty, policy applies to all statuses; when set, only listed assessor statuses are validated. |
+
+When both `require_*` flags are false and both minimums are zero, validation matches legacy behavior: at least one of finding details or comments must be non-empty after trim. A non-zero minimum length implicitly sets the corresponding `require_*` flag on persist (PATCH normalizes stored policy).
 
 **Batch updates** apply each row independently (**partial success**). Response: `{updated: [...], errors: [{_key?, error, code?}], summary: {total, succeeded, failed}}`. Rows the caller cannot write return `code: forbidden`; missing keys return `not_found`. Maximum **500** reviews per request.
 

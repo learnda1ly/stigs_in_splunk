@@ -16,6 +16,7 @@ module.exports = {
         collection_review: path.join(__dirname, "src/collection_review.jsx"),
         collection_dashboard: path.join(__dirname, "src/collection_dashboard.jsx"),
         workspace_defaults: path.join(__dirname, "src/workspace_defaults.jsx"),
+        review_requirements: path.join(__dirname, "src/review_requirements.jsx"),
         grants: path.join(__dirname, "src/grants.jsx"),
     },
     output: {

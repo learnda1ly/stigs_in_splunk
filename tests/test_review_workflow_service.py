@@ -12,6 +12,7 @@ if _BIN not in sys.path:
     sys.path.insert(0, _BIN)
 
 from services import reviews as reviews_svc  # noqa: E402
+from services import review_requirements as req_svc  # noqa: E402
 
 
 class ReviewWorkflowServiceTests(unittest.TestCase):
@@ -127,14 +128,20 @@ class ReviewWorkflowServiceTests(unittest.TestCase):
             [],
         )
 
-        with self.assertRaises(PermissionError):
-            reviews_svc.update_review(
-                MagicMock(),
-                "rev1",
-                {"finding_details": "b"},
-                "writer",
-                self._session_writer(),
-            )
+        with patch.object(
+            reviews_svc,
+            "review_requirements_svc",
+        ) as mock_req:
+            mock_req.default_policy.return_value = req_svc.default_policy()
+            mock_req.get_policy.return_value = req_svc.default_policy()
+            with self.assertRaises(PermissionError):
+                reviews_svc.update_review(
+                    MagicMock(),
+                    "rev1",
+                    {"finding_details": "b"},
+                    "writer",
+                    self._session_writer(),
+                )
 
     def test_batch_workflow_enforces_max(self):
         ids = [str(i) for i in range(reviews_svc.MAX_BATCH_REVIEWS + 1)]

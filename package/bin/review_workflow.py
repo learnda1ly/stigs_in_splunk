@@ -51,7 +51,11 @@ def is_governance_open_finding(record: Dict[str, Any]) -> bool:
     return record.get("status") == "open" and workflow_state(record) != "accepted"
 
 
-def transition(action: str, record: Dict[str, Any]) -> str:
+def transition(
+    action: str,
+    record: Dict[str, Any],
+    policy: Optional[Dict[str, Any]] = None,
+) -> str:
     current = workflow_state(record)
     if action == "reject":
         if current != "submitted":
@@ -64,9 +68,11 @@ def transition(action: str, record: Dict[str, Any]) -> str:
         raise ValueError(
             f"cannot {action} review in workflow_state={current}"
         )
-    if action == "submit" and not validation.is_valid(record):
+    if action == "submit" and not validation.is_valid(record, policy):
+        issues = validation.collect_issues(record, policy)
         raise ValueError(
-            "cannot submit an incomplete review; add finding details or comments"
+            "cannot submit an incomplete review: "
+            + validation.format_issue_messages(issues)
         )
     return _TRANSITIONS[key]
 

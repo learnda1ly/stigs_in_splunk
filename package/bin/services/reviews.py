@@ -14,6 +14,7 @@ from models import KV_STIG_CHECKLISTS, KV_STIG_COLLECTIONS
 from services import checklists as checklists_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
+from services import review_requirements as review_requirements_svc
 
 MAX_BATCH_REVIEWS = 500
 
@@ -33,8 +34,26 @@ def _as_bool(value) -> Optional[bool]:
     return None
 
 
-def _annotate(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return [validation.annotate_review(rec) for rec in records]
+def _policy_for_checklist(
+    service, checklist_id: str, session: Dict[str, Any]
+) -> Dict[str, Any]:
+    checklist = checklists_svc.get_checklist(service, checklist_id, session)
+    if not checklist:
+        return review_requirements_svc.default_policy()
+    collection_id = checklist.get("stig_collection_id")
+    if not collection_id:
+        return review_requirements_svc.default_policy()
+    try:
+        return review_requirements_svc.get_policy(service, collection_id, session)
+    except KeyError:
+        return review_requirements_svc.default_policy()
+
+
+def _annotate(
+    records: List[Dict[str, Any]],
+    policy: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    return [validation.annotate_review(rec, policy) for rec in records]
 
 
 def _workspace_for_checklist(
@@ -68,9 +87,10 @@ def _apply_workflow_patch(
     action: str,
     username: str,
     reject_feedback: Optional[str] = None,
+    policy: Optional[Dict[str, Any]] = None,
 ) -> None:
     ts = now_epoch()
-    next_state = review_workflow.transition(action, patch)
+    next_state = review_workflow.transition(action, patch, policy)
     patch["workflow_state"] = next_state
     if action == "submit":
         patch["submitted_at"] = ts
@@ -116,9 +136,14 @@ def _workflow_action(
     else:
         raise ValueError(f"unknown workflow action: {action}")
 
+    policy = review_requirements_svc.get_policy(
+        service, workspace["_key"], session
+    )
     patch = dict(existing)
-    _apply_workflow_patch(patch, action, username, reject_feedback=reject_feedback)
-    patch["valid"] = validation.persistable_valid(patch)
+    _apply_workflow_patch(
+        patch, action, username, reject_feedback=reject_feedback, policy=policy
+    )
+    patch["valid"] = validation.persistable_valid(patch, policy)
     stored = kv_client.update_record(coll, key, kv_record(patch))
     audit.log_event(
         action,
@@ -127,7 +152,7 @@ def _workflow_action(
         username,
         {"workflow_state": stored.get("workflow_state")},
     )
-    return validation.annotate_review(stored)
+    return validation.annotate_review(stored, policy)
 
 
 def submit_review(
@@ -247,6 +272,10 @@ def list_reviews(
             return []
         if rec.get("stig_collection_id") not in allowed:
             return []
+        policy = review_requirements_svc.get_policy(
+            service, rec.get("stig_collection_id"), session
+        )
+        annotated = _annotate(records, policy)
     else:
         checklist_coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
         visible_checklists = {
@@ -255,8 +284,8 @@ def list_reviews(
             if c.get("stig_collection_id") in allowed
         }
         records = [r for r in records if r.get("checklist_id") in visible_checklists]
+        annotated = _annotate_with_workspace_policies(service, records, session)
 
-    annotated = _annotate(records)
     want = _as_bool(valid)
     if want is not None:
         annotated = [r for r in annotated if bool(r.get("valid")) is want]
@@ -278,7 +307,10 @@ def get_review(service, key: str, session: Dict[str, Any]) -> Optional[Dict[str,
     checklist_id = rec.get("checklist_id")
     if checklist_id:
         checklists_svc.get_checklist(service, checklist_id, session)
-    return validation.annotate_review(rec)
+        policy = _policy_for_checklist(service, checklist_id, session)
+    else:
+        policy = review_requirements_svc.default_policy()
+    return validation.annotate_review(rec, policy)
 
 
 def update_review(
@@ -319,12 +351,16 @@ def update_review(
         if locked is None:
             raise ValueError("ingest_lock must be a boolean")
         patch["ingest_lock"] = bool(locked)
-    patch["valid"] = validation.persistable_valid(patch)
+    policy = _policy_for_checklist(service, checklist_id, session)
+    issues = validation.collect_issues(patch, policy)
+    if any(k in body for k in content_keys) and issues:
+        raise ValueError(validation.format_issue_messages(issues))
+    patch["valid"] = validation.persistable_valid(patch, policy)
     patch["updated_at"] = now_epoch()
     patch["updated_by"] = username
     stored = kv_client.update_record(coll, key, kv_record(patch))
     audit.log_event("update", "stig_review", key, username, {"status": stored.get("status")})
-    return validation.annotate_review(stored)
+    return validation.annotate_review(stored, policy)
 
 
 def batch_update_reviews(
@@ -404,17 +440,20 @@ def validate_checklist(
     )
     if not checklist:
         raise KeyError(checklist_id)
+    policy = review_requirements_svc.get_policy(
+        service, checklist.get("stig_collection_id"), session
+    )
     coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
     records = kv_client.query_all(coll, {"checklist_id": checklist_id})
     annotated: List[Dict[str, Any]] = []
     valid_count = 0
     for rec in records:
-        result = validation.annotate_review(rec)
+        result = validation.annotate_review(rec, policy)
         if persist and _as_bool(rec.get("valid")) is not result["valid"]:
             patch = dict(rec)
             patch["valid"] = result["valid"]
             stored = kv_client.update_record(coll, rec["_key"], kv_record(patch))
-            result = validation.annotate_review(stored)
+            result = validation.annotate_review(stored, policy)
         if result["valid"]:
             valid_count += 1
         annotated.append(result)
@@ -427,3 +466,39 @@ def validate_checklist(
         "workflow": workflow,
         "reviews": annotated,
     }
+
+
+def _checklist_collection_map(service) -> Dict[str, str]:
+    checklist_coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
+    return {
+        c["_key"]: c.get("stig_collection_id") or ""
+        for c in kv_client.query_all(checklist_coll)
+    }
+
+
+def _annotate_with_workspace_policies(
+    service,
+    records: List[Dict[str, Any]],
+    session: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    if not records:
+        return []
+    checklist_map = _checklist_collection_map(service)
+    policy_cache: Dict[str, Dict[str, Any]] = {}
+    out: List[Dict[str, Any]] = []
+    for rec in records:
+        collection_id = checklist_map.get(rec.get("checklist_id") or "", "")
+        if collection_id not in policy_cache:
+            try:
+                if collection_id:
+                    policy_cache[collection_id] = review_requirements_svc.get_policy(
+                        service, collection_id, session
+                    )
+                else:
+                    policy_cache[collection_id] = review_requirements_svc.default_policy()
+            except KeyError:
+                policy_cache[collection_id] = review_requirements_svc.default_policy()
+        out.append(
+            validation.annotate_review(rec, policy_cache[collection_id])
+        )
+    return out

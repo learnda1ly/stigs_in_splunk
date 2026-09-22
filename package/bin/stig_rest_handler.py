@@ -23,6 +23,7 @@ from services import baselines as baselines_svc
 from services import baseline_jobs as baseline_jobs_svc
 from services import checklists as checklists_svc
 from services import baseline_defaults as baseline_defaults_svc
+from services import review_requirements as review_requirements_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
 from services import hosts as hosts_svc
@@ -221,6 +222,30 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     return _json_response(
                         baseline_defaults_svc.delete_default(
                             service, key, parts[2], username, session
+                        )
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            return _error("method not allowed", status=405)
+
+        if len(parts) >= 2 and parts[1] == "review_requirements":
+            if method == "GET" and len(parts) == 2:
+                try:
+                    return _json_response(
+                        review_requirements_svc.get_requirements(service, key, session)
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            if method in ("POST", "PUT", "PATCH") and len(parts) == 2:
+                body = _body_json(payload)
+                try:
+                    return _json_response(
+                        review_requirements_svc.patch_requirements(
+                            service, key, body, username, session
                         )
                     )
                 except KeyError:
