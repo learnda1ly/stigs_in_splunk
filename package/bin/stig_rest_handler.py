@@ -364,8 +364,26 @@ class StigRestHandler(PersistentServerConnectionApplication):
         if method == "DELETE":
             if not access.user_has_stig_admin(session):
                 return _error("stig_admin required", status=403)
-            collections_svc.delete_collection(service, key, username)
-            return _json_response({"deleted": key})
+            body = _body_json(payload)
+            cascade = collections_svc.parse_cascade_flag(
+                query.get("cascade"), body.get("cascade")
+            )
+            try:
+                result = collections_svc.delete_collection(
+                    service, key, username, cascade=cascade, source="rest"
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except collections_svc.CollectionDeleteBlockedError as exc:
+                return _json_response(
+                    {
+                        "error": str(exc),
+                        "children": exc.counts,
+                        "cascade_required": True,
+                    },
+                    status=409,
+                )
+            return _json_response(result)
         return _error("method not allowed", status=405)
 
     def _collection_grants(

@@ -93,6 +93,8 @@ https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 
 Resources: `stig_collections` (including `/{id}/grants`, `/{id}/baseline_defaults`, `/{id}/metrics`, `/{id}/findings`), `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_assignment_rules`.
 
+**Delete workspace:** `DELETE /stig_collections/{id}` requires **stig_admin**. If the workspace still has hosts, checklists, grants, or assignment rows, the API returns **409** unless you pass `?cascade=true` (or JSON `{"cascade": true}`), which removes those workspace-scoped rows and leaves **global baselines** unchanged. The UCC **Workspaces** tab only deletes empty workspaces (Splunk’s table delete confirm); use REST for cascade.
+
 ## Example flow (curl)
 
 Quick baseline import (single XCCDF). Large DISA library zips must use chunked `/stig_baselines/jobs`, not one POST:

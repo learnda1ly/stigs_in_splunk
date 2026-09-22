@@ -177,7 +177,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 
 | Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
 |---------|-------------------------|--------|-----------|-----------------------------|-----|------|
-| Cascade delete collection | SM collection delete semantics | **missing** | Spec: collection delete does not remove hosts/checklists (orphans). | Defined cascade or block delete with children. | P1 | M |
+| Cascade delete collection | SM collection delete semantics | **done** | `DELETE /stig_collections/{id}` blocks with **409** when children exist unless `cascade=true`; removes workspace hosts, checklists, reviews, grants, assignment rules/overrides; global baselines unchanged; UCC blocks non-empty workspace delete (REST cascade). | Defined cascade or block delete with children. | P1 | M |
 | Orphan baseline rule GC | — | **missing** | Known PoC limitation (spec §17). | Admin REST job to clean orphans. | P2 | S |
 | Workspace-scoped baseline catalog | — | **missing** | Baselines global (spec Phase 2). | Optional `stig_collection_id` on baselines or sharing ACL. | P2 | L |
 
