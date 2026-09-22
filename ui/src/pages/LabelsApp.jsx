@@ -42,6 +42,7 @@ export default function LabelsApp() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [info, setInfo] = useState("");
+    const [warning, setWarning] = useState("");
     const [newName, setNewName] = useState("");
     const [newColor, setNewColor] = useState("");
     const [renameDraft, setRenameDraft] = useState({});
@@ -122,15 +123,35 @@ export default function LabelsApp() {
         [selectedHostIds]
     );
 
-    async function createLabel() {
+    const workspaceHostIds = useMemo(() => {
+        const ids = new Set();
+        (hosts || []).forEach((h) => {
+            if (h && h._key) {
+                ids.add(h._key);
+            }
+        });
+        return ids;
+    }, [hosts]);
+
+    function clearMessages() {
         setError("");
         setInfo("");
+        setWarning("");
+    }
+
+    async function createLabel() {
+        clearMessages();
+        const name = (newName || "").trim();
+        if (!name) {
+            setError("Label name cannot be empty.");
+            return;
+        }
         try {
             await apiFetch("stig_collections/" + collectionId + "/labels", {
                 method: "POST",
                 body: {
-                    name: newName,
-                    color: newColor,
+                    name,
+                    color: (newColor || "").trim(),
                 },
             });
             setNewName("");
@@ -143,8 +164,7 @@ export default function LabelsApp() {
     }
 
     async function saveLabelName(labelId) {
-        setError("");
-        setInfo("");
+        clearMessages();
         const name = (renameDraft[labelId] || "").trim();
         if (!name) {
             setError("Label name cannot be empty.");
@@ -166,14 +186,26 @@ export default function LabelsApp() {
     }
 
     async function removeLabel(labelId) {
-        setError("");
-        setInfo("");
+        clearMessages();
+        const row = labelById[labelId] || {};
+        const displayName = (row.name || "").trim() || labelId;
+        if (
+            !window.confirm(
+                'Delete label "' +
+                    displayName +
+                    '"? Host assignments for this label are removed.'
+            )
+        ) {
+            return;
+        }
         try {
             await apiFetch(
                 "stig_collections/" + collectionId + "/labels/" + labelId,
                 { method: "DELETE" }
             );
-            setInfo("Label deleted.");
+            setInfo(
+                "Label deleted. Restricted grants no longer reference this label id."
+            );
             await loadWorkspaceData(collectionId);
         } catch (err) {
             setError(String(err.message || err));
@@ -205,8 +237,7 @@ export default function LabelsApp() {
     }
 
     async function bulkAssign() {
-        setError("");
-        setInfo("");
+        clearMessages();
         if (!bulkLabelId) {
             setError("Choose a label to assign.");
             return;
@@ -215,6 +246,10 @@ export default function LabelsApp() {
             setError("Select at least one host.");
             return;
         }
+        const requested = selectedIds.length;
+        const skippedUnknown = selectedIds.filter(
+            (id) => !workspaceHostIds.has(id)
+        );
         try {
             const result = await apiFetch(
                 "stig_collections/" +
@@ -227,20 +262,37 @@ export default function LabelsApp() {
                     body: { host_ids: selectedIds },
                 }
             );
-            const updated =
-                result && result.updated_hosts != null
-                    ? result.updated_hosts
-                    : selectedIds.length;
-            setInfo("Assigned label to " + updated + " host(s).");
+            const updated = Number(
+                result && result.updated_hosts != null ? result.updated_hosts : 0
+            );
             await loadWorkspaceData(collectionId);
+            if (updated < requested || skippedUnknown.length) {
+                let msg =
+                    "Assigned label to " +
+                    updated +
+                    " of " +
+                    requested +
+                    " selected host(s).";
+                if (skippedUnknown.length) {
+                    msg +=
+                        " Skipped unknown host ids: " +
+                        skippedUnknown.join(", ") +
+                        ".";
+                } else if (updated < requested) {
+                    msg +=
+                        " Remaining hosts already had this label or were not updated.";
+                }
+                setWarning(msg);
+            } else {
+                setInfo("Assigned label to " + updated + " host(s).");
+            }
         } catch (err) {
             setError(String(err.message || err));
         }
     }
 
     async function bulkUnassign() {
-        setError("");
-        setInfo("");
+        clearMessages();
         if (!bulkLabelId) {
             setError("Choose a label to remove.");
             return;
@@ -249,32 +301,48 @@ export default function LabelsApp() {
             setError("Select at least one host.");
             return;
         }
-        try {
-            let changed = 0;
-            for (const hostId of selectedIds) {
-                const host = (hosts || []).find((h) => h._key === hostId);
-                if (!host) {
-                    continue;
-                }
-                const ids = normalizeLabelIds(host).filter(
-                    (id) => id !== bulkLabelId
-                );
-                if (ids.length === normalizeLabelIds(host).length) {
-                    continue;
-                }
+        let changed = 0;
+        let failed = 0;
+        const failureDetails = [];
+        for (const hostId of selectedIds) {
+            const host = (hosts || []).find((h) => h._key === hostId);
+            if (!host) {
+                failed += 1;
+                failureDetails.push(hostId + ": host not in workspace");
+                continue;
+            }
+            const before = normalizeLabelIds(host);
+            const ids = before.filter((id) => id !== bulkLabelId);
+            if (ids.length === before.length) {
+                continue;
+            }
+            try {
                 await setHostLabels(hostId, ids);
                 changed += 1;
+            } catch (err) {
+                failed += 1;
+                failureDetails.push(
+                    hostId + ": " + String(err.message || err)
+                );
             }
+        }
+        await loadWorkspaceData(collectionId);
+        if (failed) {
+            setWarning(
+                "Removed label from " +
+                    changed +
+                    " host(s); " +
+                    failed +
+                    " failed. " +
+                    failureDetails.join("; ")
+            );
+        } else {
             setInfo("Removed label from " + changed + " host(s).");
-            await loadWorkspaceData(collectionId);
-        } catch (err) {
-            setError(String(err.message || err));
         }
     }
 
     async function toggleHostLabel(host, labelId, assign) {
-        setError("");
-        setInfo("");
+        clearMessages();
         const ids = normalizeLabelIds(host);
         const next = assign
             ? ids.includes(labelId)
@@ -312,6 +380,7 @@ export default function LabelsApp() {
             </Header>
             <PagePad>
                 {error ? <Message type="error">{error}</Message> : null}
+                {warning ? <Message type="warning">{warning}</Message> : null}
                 {info ? <Message type="info">{info}</Message> : null}
                 <Toolbar>
                     <ControlGroup label="Workspace">

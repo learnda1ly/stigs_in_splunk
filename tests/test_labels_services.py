@@ -165,6 +165,24 @@ class TestLabelsServices(unittest.TestCase):
         host = self.kv.tables["stig_hosts"]["h1"]
         self.assertIn(lbl["_key"], host["label_ids"])
 
+    def test_assign_skips_unknown_host_ids(self) -> None:
+        lbl = labels_svc.create_label(
+            self.service,
+            "ws1",
+            {"name": "Prod"},
+            "alice",
+            _session(write=True),
+        )
+        result = labels_svc.assign_label_to_hosts(
+            self.service,
+            "ws1",
+            lbl["_key"],
+            {"host_ids": ["missing-host"]},
+            "alice",
+            _session(write=True),
+        )
+        self.assertEqual(result["updated_hosts"], 0)
+
     def test_delete_label_strips_host_references(self) -> None:
         lbl = labels_svc.create_label(
             self.service,
@@ -186,6 +204,23 @@ class TestLabelsServices(unittest.TestCase):
         )
         host = self.kv.tables["stig_hosts"]["h1"]
         self.assertEqual(host["label_ids"], "[]")
+
+    def test_delete_label_prunes_grant_acl_labels(self) -> None:
+        lbl = labels_svc.create_label(
+            self.service,
+            "ws1",
+            {"name": "Scoped"},
+            "alice",
+            _session(write=True),
+        )
+        self.kv.tables["stig_collection_grants"]["g1"]["acl_labels"] = (
+            '["' + lbl["_key"] + '"]'
+        )
+        labels_svc.delete_label(
+            self.service, "ws1", lbl["_key"], "alice", _session(write=True)
+        )
+        grant = self.kv.tables["stig_collection_grants"]["g1"]
+        self.assertEqual(grant["acl_labels"], "[]")
 
 
 if __name__ == "__main__":
