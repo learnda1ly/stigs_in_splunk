@@ -69,7 +69,7 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count |
 |--------|-------|
-| done | 58 |
+| done | 59 |
 | partial | 0 |
 | missing | 0 |
 | n/a | 8 |
