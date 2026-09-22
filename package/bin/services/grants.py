@@ -194,7 +194,11 @@ def create_grant(
             "acl_baseline_ids": dumps_json(
                 _normalize_id_list(body.get("acl_baseline_ids"))
             ),
-            "acl_labels": dumps_json([]),
+            "acl_labels": dumps_json(
+                _normalize_id_list(
+                    body.get("acl_labels") if "acl_labels" in body else body.get("acl_label_ids")
+                )
+            ),
             "created_at": ts,
             "updated_at": ts,
             "created_by": username,
@@ -244,6 +248,10 @@ def update_grant(
         patch["acl_baseline_ids"] = dumps_json(
             _normalize_id_list(body.get("acl_baseline_ids"))
         )
+    if "acl_labels" in body or "acl_label_ids" in body:
+        patch["acl_labels"] = dumps_json(
+            _normalize_id_list(body.get("acl_labels") or body.get("acl_label_ids"))
+        )
     patch["updated_at"] = now_epoch()
     patch["updated_by"] = username
     stored = kv_client.update_record(coll, grant_id, kv_record(patch))
@@ -272,8 +280,12 @@ def update_grant_acl(
         patch["acl_host_ids"] = body.get("acl_host_ids")
     if "acl_baseline_ids" in body:
         patch["acl_baseline_ids"] = body.get("acl_baseline_ids")
+    if "acl_labels" in body:
+        patch["acl_labels"] = body.get("acl_labels")
+    if "acl_label_ids" in body:
+        patch["acl_labels"] = body.get("acl_label_ids")
     if not patch:
-        raise ValueError("acl_host_ids and/or acl_baseline_ids required")
+        raise ValueError("acl_host_ids, acl_baseline_ids, and/or acl_labels required")
     return update_grant(service, collection_id, grant_id, patch, username, session)
 
 

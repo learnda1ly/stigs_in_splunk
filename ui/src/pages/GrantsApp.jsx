@@ -46,6 +46,8 @@ export default function GrantsApp() {
     const [draftRole, setDraftRole] = useState("restricted");
     const [draftHosts, setDraftHosts] = useState("");
     const [draftBaselines, setDraftBaselines] = useState("");
+    const [draftLabels, setDraftLabels] = useState("");
+    const [labels, setLabels] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [info, setInfo] = useState("");
@@ -57,6 +59,15 @@ export default function GrantsApp() {
                 value: h._key,
             })),
         [hosts]
+    );
+
+    const labelOptions = useMemo(
+        () =>
+            (labels || []).map((l) => ({
+                label: (l.name || l._key) + " (" + l._key + ")",
+                value: l._key,
+            })),
+        [labels]
     );
 
     const baselineOptions = useMemo(
@@ -82,11 +93,13 @@ export default function GrantsApp() {
             setHosts([]);
             return;
         }
-        const [hs, cls] = await Promise.all([
+        const [hs, cls, lbls] = await Promise.all([
             apiGet("stig_hosts", { stig_collection_id: cid }),
             apiGet("stig_checklists", { stig_collection_id: cid }),
+            apiGet("stig_collections/" + cid + "/labels"),
         ]);
         setHosts(Array.isArray(hs) ? hs : []);
+        setLabels(Array.isArray(lbls) ? lbls : []);
         const baselineIds = {};
         (cls || []).forEach((row) => {
             if (row.baseline_id) {
@@ -143,6 +156,7 @@ export default function GrantsApp() {
                     grant_role: draftRole,
                     acl_host_ids: parseIdList(draftHosts),
                     acl_baseline_ids: parseIdList(draftBaselines),
+                    acl_labels: parseIdList(draftLabels),
                 },
             });
             setInfo("Grant saved.");
@@ -203,6 +217,7 @@ export default function GrantsApp() {
                                 <Table.HeadCell>Role</Table.HeadCell>
                                 <Table.HeadCell>Host ACL</Table.HeadCell>
                                 <Table.HeadCell>Baseline ACL</Table.HeadCell>
+                                <Table.HeadCell>Label ACL</Table.HeadCell>
                                 <Table.HeadCell />
                             </Table.Head>
                             <Table.Body>
@@ -215,6 +230,9 @@ export default function GrantsApp() {
                                         </Table.Cell>
                                         <Table.Cell>
                                             {(row.acl_baseline_ids || []).join(", ") || "—"}
+                                        </Table.Cell>
+                                        <Table.Cell>
+                                            {(row.acl_labels || []).join(", ") || "—"}
                                         </Table.Cell>
                                         <Table.Cell>
                                             <Button
@@ -279,6 +297,28 @@ export default function GrantsApp() {
                                     }
                                 >
                                     {baselineOptions.map((opt) => (
+                                        <Select.Option key={opt.value} label={opt.label} value={opt.value} />
+                                    ))}
+                                </Select>
+                            </ControlGroup>
+                        ) : null}
+                        <ControlGroup
+                            label="Label ACL (restricted)"
+                            help="Comma-separated stig_labels._key values; host must have at least one matching label."
+                        >
+                            <Text value={draftLabels} onChange={(e, { value }) => setDraftLabels(value)} />
+                        </ControlGroup>
+                        {labelOptions.length ? (
+                            <ControlGroup label="Quick add label">
+                                <Select
+                                    placeholder="Select label id"
+                                    onChange={(e, { value }) =>
+                                        setDraftLabels((prev) =>
+                                            prev ? prev + "," + value : value
+                                        )
+                                    }
+                                >
+                                    {labelOptions.map((opt) => (
                                         <Select.Option key={opt.value} label={opt.label} value={opt.value} />
                                     ))}
                                 </Select>

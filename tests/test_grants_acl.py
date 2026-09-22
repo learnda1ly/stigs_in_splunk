@@ -106,6 +106,7 @@ class TestAclFilters(unittest.TestCase):
             grant_role="restricted",
             acl_host_ids={"h1"},
             acl_baseline_ids=None,
+            acl_label_ids=None,
         )
         hosts = [{"_key": "h1"}, {"_key": "h2"}]
         self.assertEqual(len(access.filter_hosts(hosts, ctx)), 1)

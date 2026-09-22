@@ -95,6 +95,8 @@ export default function EditorApp() {
         DEFAULT_REVIEW_REQUIREMENTS
     );
     const [hosts, setHosts] = useState([]);
+    const [labels, setLabels] = useState([]);
+    const [labelFilter, setLabelFilter] = useState("");
     const [hostId, setHostId] = useState("");
     const [moveTo, setMoveTo] = useState("");
     const [assignBaselineId, setAssignBaselineId] = useState("");
@@ -272,6 +274,7 @@ export default function EditorApp() {
     const onCollection = (id) => {
         setCollectionId(id);
         setHostId("");
+        setLabelFilter("");
         setMoveTo("");
         setItems([]);
         setSelectedKey("");
@@ -285,9 +288,10 @@ export default function EditorApp() {
         Promise.all([
             apiGet("stig_checklists", { stig_collection_id: id }),
             apiGet("stig_hosts", { stig_collection_id: id }),
+            apiGet("stig_collections/" + id + "/labels"),
             apiGet("stig_collections/" + id + "/review_requirements"),
         ])
-            .then(([cls, hs, reqBody]) => {
+            .then(([cls, hs, lbls, reqBody]) => {
                 setReviewRequirements(
                     normalizeReviewRequirements(
                         (reqBody && reqBody.review_requirements) ||
@@ -298,6 +302,7 @@ export default function EditorApp() {
                 const hostList = Array.isArray(hs) ? hs : [];
                 setChecklists(checkList);
                 setHosts(hostList);
+                setLabels(Array.isArray(lbls) ? lbls : []);
                 return Promise.all([
                     checkList,
                     apiGet("stig_reviews", { stig_collection_id: id }),
@@ -322,6 +327,19 @@ export default function EditorApp() {
             onCollection(id);
         }
     }, [collections, collectionId]);
+
+    useEffect(() => {
+        if (!collectionId) {
+            return;
+        }
+        const params = { stig_collection_id: collectionId };
+        if (labelFilter) {
+            params.label_id = labelFilter;
+        }
+        apiGet("stig_hosts", params)
+            .then((hs) => setHosts(Array.isArray(hs) ? hs : []))
+            .catch(() => {});
+    }, [collectionId, labelFilter]);
 
     const onHost = (id) => {
         setHostId(id);
@@ -971,6 +989,32 @@ export default function EditorApp() {
                                     key={h._key}
                                     label={h.hostname || h._key}
                                     value={h._key}
+                                />
+                            ))}
+                        </Select>
+                    </ControlGroup>
+                    <ControlGroup label="Label filter" labelPosition="top">
+                        <Select
+                            value={labelFilter}
+                            onChange={(e, { value }) => {
+                                setLabelFilter(value);
+                                if (hostId && value) {
+                                    const match = hosts.find((h) => h._key === hostId);
+                                    const ids = (match && match.label_ids) || [];
+                                    if (ids.indexOf(value) < 0) {
+                                        setHostId("");
+                                    }
+                                }
+                            }}
+                            disabled={!collectionId}
+                            placeholder="All labels"
+                        >
+                            <Select.Option label="All labels" value="" />
+                            {labels.map((l) => (
+                                <Select.Option
+                                    key={l._key}
+                                    label={l.name || l._key}
+                                    value={l._key}
                                 />
                             ))}
                         </Select>

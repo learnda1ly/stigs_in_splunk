@@ -213,7 +213,7 @@ Define in `package/default/authorize.conf`:
 
 Legacy: principals listed in `access_principals` with no matching grant row behave as **member**. Empty `access_principals` ⇒ any user with STIG caps may read. Creating a grant syncs the principal into `access_principals` for backward-compatible readers.
 
-**ACL:** optional `acl_host_ids` and `acl_baseline_ids` JSON arrays on a grant. Non-empty lists filter visible hosts and checklists (and derived reviews/metrics). Label-based ACL is not implemented yet.
+**ACL:** optional `acl_host_ids`, `acl_baseline_ids`, and `acl_labels` JSON arrays on a grant. Non-empty lists filter visible hosts and checklists (and derived reviews/metrics). Label ACL requires the host’s `label_ids` to intersect the grant’s `acl_labels`.
 
 Roles:
 
@@ -351,7 +351,7 @@ Foreign keys are string `_key` values unless noted. Timestamps are **epoch secon
 | `grant_role` | string | `owner` \| `manager` \| `member` \| `restricted` |
 | `acl_host_ids` | string | JSON array of `stig_hosts._key`; empty ⇒ no host filter |
 | `acl_baseline_ids` | string | JSON array of `stig_baselines._key`; empty ⇒ no baseline filter |
-| `acl_labels` | string | Reserved; labels entity not implemented |
+| `acl_labels` | string | JSON array of `stig_labels._key`; empty ⇒ no label filter |
 | `created_at`, `updated_at`, `created_by`, `updated_by` | | |
 
 ### 7.2 `stig_hosts`
@@ -364,7 +364,20 @@ Foreign keys are string `_key` values unless noted. Timestamps are **epoch secon
 | `role`, `asset_type`, `tech_area` | string | Defaults: `role=None`, `asset_type=Computing` |
 | `web_or_database` | bool | Default false |
 | `metadata` | string | JSON object string |
+| `label_ids` | string | JSON array of `stig_labels._key` in the same workspace |
 | `created_at`, `updated_at`, `created_by`, `updated_by` | | |
+
+### 7.2a `stig_labels`
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `_key` | string | Label id |
+| `stig_collection_id` | string | FK → workspace |
+| `name` | string | Display name |
+| `color` | string | Optional UI color token |
+| `created_at`, `updated_at`, `created_by`, `updated_by` | | |
+
+REST: `GET/POST /stig_collections/{id}/labels`, `GET/PATCH/DELETE .../labels/{labelId}`, `POST .../labels/{labelId}/assets` with `{host_ids:[]}`.
 
 ### 7.3 `stig_baselines`
 
@@ -588,10 +601,10 @@ Default `access_principals` on create: `["user:<creator>"]` if omitted. The Defa
 | Method | Path | Body | Response |
 |--------|------|------|----------|
 | GET | `/stig_collections/{id}/grants` | — | Array of grant records (requires workspace read) |
-| POST | `/stig_collections/{id}/grants` | `{principal, grant_role?, acl_host_ids?, acl_baseline_ids?}` | **201**; requires **owner** or **manager** |
+| POST | `/stig_collections/{id}/grants` | `{principal, grant_role?, acl_host_ids?, acl_baseline_ids?, acl_labels?}` | **201**; requires **owner** or **manager** |
 | GET | `/stig_collections/{id}/grants/{grantId}` | — | Grant or **404** |
 | PATCH/PUT | `/stig_collections/{id}/grants/{grantId}` | Partial grant JSON | Updated grant |
-| PUT/PATCH | `/stig_collections/{id}/grants/{grantId}/acl` | `{acl_host_ids?, acl_baseline_ids?}` | Updated grant ACL fields only |
+| PUT/PATCH | `/stig_collections/{id}/grants/{grantId}/acl` | `{acl_host_ids?, acl_baseline_ids?, acl_labels?}` | Updated grant ACL fields only |
 | DELETE | `/stig_collections/{id}/grants/{grantId}` | — | `{deleted: grantId}` |
 
 `principal` must be `user:<name>` or `role:<name>`. `grant_role` is one of `owner`, `manager`, `member`, `restricted`.

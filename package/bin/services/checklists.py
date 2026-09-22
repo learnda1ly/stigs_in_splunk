@@ -18,6 +18,7 @@ from exporters import ckl as ckl_export
 from exporters import cklb as cklb_export
 from models import (
     KV_STIG_CHECKLISTS,
+    KV_STIG_HOSTS,
     KV_STIG_REVIEWS,
     dumps_json,
     is_ingest_locked,
@@ -49,6 +50,16 @@ def _access_context(service, collection_id: str, session: Dict[str, Any]):
     return ctx
 
 
+def _host_by_id_for_acl(
+    service, collection_id: str, ctx: access.WorkspaceAccess
+) -> Optional[Dict[str, Dict[str, Any]]]:
+    if not ctx.acl_label_ids:
+        return None
+    coll = kv_client.get_collection(service, KV_STIG_HOSTS)
+    records = kv_client.query_all(coll, {"stig_collection_id": collection_id})
+    return {r["_key"]: r for r in records if r.get("_key")}
+
+
 def list_checklists(
     service, session: Dict[str, Any], stig_collection_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
@@ -58,7 +69,8 @@ def list_checklists(
     if stig_collection_id:
         _require_collection(service, stig_collection_id, session)
         ctx = _access_context(service, stig_collection_id, session)
-        return access.filter_checklists(records, ctx)
+        host_by_id = _host_by_id_for_acl(service, stig_collection_id, ctx)
+        return access.filter_checklists(records, ctx, host_by_id=host_by_id)
     visible = collections_svc.list_collections(service, session)
     by_id = {r["_key"]: r for r in visible}
     out: List[Dict[str, Any]] = []
@@ -67,7 +79,10 @@ def list_checklists(
         if cid not in by_id:
             continue
         ctx = _access_context(service, cid, session)
-        if access.checklist_allowed(rec, ctx):
+        host_by_id = _host_by_id_for_acl(service, cid, ctx)
+        if access.checklist_allowed(
+            rec, ctx, (host_by_id or {}).get(rec.get("host_id") or "")
+        ):
             out.append(rec)
     return out
 
@@ -84,7 +99,12 @@ def get_checklist(
     except (KeyError, PermissionError):
         return None
     ctx = _access_context(service, rec["stig_collection_id"], session)
-    if not access.checklist_allowed(rec, ctx):
+    host_by_id = _host_by_id_for_acl(service, rec["stig_collection_id"], ctx)
+    host_record = (host_by_id or {}).get(rec.get("host_id") or "")
+    if host_record is None and ctx.acl_label_ids:
+        hosts_coll = kv_client.get_collection(service, KV_STIG_HOSTS)
+        host_record = kv_client.get_by_key(hosts_coll, rec.get("host_id") or "")
+    if not access.checklist_allowed(rec, ctx, host_record):
         return None
     return rec
 
@@ -195,8 +215,11 @@ def _find_existing_checklist_row(
     ordered = sorted(rows, key=lambda rec: rec.get("_key") or "")
     if session is not None:
         ctx = _access_context(service, collection_id, session)
+        host_by_id = _host_by_id_for_acl(service, collection_id, ctx)
         for rec in ordered:
-            if access.checklist_allowed(rec, ctx):
+            if access.checklist_allowed(
+                rec, ctx, (host_by_id or {}).get(rec.get("host_id") or "")
+            ):
                 return rec
         return None
     return ordered[0]
@@ -304,7 +327,9 @@ def assign_stig_to_host(
     )
     if existing:
         ctx = _access_context(service, collection_id, session)
-        if not access.checklist_allowed(existing, ctx):
+        host_by_id = _host_by_id_for_acl(service, collection_id, ctx)
+        host_record = host or (host_by_id or {}).get(host_id)
+        if not access.checklist_allowed(existing, ctx, host_record):
             raise PermissionError("checklist not accessible for this grant")
         audit.log_event(
             "assign",
@@ -636,8 +661,9 @@ def checklist_ids_for_collection_export(
     coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
     records = kv_client.query_all(coll, {"stig_collection_id": collection_id})
     ctx = _access_context(service, collection_id, session)
+    host_by_id = _host_by_id_for_acl(service, collection_id, ctx)
     ids: List[str] = []
-    for rec in access.filter_checklists(records, ctx):
+    for rec in access.filter_checklists(records, ctx, host_by_id=host_by_id):
         if host_filter and rec.get("host_id") != host_filter:
             continue
         if baseline_filter and rec.get("baseline_id") != baseline_filter:
