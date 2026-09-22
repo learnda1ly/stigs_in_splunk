@@ -98,6 +98,31 @@ class TestBaselineLibraryGrouping(unittest.TestCase):
         self.assertIsNotNone(row)
         self.assertEqual(row["stig_id"], "RHEL_8_STIG")
 
+    def test_rule_ref_does_not_match_bare_group_id(self):
+        rule = {"_key": "r1", "group_id": "V-1", "rule_id": "SV-100"}
+        self.assertFalse(lib._rule_matches_ref(rule, "V-1"))
+        self.assertTrue(lib._rule_matches_ref(rule, "V-1|SV-100"))
+
+    def test_duplicate_sv_id_requires_group_id_filter(self):
+        service = MagicMock()
+        baseline = {"_key": "b1", "stig_id": "S", "title": "T", "version": "V1R1"}
+        rules = [
+            {"_key": "a", "group_id": "V-1", "rule_id": "SV-9"},
+            {"_key": "b", "group_id": "V-2", "rule_id": "SV-9"},
+        ]
+        with patch.object(
+            lib.baselines_svc, "get_baseline", return_value=baseline
+        ), patch.object(
+            lib.kv_client, "get_collection", return_value=MagicMock()
+        ), patch.object(
+            lib.kv_client, "get_by_key", return_value=None
+        ), patch.object(
+            lib.baselines_svc, "list_baseline_rules", return_value=rules
+        ):
+            self.assertIsNone(lib.get_baseline_rule(service, "b1", "SV-9"))
+            detail = lib.get_baseline_rule(service, "b1", "SV-9", group_id="V-2")
+        self.assertEqual(detail["rule"]["_key"], "b")
+
     def test_rule_detail_by_kv_key(self):
         service = MagicMock()
         baseline = {"_key": "b1", "stig_id": "S", "title": "T", "version": "V1R1"}
@@ -138,6 +163,33 @@ class TestBaselineLibraryRest(unittest.TestCase):
         self.assertEqual(resp["status"], 200)
         body = json.loads(resp["payload"])
         self.assertEqual(body["benchmark_count"], 1)
+
+    @patch.object(stig_rest_handler.baseline_library_svc, "get_benchmark")
+    def test_get_by_stig(self, mock_benchmark):
+        mock_benchmark.return_value = {"stig_id": "Example_STIG", "revision_count": 1}
+        resp = self._dispatch("GET", "stig_baselines/by_stig/Example_STIG")
+        self.assertEqual(resp["status"], 200)
+        body = json.loads(resp["payload"])
+        self.assertEqual(body["stig_id"], "Example_STIG")
+        mock_benchmark.assert_called_once()
+
+    @patch.object(stig_rest_handler.baseline_library_svc, "get_benchmark")
+    def test_get_by_stig_not_found(self, mock_benchmark):
+        mock_benchmark.return_value = None
+        resp = self._dispatch("GET", "stig_baselines/by_stig/missing")
+        self.assertEqual(resp["status"], 404)
+
+    @patch.object(stig_rest_handler.baseline_library_svc, "get_rule_by_key")
+    def test_get_rule_by_kv_key(self, mock_rule):
+        mock_rule.return_value = {
+            "baseline_id": "b1",
+            "rule": {"_key": "rk", "rule_id": "SV-1"},
+        }
+        resp = self._dispatch("GET", "stig_baselines/rule/rk")
+        self.assertEqual(resp["status"], 200)
+        body = json.loads(resp["payload"])
+        self.assertEqual(body["rule"]["_key"], "rk")
+        mock_rule.assert_called_once()
 
     @patch.object(stig_rest_handler.baseline_library_svc, "get_baseline_rule")
     def test_get_rule_in_baseline(self, mock_rule):

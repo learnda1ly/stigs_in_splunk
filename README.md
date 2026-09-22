@@ -65,7 +65,7 @@ Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
 
 - **STIG Editor** — workspace + host filters, finding list, status, details, comments
 - **Collection review** — one baseline rule across all hosts in a workspace (batch save)
-- **STIG library** — browse imported benchmarks grouped by `stig_id`, revision metadata, and rule detail (`GET /stig_baselines/hierarchy` and related persist paths)
+- **STIG library** — browse imported benchmarks grouped by `stig_id`, revision metadata, and rule detail (`GET /stig_baselines/hierarchy` and related persist paths). The SplunkUI table shows the first **200** rules per revision; use `GET /stig_baselines/{id}/rules` for the full list.
 - **Import** — checklists (`.ckl` / `.cklb` / `.zip` archive → HEC and KV; multi-file queue in UI) and STIG baselines (single XCCDF, CKL/CKLB, or a DISA product/quarterly zip via chunked persist REST `/stig_baselines/jobs`) on one page with **Checklists** and **Baselines** sections
 - **Export** — CKL / CKLB download; bulk zip by selection or workspace archive (`POST /stig_collections/{id}/archive/ckl|cklb`)
 - **Configuration** — UCC-generated page for workspaces and editor/HEC settings. A **Default** workspace is created automatically; checklist imports with no workspace go there until you move the host. The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.

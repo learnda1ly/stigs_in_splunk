@@ -91,10 +91,17 @@ def get_benchmark(service, stig_id: str) -> Optional[Dict[str, Any]]:
     want = (stig_id or "").strip().casefold()
     if not want:
         return None
-    for entry in list_hierarchy(service)["benchmarks"]:
-        if (entry.get("stig_id") or "").strip().casefold() == want:
-            return entry
-    return None
+    matched_key = ""
+    revisions: List[Dict[str, Any]] = []
+    for rec in baselines_svc.list_baselines(service):
+        bkey = _benchmark_key(rec)
+        if bkey.casefold() != want:
+            continue
+        matched_key = matched_key or bkey
+        revisions.append(rec)
+    if not revisions:
+        return None
+    return _benchmark_entry(matched_key, revisions)
 
 
 def rule_detail_payload(
@@ -112,22 +119,31 @@ def rule_detail_payload(
 def _rule_matches_ref(
     rule: Dict[str, Any], rule_ref: str, group_id: str = ""
 ) -> bool:
+    """Match ruleRef to a baseline rule row.
+
+    Accepted refs: KV ``_key``, ``group_id|rule_id`` (V-id|SV-id), or SV-id via
+    ``rule_id`` / ``rule_id_src``. A bare V-id (``group_id``) is not matched —
+    use ``group_id|rule_id`` or pass ``?group_id=`` when resolving an SV-id that
+    is ambiguous within the baseline.
+    """
     ref = (rule_ref or "").strip()
     if not ref:
         return False
     gid_filter = (group_id or "").strip()
-    if gid_filter and str(rule.get("group_id") or "").strip() != gid_filter:
+    rule_gid = str(rule.get("group_id") or "").strip()
+    if gid_filter and rule_gid != gid_filter:
         return False
     if ref == str(rule.get("_key") or "").strip():
         return True
-    composite = "{}|{}".format(
-        rule.get("group_id") or "", rule.get("rule_id") or ""
-    )
+    composite = "{}|{}".format(rule_gid, rule.get("rule_id") or "")
     if ref == composite:
         return True
-    for field in ("rule_id", "rule_id_src", "group_id"):
-        if ref == str(rule.get(field) or "").strip():
-            return True
+    if "|" in ref:
+        return False
+    if ref == str(rule.get("rule_id") or "").strip():
+        return True
+    if ref == str(rule.get("rule_id_src") or "").strip():
+        return True
     return False
 
 
@@ -147,9 +163,13 @@ def get_baseline_rule(
     by_key = kv_client.get_by_key(rules_coll, ref)
     if by_key and str(by_key.get("baseline_id") or "") == baseline_id:
         return rule_detail_payload(baseline, by_key)
-    for rule in baselines_svc.list_baseline_rules(service, baseline_id):
-        if _rule_matches_ref(rule, ref, group_id):
-            return rule_detail_payload(baseline, rule)
+    matches = [
+        rule
+        for rule in baselines_svc.list_baseline_rules(service, baseline_id)
+        if _rule_matches_ref(rule, ref, group_id)
+    ]
+    if len(matches) == 1:
+        return rule_detail_payload(baseline, matches[0])
     return None
 
 
