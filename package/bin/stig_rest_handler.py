@@ -26,6 +26,7 @@ from services import baseline_defaults as baseline_defaults_svc
 from services import review_requirements as review_requirements_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
+from services import labels as labels_svc
 from services import hosts as hosts_svc
 from services import assignment as assignment_svc
 from services import imports as imports_svc
@@ -256,6 +257,11 @@ class StigRestHandler(PersistentServerConnectionApplication):
 
         if len(parts) >= 2 and parts[1] == "grants":
             return self._collection_grants(
+                method, key, parts[2:], payload, service, session, username
+            )
+
+        if len(parts) >= 2 and parts[1] == "labels":
+            return self._collection_labels(
                 method, key, parts[2:], payload, service, session, username
             )
 
@@ -505,6 +511,81 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error(str(exc), status=403)
         return _error("method not allowed", status=405)
 
+    def _collection_labels(
+        self,
+        method: str,
+        collection_id: str,
+        parts: List[str],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        if not parts:
+            if method == "GET":
+                try:
+                    rows = labels_svc.list_labels(service, collection_id, session)
+                    return _json_response(rows)
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            if method == "POST":
+                body = _body_json(payload)
+                try:
+                    rec = labels_svc.create_label(
+                        service, collection_id, body, username, session
+                    )
+                    return _json_response(rec, status=201)
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            return _error("method not allowed", status=405)
+
+        label_id = parts[0]
+        if len(parts) == 2 and parts[1] == "assets":
+            if method not in ("POST", "PUT", "PATCH"):
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            try:
+                result = labels_svc.assign_label_to_hosts(
+                    service, collection_id, label_id, body, username, session
+                )
+                return _json_response(result)
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+
+        if method == "GET":
+            rec = labels_svc.get_label(service, collection_id, label_id, session)
+            if not rec:
+                return _error("not found", status=404)
+            return _json_response(rec)
+        if method in ("PATCH", "PUT", "POST"):
+            body = _body_json(payload)
+            try:
+                rec = labels_svc.update_label(
+                    service, collection_id, label_id, body, username, session
+                )
+                return _json_response(rec)
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+        if method == "DELETE":
+            try:
+                labels_svc.delete_label(
+                    service, collection_id, label_id, username, session
+                )
+                return _json_response({"deleted": label_id})
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+        return _error("method not allowed", status=405)
+
     def _findings(
         self,
         method: str,
@@ -540,7 +621,10 @@ class StigRestHandler(PersistentServerConnectionApplication):
         if not parts:
             if method == "GET":
                 cid = query.get("stig_collection_id")
-                return _json_response(hosts_svc.list_hosts(service, session, cid))
+                label_id = (query.get("label_id") or "").strip() or None
+                return _json_response(
+                    hosts_svc.list_hosts(service, session, cid, label_id=label_id)
+                )
             if method == "POST":
                 body = _body_json(payload)
                 rec = hosts_svc.create_host(service, body, username, session)

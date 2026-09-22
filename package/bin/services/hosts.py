@@ -7,9 +7,18 @@ from typing import Any, Dict, List, Optional
 import access
 import audit
 import kv_client
-from models import KV_STIG_CHECKLISTS, KV_STIG_HOSTS, dumps_json, kv_record, new_id, now_epoch
+from models import (
+    KV_STIG_CHECKLISTS,
+    KV_STIG_HOSTS,
+    dumps_json,
+    kv_record,
+    new_id,
+    now_epoch,
+    parse_json_field,
+)
 from services import collections as collections_svc
 from services import grants as grants_svc
+from services import labels as labels_svc
 
 
 def _require_collection_access(service, collection_id: str, session: Dict[str, Any], write: bool = False):
@@ -28,8 +37,28 @@ def _access_context(service, collection_id: str, session: Dict[str, Any]):
     return ctx
 
 
+def _normalize_label_ids(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(x).strip() for x in value if str(x).strip()]
+    parsed = parse_json_field(value, default=[])
+    if isinstance(parsed, list):
+        return [str(x).strip() for x in parsed if str(x).strip()]
+    return []
+
+
+def _public_host(rec: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(rec)
+    out["label_ids"] = _normalize_label_ids(rec.get("label_ids"))
+    return out
+
+
 def list_hosts(
-    service, session: Dict[str, Any], stig_collection_id: Optional[str] = None
+    service,
+    session: Dict[str, Any],
+    stig_collection_id: Optional[str] = None,
+    label_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     coll = kv_client.get_collection(service, KV_STIG_HOSTS)
     query = {"stig_collection_id": stig_collection_id} if stig_collection_id else {}
@@ -37,7 +66,14 @@ def list_hosts(
     if stig_collection_id:
         _require_collection_access(service, stig_collection_id, session)
         ctx = _access_context(service, stig_collection_id, session)
-        return access.filter_hosts(records, ctx)
+        records = access.filter_hosts(records, ctx)
+        if label_id:
+            records = [
+                r
+                for r in records
+                if label_id in _normalize_label_ids(r.get("label_ids"))
+            ]
+        return [_public_host(r) for r in records]
     visible = collections_svc.list_collections(service, session)
     by_id = {r["_key"]: r for r in visible}
     out: List[Dict[str, Any]] = []
@@ -47,7 +83,9 @@ def list_hosts(
             continue
         ctx = _access_context(service, cid, session)
         if access.host_allowed(rec, ctx):
-            out.append(rec)
+            if label_id and label_id not in _normalize_label_ids(rec.get("label_ids")):
+                continue
+            out.append(_public_host(rec))
     return out
 
 
@@ -78,7 +116,7 @@ def get_host(service, key: str, session: Dict[str, Any]) -> Optional[Dict[str, A
     ctx = _access_context(service, rec["stig_collection_id"], session)
     if not access.host_allowed(rec, ctx):
         return None
-    return rec
+    return _public_host(rec)
 
 
 def create_host(service, body: Dict[str, Any], username: str, session: Dict[str, Any]) -> Dict[str, Any]:
@@ -86,6 +124,9 @@ def create_host(service, body: Dict[str, Any], username: str, session: Dict[str,
     if not collection_id:
         raise ValueError("stig_collection_id required")
     _require_collection_access(service, collection_id, session, write=True)
+
+    label_ids = _normalize_label_ids(body.get("label_ids"))
+    labels_svc.validate_label_ids(service, collection_id, label_ids)
 
     coll = kv_client.get_collection(service, KV_STIG_HOSTS)
     key = new_id()
@@ -104,6 +145,7 @@ def create_host(service, body: Dict[str, Any], username: str, session: Dict[str,
             "tech_area": body.get("tech_area") or "",
             "web_or_database": bool(body.get("web_or_database", False)),
             "metadata": dumps_json(metadata) if isinstance(metadata, dict) else (metadata or "{}"),
+            "label_ids": dumps_json(label_ids),
             "created_at": ts,
             "updated_at": ts,
             "created_by": username,
@@ -112,7 +154,7 @@ def create_host(service, body: Dict[str, Any], username: str, session: Dict[str,
     )
     stored = kv_client.insert_record(coll, record)
     audit.log_event("create", "stig_host", key, username, {"stig_collection_id": collection_id})
-    return stored
+    return _public_host(stored)
 
 
 def update_host(
@@ -132,6 +174,9 @@ def update_host(
     if moving:
         _require_collection_access(service, dest_collection, session, write=True)
         patch["stig_collection_id"] = dest_collection
+    workspace_for_labels = (
+        dest_collection if moving else existing.get("stig_collection_id") or ""
+    )
     for field in (
         "hostname",
         "ip_address",
@@ -147,6 +192,17 @@ def update_host(
     if "metadata" in body:
         val = body["metadata"]
         patch["metadata"] = dumps_json(val) if isinstance(val, dict) else val
+    if "label_ids" in body:
+        label_ids = _normalize_label_ids(body.get("label_ids"))
+        labels_svc.validate_label_ids(service, workspace_for_labels, label_ids)
+        patch["label_ids"] = dumps_json(label_ids)
+    elif moving:
+        sanitized = labels_svc.sanitize_label_ids_for_workspace(
+            service,
+            workspace_for_labels,
+            _normalize_label_ids(patch.get("label_ids")),
+        )
+        patch["label_ids"] = dumps_json(sanitized)
     patch["updated_at"] = now_epoch()
     patch["updated_by"] = username
     stored = kv_client.update_record(coll, key, kv_record(patch))
@@ -159,7 +215,7 @@ def update_host(
             cl_patch["updated_by"] = username
             kv_client.update_record(cl_coll, rec["_key"], kv_record(cl_patch))
     audit.log_event("update", "stig_host", key, username, body)
-    return stored
+    return _public_host(stored)
 
 
 def delete_host(service, key: str, username: str, session: Dict[str, Any]) -> None:

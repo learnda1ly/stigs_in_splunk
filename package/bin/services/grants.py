@@ -9,6 +9,7 @@ import audit
 import kv_client
 from models import KV_STIG_COLLECTION_GRANTS, dumps_json, kv_record, new_id, now_epoch, parse_json_field
 from services import collections as collections_svc
+from services import labels as labels_svc
 
 VALID_ROLES = access.GRANT_ROLES
 
@@ -74,6 +75,11 @@ def _normalize_id_list(value: Any) -> List[str]:
     if isinstance(parsed, list):
         return [str(x).strip() for x in parsed if str(x).strip()]
     return []
+
+
+def _validate_acl_labels(service, collection_id: str, label_ids: List[str]) -> None:
+    if label_ids:
+        labels_svc.validate_label_ids(service, collection_id, label_ids)
 
 
 def _public_grant(rec: Dict[str, Any]) -> Dict[str, Any]:
@@ -182,6 +188,10 @@ def create_grant(
     existing = _find_grant_by_principal(service, collection_id, principal)
     if existing:
         raise ValueError("a grant for this principal already exists")
+    acl_labels = _normalize_id_list(
+        body.get("acl_labels") if "acl_labels" in body else body.get("acl_label_ids")
+    )
+    _validate_acl_labels(service, collection_id, acl_labels)
     key = new_id()
     ts = now_epoch()
     record = kv_record(
@@ -194,7 +204,7 @@ def create_grant(
             "acl_baseline_ids": dumps_json(
                 _normalize_id_list(body.get("acl_baseline_ids"))
             ),
-            "acl_labels": dumps_json([]),
+            "acl_labels": dumps_json(acl_labels),
             "created_at": ts,
             "updated_at": ts,
             "created_by": username,
@@ -244,6 +254,12 @@ def update_grant(
         patch["acl_baseline_ids"] = dumps_json(
             _normalize_id_list(body.get("acl_baseline_ids"))
         )
+    if "acl_labels" in body or "acl_label_ids" in body:
+        acl_labels = _normalize_id_list(
+            body.get("acl_labels") or body.get("acl_label_ids")
+        )
+        _validate_acl_labels(service, collection_id, acl_labels)
+        patch["acl_labels"] = dumps_json(acl_labels)
     patch["updated_at"] = now_epoch()
     patch["updated_by"] = username
     stored = kv_client.update_record(coll, grant_id, kv_record(patch))
@@ -272,8 +288,12 @@ def update_grant_acl(
         patch["acl_host_ids"] = body.get("acl_host_ids")
     if "acl_baseline_ids" in body:
         patch["acl_baseline_ids"] = body.get("acl_baseline_ids")
+    if "acl_labels" in body:
+        patch["acl_labels"] = body.get("acl_labels")
+    if "acl_label_ids" in body:
+        patch["acl_labels"] = body.get("acl_label_ids")
     if not patch:
-        raise ValueError("acl_host_ids and/or acl_baseline_ids required")
+        raise ValueError("acl_host_ids, acl_baseline_ids, and/or acl_labels required")
     return update_grant(service, collection_id, grant_id, patch, username, session)
 
 

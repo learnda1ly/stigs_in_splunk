@@ -414,6 +414,7 @@ class TestCollectionArchiveExport(unittest.TestCase):
                 grant_role="member",
                 acl_host_ids=None,
                 acl_baseline_ids=None,
+                acl_label_ids=None,
             )
             with patch.object(checklists_svc, "_require_workspace_export_access"):
                 with patch("services.checklists.kv_client.get_collection") as get_coll:

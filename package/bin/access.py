@@ -56,11 +56,16 @@ class WorkspaceAccess:
     grant_role: Optional[str]
     acl_host_ids: Optional[Set[str]]
     acl_baseline_ids: Optional[Set[str]]
+    acl_label_ids: Optional[Set[str]]
     admin_bypass: bool = False
 
     @property
     def acl_scoped(self) -> bool:
-        return self.acl_host_ids is not None or self.acl_baseline_ids is not None
+        return (
+            self.acl_host_ids is not None
+            or self.acl_baseline_ids is not None
+            or self.acl_label_ids is not None
+        )
 
 
 def parse_access_principals(raw: Any) -> List[str]:
@@ -75,6 +80,11 @@ def parse_access_principals(raw: Any) -> List[str]:
     except (TypeError, ValueError):
         pass
     return []
+
+
+def parse_host_label_ids(host_record: Dict[str, Any]) -> Set[str]:
+    parsed = _parse_id_set(host_record.get("label_ids"))
+    return parsed if parsed is not None else set()
 
 
 def _parse_id_set(raw: Any) -> Optional[Set[str]]:
@@ -177,6 +187,7 @@ def resolve_workspace_access(
             grant_role=None,
             acl_host_ids=None,
             acl_baseline_ids=None,
+            acl_label_ids=None,
             admin_bypass=True,
         )
 
@@ -193,6 +204,7 @@ def resolve_workspace_access(
             grant_role=None,
             acl_host_ids=None,
             acl_baseline_ids=None,
+            acl_label_ids=None,
         )
 
     if grant:
@@ -202,6 +214,7 @@ def resolve_workspace_access(
         caps = GRANT_CAPABILITIES[role]
         acl_hosts = _parse_id_set(grant.get("acl_host_ids"))
         acl_baselines = _parse_id_set(grant.get("acl_baseline_ids"))
+        acl_labels = _parse_id_set(grant.get("acl_labels"))
         can_write = caps["write"] or (
             role in {"member", "restricted"} and user_has_stig_write(session)
         )
@@ -214,6 +227,7 @@ def resolve_workspace_access(
             grant_role=role,
             acl_host_ids=acl_hosts,
             acl_baseline_ids=acl_baselines,
+            acl_label_ids=acl_labels,
         )
 
     # Legacy access_principals only — equivalent to member grant (full workspace).
@@ -227,6 +241,7 @@ def resolve_workspace_access(
         grant_role="member",
         acl_host_ids=None,
         acl_baseline_ids=None,
+        acl_label_ids=None,
     )
 
 
@@ -264,15 +279,25 @@ def user_can_edit_collection(
 
 
 def host_allowed(host_record: Dict[str, Any], access_ctx: WorkspaceAccess) -> bool:
-    if access_ctx.admin_bypass or not access_ctx.acl_host_ids:
+    if access_ctx.admin_bypass:
         return True
-    key = host_record.get("_key") or ""
-    return key in access_ctx.acl_host_ids
+    if access_ctx.acl_host_ids:
+        key = host_record.get("_key") or ""
+        if key not in access_ctx.acl_host_ids:
+            return False
+    if access_ctx.acl_label_ids:
+        host_labels = parse_host_label_ids(host_record)
+        if not host_labels.intersection(access_ctx.acl_label_ids):
+            return False
+    return True
 
 
 def checklist_allowed(
-    checklist_record: Dict[str, Any], access_ctx: WorkspaceAccess
+    checklist_record: Dict[str, Any],
+    access_ctx: WorkspaceAccess,
+    host_record: Optional[Dict[str, Any]] = None,
 ) -> bool:
+    """ACL dimensions compose as AND: each non-empty host/baseline/label filter must pass."""
     if access_ctx.admin_bypass:
         return True
     host_id = checklist_record.get("host_id") or ""
@@ -281,6 +306,12 @@ def checklist_allowed(
         return False
     if access_ctx.acl_baseline_ids and baseline_id not in access_ctx.acl_baseline_ids:
         return False
+    if access_ctx.acl_label_ids:
+        if host_record is None:
+            return False
+        host_labels = parse_host_label_ids(host_record)
+        if not host_labels.intersection(access_ctx.acl_label_ids):
+            return False
     return True
 
 
@@ -291,8 +322,19 @@ def filter_hosts(
 
 
 def filter_checklists(
-    records: Iterable[Dict[str, Any]], access_ctx: WorkspaceAccess
+    records: Iterable[Dict[str, Any]],
+    access_ctx: WorkspaceAccess,
+    host_by_id: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
+    if access_ctx.acl_label_ids:
+        host_by_id = host_by_id or {}
+        return [
+            r
+            for r in records
+            if checklist_allowed(
+                r, access_ctx, host_by_id.get(r.get("host_id") or "")
+            )
+        ]
     return [r for r in records if checklist_allowed(r, access_ctx)]
 
 
