@@ -16,6 +16,7 @@ import review_workflow
 import validation
 from exporters import ckl as ckl_export
 from exporters import cklb as cklb_export
+from exporters import xccdf_results as xccdf_export
 from models import (
     KV_STIG_CHECKLISTS,
     KV_STIG_HOSTS,
@@ -593,15 +594,28 @@ def export_checklist(
         if rec.get("rule_version"):
             reviews_by_group.setdefault(rec["rule_version"], rec)
 
-    export_fmt = (fmt or "cklb").lower()
+    export_fmt = _normalize_bulk_export_format(fmt)
     if export_fmt == "ckl":
         return ckl_export.export_ckl(checklist, baseline, rules, reviews, host)
+    if export_fmt == "xccdf":
+        return xccdf_export.export_xccdf_results(
+            checklist, baseline, rules, reviews, host
+        )
     return cklb_export.export_cklb(checklist, baseline, rules, reviews, host)
 
 
 def _safe_filename_part(value: Any) -> str:
     text = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "").strip())
     return text.strip("._") or "item"
+
+
+def _normalize_bulk_export_format(fmt: str) -> str:
+    export_fmt = (fmt or "cklb").lower().replace("_", "-")
+    if export_fmt in {"xccdf", "xccdf-results", "xccdfresults"}:
+        return "xccdf"
+    if export_fmt in {"ckl", "cklb"}:
+        return export_fmt
+    raise ValueError("format must be ckl, cklb, or xccdf")
 
 
 def export_filename(
@@ -615,11 +629,15 @@ def export_filename(
         baseline.get("stig_id") or baseline.get("title") or "stig"
     )
     version = _safe_filename_part(baseline.get("version") or "")
-    ext = "ckl" if (fmt or "").lower() == "ckl" else "cklb"
+    export_fmt = _normalize_bulk_export_format(fmt)
     name = f"{host_part}_{stig_part}"
     if version:
         name += f"_{version}"
-    return f"{name}.{ext}"
+    if export_fmt == "ckl":
+        return f"{name}.ckl"
+    if export_fmt == "xccdf":
+        return f"{name}-results.xml"
+    return f"{name}.cklb"
 
 
 def export_checklist_file(
@@ -702,9 +720,7 @@ def export_checklists_bulk(
         if collection_id:
             raise ValueError("no checklists match export filter")
         raise ValueError("checklist_ids is required")
-    export_fmt = (fmt or "cklb").lower()
-    if export_fmt not in {"ckl", "cklb"}:
-        raise ValueError("format must be ckl or cklb")
+    export_fmt = _normalize_bulk_export_format(fmt)
 
     buf = io.BytesIO()
     files: List[str] = []
@@ -726,6 +742,8 @@ def export_checklists_bulk(
             files.append(filename)
 
     zip_name = f"stig-checklists-{export_fmt}.zip"
+    if export_fmt == "xccdf":
+        zip_name = "stig-checklists-xccdf.zip"
     payload: Dict[str, Any] = {
         "filename": zip_name,
         "format": export_fmt,
@@ -750,7 +768,7 @@ def export_collection_archive(
     host_id: Optional[str] = None,
     baseline_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Bulk CKL/CKLB zip for all checklists in a workspace (optional host/baseline filters)."""
+    """Bulk CKL/CKLB/XCCDF results zip for a workspace (optional host/baseline filters)."""
     collection = _require_workspace_export_access(service, collection_id, session)
 
     result = export_checklists_bulk(

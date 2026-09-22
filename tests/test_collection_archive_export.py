@@ -228,7 +228,11 @@ class TestCollectionArchiveExport(unittest.TestCase):
         for p in patches:
             p.start()
         try:
-            for fmt, parser in (("ckl", ET.fromstring), ("cklb", json.loads)):
+            for fmt, parser in (
+                ("ckl", ET.fromstring),
+                ("cklb", json.loads),
+                ("xccdf", ET.fromstring),
+            ):
                 result = checklists_svc.export_collection_archive(
                     self.service, "ws1", fmt, self.session
                 )
@@ -241,6 +245,9 @@ class TestCollectionArchiveExport(unittest.TestCase):
                 if fmt == "ckl":
                     self.assertEqual(root.tag, "CHECKLIST")
                     self.assertIsNotNone(root.find(".//STATUS"))
+                elif fmt == "xccdf":
+                    self.assertEqual(root.tag.split("}")[-1], "TestResult")
+                    self.assertIsNotNone(root.find(".//{*}rule-result"))
                 else:
                     self.assertIn("stigs", root)
                     self.assertEqual(root["mode"], 2)
@@ -287,6 +294,28 @@ class TestCollectionArchiveExport(unittest.TestCase):
         self.assertIn("no checklists", body["error"].lower())
 
     @patch.object(stig_rest_handler.checklists_svc, "export_collection_archive")
+    def test_rest_archive_xccdf_route(self, mock_export):
+        mock_export.return_value = {
+            "format": "xccdf",
+            "filename": "stig-archive-ws1-xccdf.zip",
+            "count": 1,
+            "files": ["h-results.xml"],
+            "content_base64": base64.b64encode(b"zip").decode("ascii"),
+        }
+        handler = stig_rest_handler.StigRestHandler("", "")
+        payload = {
+            "method": "POST",
+            "session": _read_session(),
+            "rest_path": "stig_collections/ws1/archive/xccdf",
+        }
+        with patch.object(stig_rest_handler.kv_client, "connect", return_value=MagicMock()):
+            resp = handler.handle(json.dumps(payload))
+        self.assertEqual(resp["status"], 200)
+        body = json.loads(resp["payload"])
+        self.assertEqual(body["format"], "xccdf")
+        mock_export.assert_called_once()
+
+    @patch.object(stig_rest_handler.checklists_svc, "export_collection_archive")
     def test_rest_archive_ckl_route(self, mock_export):
         mock_export.return_value = {
             "format": "ckl",
@@ -328,64 +357,71 @@ class TestCollectionArchiveExport(unittest.TestCase):
             "name": "Private",
             "access_principals": '["user:alice"]',
         }
-        with patch(
-            "services.checklists.collections_svc.get_collection",
-            return_value=private_ws,
-        ):
-            with patch("services.checklists.grants_svc.query_grants", return_value=[]):
-                with self.assertRaises(KeyError):
-                    checklists_svc.export_collection_archive(
-                        self.service,
-                        "secret",
-                        "ckl",
-                        _read_session("bob"),
-                    )
-                with self.assertRaises(KeyError):
-                    checklists_svc.export_checklists_bulk(
-                        self.service,
-                        None,
-                        "ckl",
-                        _read_session("bob"),
-                        stig_collection_id="secret",
-                    )
-
         handler = stig_rest_handler.StigRestHandler("", "")
-        payload = {
-            "method": "POST",
-            "session": _read_session("bob"),
-            "rest_path": "stig_collections/secret/archive/ckl",
-        }
-        with patch.object(stig_rest_handler.kv_client, "connect", return_value=MagicMock()):
-            with patch.object(
-                stig_rest_handler.collections_svc,
-                "get_collection",
+        for fmt in ("ckl", "cklb", "xccdf"):
+            with patch(
+                "services.checklists.collections_svc.get_collection",
                 return_value=private_ws,
             ):
-                with patch.object(
-                    stig_rest_handler.grants_svc, "query_grants", return_value=[]
-                ):
-                    resp = handler.handle(json.dumps(payload))
-        self.assertEqual(resp["status"], 404)
-        body = json.loads(resp["payload"])
-        self.assertNotIn("content_base64", body)
+                with patch("services.checklists.grants_svc.query_grants", return_value=[]):
+                    with self.assertRaises(KeyError):
+                        checklists_svc.export_collection_archive(
+                            self.service,
+                            "secret",
+                            fmt,
+                            _read_session("bob"),
+                        )
+                    with self.assertRaises(KeyError):
+                        checklists_svc.export_checklists_bulk(
+                            self.service,
+                            None,
+                            fmt,
+                            _read_session("bob"),
+                            stig_collection_id="secret",
+                        )
 
-        bulk_payload = {
-            "method": "POST",
-            "session": _read_session("bob"),
-            "rest_path": "stig_checklists/export_bulk",
-            "payload": json.dumps({"stig_collection_id": "secret", "format": "ckl"}),
-        }
-        with patch.object(stig_rest_handler.kv_client, "connect", return_value=MagicMock()):
+            payload = {
+                "method": "POST",
+                "session": _read_session("bob"),
+                "rest_path": f"stig_collections/secret/archive/{fmt}",
+            }
             with patch.object(
-                stig_rest_handler.collections_svc,
-                "get_collection",
-                return_value=private_ws,
+                stig_rest_handler.kv_client, "connect", return_value=MagicMock()
             ):
                 with patch.object(
-                    stig_rest_handler.grants_svc, "query_grants", return_value=[]
+                    stig_rest_handler.collections_svc,
+                    "get_collection",
+                    return_value=private_ws,
                 ):
-                    bulk_resp = handler.handle(json.dumps(bulk_payload))
-        self.assertEqual(bulk_resp["status"], 404)
+                    with patch.object(
+                        stig_rest_handler.grants_svc, "query_grants", return_value=[]
+                    ):
+                        resp = handler.handle(json.dumps(payload))
+            self.assertEqual(resp["status"], 404)
+            body = json.loads(resp["payload"])
+            self.assertNotIn("content_base64", body)
+
+            bulk_payload = {
+                "method": "POST",
+                "session": _read_session("bob"),
+                "rest_path": "stig_checklists/export_bulk",
+                "payload": json.dumps(
+                    {"stig_collection_id": "secret", "format": fmt}
+                ),
+            }
+            with patch.object(
+                stig_rest_handler.kv_client, "connect", return_value=MagicMock()
+            ):
+                with patch.object(
+                    stig_rest_handler.collections_svc,
+                    "get_collection",
+                    return_value=private_ws,
+                ):
+                    with patch.object(
+                        stig_rest_handler.grants_svc, "query_grants", return_value=[]
+                    ):
+                        bulk_resp = handler.handle(json.dumps(bulk_payload))
+            self.assertEqual(bulk_resp["status"], 404)
 
     @patch.object(stig_rest_handler.checklists_svc, "export_checklists_bulk")
     def test_export_bulk_accepts_workspace_id(self, mock_bulk):

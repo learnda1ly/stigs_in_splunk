@@ -1,3 +1,3 @@
-from exporters import ckl, cklb
+from exporters import ckl, cklb, xccdf_results
 
-__all__ = ["cklb", "ckl"]
+__all__ = ["cklb", "ckl", "xccdf_results"]
