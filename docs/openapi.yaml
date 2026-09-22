@@ -47,6 +47,8 @@ tags:
   - name: Collection grants
   - name: Collection labels
   - name: Collection reporting
+  - name: Collection jobs
+    description: Async collection archive export (`/stig_collections/{id}/jobs`)
   - name: Hosts
     description: Assets (`stig_hosts`)
   - name: Baselines
@@ -675,6 +677,109 @@ paths:
             application/json:
               schema:
                 type: object
+
+  /stig_collections/{collectionId}/jobs:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    post:
+      tags: [Collection jobs]
+      summary: Start async workspace archive export job
+      description: |
+        Poll `GET .../jobs/{jobId}` until `status` is `succeeded` or `failed`, then
+        `GET .../jobs/{jobId}/download` for the zip JSON (`content_base64`).
+        Artifacts live under `$SPLUNK_HOME/var/run/stigs_in_splunk/collection_jobs/` (6h TTL).
+      operationId: createCollectionExportJob
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [format]
+              properties:
+                operation:
+                  type: string
+                  enum: [archive_export]
+                  default: archive_export
+                format:
+                  type: string
+                  enum: [ckl, cklb, xccdf]
+                host_id:
+                  type: string
+                baseline_id:
+                  type: string
+      responses:
+        "201":
+          description: Job created (may already be running or finished before response returns)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionJob"
+        "404":
+          description: Workspace missing or hidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /stig_collections/{collectionId}/jobs/{jobId}:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+      - $ref: "#/components/parameters/jobId"
+    get:
+      tags: [Collection jobs]
+      summary: Poll collection export job status
+      operationId: getCollectionJob
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionJob"
+        "403":
+          description: Job owned by another user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [Collection jobs]
+      summary: Delete staged collection job
+      operationId: deleteCollectionJob
+      x-splunk-capability: stig_write
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/jobs/{jobId}/download:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+      - $ref: "#/components/parameters/jobId"
+    get:
+      tags: [Collection jobs]
+      summary: Download succeeded collection export job artifact
+      operationId: downloadCollectionJob
+      responses:
+        "200":
+          description: Same JSON shape as sync `POST .../archive/{format}`
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Job not succeeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /stig_collections/{collectionId}/grants:
     parameters:
@@ -2493,6 +2598,58 @@ components:
         error:
           type: string
       required: [error]
+
+    CollectionJob:
+      type: object
+      properties:
+        job_id:
+          type: string
+        stig_collection_id:
+          type: string
+        operation:
+          type: string
+          enum: [archive_export]
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed]
+        format:
+          type: string
+          enum: [ckl, cklb, xccdf]
+        filters:
+          type: object
+          properties:
+            host_id:
+              type: string
+              nullable: true
+            baseline_id:
+              type: string
+              nullable: true
+        created_by:
+          type: string
+        created_at:
+          type: number
+        updated_at:
+          type: number
+        error:
+          type: string
+          nullable: true
+        result:
+          type: object
+          nullable: true
+          properties:
+            filename:
+              type: string
+            format:
+              type: string
+            count:
+              type: integer
+            files:
+              type: array
+              items:
+                type: string
+            download_path:
+              type: string
+      additionalProperties: true
 
     CascadeRequiredError:
       type: object

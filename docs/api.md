@@ -42,7 +42,7 @@ Grant-based workspace ACLs further restrict which collections, hosts, and review
 
 | Prefix | Purpose |
 |--------|---------|
-| `/stig_collections` | Workspaces; subpaths for grants, labels, metrics, findings, POA&M, imports, clone, transfer, metadata, **`/review-history`**, **`/review_aging`** (+ `/stale`), `archive/ckl\|cklb\|xccdf`, … |
+| `/stig_collections` | Workspaces; subpaths for grants, labels, metrics, findings, POA&M, imports, clone, transfer, metadata, **`/review-history`**, **`/review_aging`** (+ `/stale`), **`/jobs`** (async archive export), `archive/ckl\|cklb\|xccdf`, … |
 | `/stig_hosts` | Assets; `/metadata`, `/checklists`, `/stigs` |
 | `/stig_baselines` | STIG library; `/import`, `/jobs`, `/gc_orphan_rules`, `/hierarchy`, `/by_stig/{stigId}`, cross-catalog `/rules`, `/ccis`, `/groups`, `/rule/{key}`, `/{id}/rules`, `/{id}/rules/{ruleRef}` |
 | `/stig_checklists` | Checklists; export, upgrade, validate, `export_bulk` |
@@ -71,4 +71,17 @@ List responses include `match_count` and `matches[]` with `rule_key`, identity f
 
 ## Gaps vs STIG Manager OpenAPI
 
-This contract documents **Splunk persist** resources (`stig_*`), not STIG Manager URL literals. User admin, OAuth scopes, async job APIs beyond baseline chunk upload, and SSE live state are out of scope or **n/a** on Splunk — see [FEATURE_PARITY.md](FEATURE_PARITY.md).
+This contract documents **Splunk persist** resources (`stig_*`), not STIG Manager URL literals. User admin, OAuth scopes, STIG Manager–style multi-run job task APIs, and SSE live state are out of scope or **n/a** on Splunk — see [FEATURE_PARITY.md](FEATURE_PARITY.md).
+
+### Async collection archive export (poll)
+
+For large workspace zips, prefer jobs over synchronous `POST .../archive/{format}` (same ACL and zip shape; artifact staged on disk until download or TTL).
+
+| Step | Method | Path | Body / notes |
+|------|--------|------|----------------|
+| 1 | `POST` | `/stig_collections/{id}/jobs` | JSON `{ "operation": "archive_export", "format": "ckl" \| "cklb" \| "xccdf", "host_id"?, "baseline_id"? }` → **201** `{ job_id, status, ... }` |
+| 2 | `GET` | `/stig_collections/{id}/jobs/{jobId}` | Poll until `status` is `succeeded` or `failed` (`error` on failure). |
+| 3 | `GET` | `/stig_collections/{id}/jobs/{jobId}/download` | Same JSON fields as sync archive (`filename`, `count`, `files`, `content_base64`) when `status=succeeded`. |
+| — | `DELETE` | `/stig_collections/{id}/jobs/{jobId}` | Drop staged artifact (creator only). |
+
+Baseline library zip chunk upload: `POST /stig_baselines/jobs` (unchanged).
