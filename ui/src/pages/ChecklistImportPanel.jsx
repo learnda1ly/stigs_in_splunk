@@ -20,7 +20,7 @@ import {
 } from "../layout";
 
 const ACCEPT =
-    ".ckl,.cklb,.zip,application/json,text/xml,application/xml,application/zip";
+    ".ckl,.cklb,.zip,.xml,application/json,text/xml,application/xml,application/zip";
 
 function detectFormat(name) {
     const lower = String(name || "").toLowerCase();
@@ -33,6 +33,9 @@ function detectFormat(name) {
     if (lower.endsWith(".ckl")) {
         return "ckl";
     }
+    if (lower.endsWith("-results.xml") || lower.endsWith("_results.xml")) {
+        return "xccdf-results";
+    }
     return "";
 }
 
@@ -41,7 +44,10 @@ function fileKey(file) {
 }
 
 function contentTypeFor(fmt) {
-    return fmt === "cklb" ? "application/json" : "application/xml";
+    if (fmt === "cklb") {
+        return "application/json";
+    }
+    return "application/xml";
 }
 
 function statsLine(stats) {
@@ -116,7 +122,9 @@ export default function ChecklistImportPanel() {
                 name: file.name,
                 format: fmt,
                 status: fmt ? "queued" : "error",
-                error: fmt ? "" : "Only .ckl, .cklb, and .zip archives are supported.",
+                error: fmt
+                    ? ""
+                    : "Supported: .ckl, .cklb, .zip archives, or XCCDF *-results.xml.",
                 host: "",
                 checklists: 0,
                 reviews: 0,
@@ -236,31 +244,58 @@ export default function ChecklistImportPanel() {
         );
     };
 
-    const applyZipImportResult = (key, doc) => {
+    const applyZipImportResult = (parentKey, doc) => {
         const results = (doc && doc.results) || [];
         const summary = (doc && doc.summary) || {};
-        setRows((prev) =>
-            prev.map((item) =>
-                item.key === key
-                    ? {
-                          ...item,
-                          status: summary.failed ? "error" : "done",
-                          host: summary.total + " in archive",
-                          checklists: summary.succeeded || 0,
-                          reviews: results.reduce(
-                              (n, row) => n + (row.finding_count || 0),
-                              0
-                          ),
-                          stats: null,
-                          created: summary.created > 0,
-                          error: summary.failed
-                              ? summary.failed +
-                                " file(s) failed — expand via REST for details"
-                              : "",
-                      }
-                    : item
-            )
-        );
+        const memberRows = results.map((entry, index) => {
+            const name = entry.source_uri || "member-" + (index + 1);
+            const ok = entry.status === "ok";
+            return {
+                key: parentKey + ":" + name + ":" + index,
+                file: null,
+                name,
+                format: entry.format || "ckl",
+                status: ok ? "done" : "error",
+                error: ok ? "" : entry.error || "Import failed",
+                host: ok ? (entry.host && entry.host.hostname) || "—" : "—",
+                checklists: ok ? (entry.checklists || []).length : 0,
+                reviews: ok ? entry.finding_count || 0 : 0,
+                stats: ok ? entry.stats || null : null,
+                created: ok ? !!entry.created : false,
+            };
+        });
+        setRows((prev) => {
+            const withoutParent = prev.filter((item) => item.key !== parentKey);
+            if (!memberRows.length) {
+                return withoutParent.concat([
+                    {
+                        key: parentKey,
+                        file: null,
+                        name: "archive",
+                        format: "zip",
+                        status: "error",
+                        error: "Zip import returned no file results",
+                        host: "",
+                        checklists: 0,
+                        reviews: 0,
+                        stats: null,
+                        created: false,
+                    },
+                ]);
+            }
+            return withoutParent.concat(memberRows);
+        });
+        if (summary.failed) {
+            setBanner({
+                type: "warning",
+                text:
+                    "Archive import finished with " +
+                    summary.failed +
+                    " failed and " +
+                    (summary.succeeded || 0) +
+                    " succeeded file(s).",
+            });
+        }
     };
 
     const readFileAsArrayBuffer = (file) =>
@@ -278,7 +313,10 @@ export default function ChecklistImportPanel() {
         }
         const pending = rows.filter((row) => row.status === "queued" && row.format);
         if (!pending.length) {
-            setBanner({ type: "warning", text: "Add at least one .ckl or .cklb file." });
+            setBanner({
+                type: "warning",
+                text: "Add at least one .ckl, .cklb, .zip, or XCCDF results file.",
+            });
             return;
         }
         setBusy(true);
@@ -382,9 +420,9 @@ export default function ChecklistImportPanel() {
                     results overwrite matching checks unless the finding is locked in the
                     editor.
                     <br />
-                    <strong>XCCDF scan results</strong> are not part of this collection
-                    builder — use <code>POST /stig_imports?format=xccdf-results</code> or
-                    HEC per README (no multi-file results archive yet).
+                    <strong>XCCDF scan results</strong> (single <code>*-results.xml</code>{" "}
+                    file) upload here; multi-file results archives are not supported — use
+                    REST/HEC per README.
                 </p>
                 {banner ? (
                     <Message
@@ -430,7 +468,7 @@ export default function ChecklistImportPanel() {
                         }
                     }}
                 >
-                    <DropTitle>Drop .ckl, .cklb, or .zip archives here</DropTitle>
+                    <DropTitle>Drop checklists, zip archives, or XCCDF results here</DropTitle>
                     <DropHint>
                         {collectionId
                             ? "Or click to browse. Existing hosts and checklists in this workspace are updated."
@@ -457,7 +495,11 @@ export default function ChecklistImportPanel() {
                                         <Table.Row key={row.key}>
                                             <Table.Cell>{row.name}</Table.Cell>
                                             <Table.Cell>
-                                                {row.format ? row.format.toUpperCase() : "—"}
+                                                {row.format
+                                                    ? row.format === "xccdf-results"
+                                                        ? "XCCDF"
+                                                        : row.format.toUpperCase()
+                                                    : "—"}
                                             </Table.Cell>
                                             <Table.Cell>{row.host || "—"}</Table.Cell>
                                             <Table.Cell>

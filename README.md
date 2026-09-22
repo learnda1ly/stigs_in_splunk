@@ -121,7 +121,7 @@ curl -k -u admin:changeme -X POST \
   --data-binary @path/to/host.cklb
 ```
 
-Collection import builder (automation): batch CKL/CKLB into one workspace — per-file success/errors, partial success **200**, all succeeded **201**:
+Collection import builder (automation): batch CKL/CKLB into one workspace — per-file success/errors. HTTP status matches single-file import: **201** when any row created a new host/checklist, **200** when all rows succeeded as updates or when any row failed (partial batch).
 
 ```bash
 curl -k -u admin:changeme -X POST \

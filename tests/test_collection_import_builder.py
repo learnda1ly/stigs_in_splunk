@@ -62,6 +62,23 @@ class TestChecklistZip(unittest.TestCase):
         self.assertEqual(paths[0], "bundle.zip/hosts/db-01.cklb")
         self.assertEqual(paths[1], "bundle.zip/hosts/web-01.ckl")
 
+    @patch.object(checklist_zip, "MAX_MEMBER_BYTES", 80)
+    def test_rejects_member_larger_than_cap_while_reading(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("oversize.ckl", "x" * 200)
+        with self.assertRaises(ValueError):
+            checklist_zip.list_checklist_files(buf.getvalue())
+
+    @patch.object(checklist_zip, "MAX_CHECKLIST_FILES", 1)
+    def test_max_checklist_files_boundary(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("a.ckl", "<CHECKLIST/>")
+            zf.writestr("b.ckl", "<CHECKLIST/>")
+        with self.assertRaises(ValueError):
+            checklist_zip.list_checklist_files(buf.getvalue())
+
 
 class TestCollectionImportBuilderRest(unittest.TestCase):
     def _dispatch(
@@ -89,10 +106,10 @@ class TestCollectionImportBuilderRest(unittest.TestCase):
             return handler.handle(json.dumps(payload))
 
     @patch.object(stig_rest_handler.imports_svc, "import_checklist_batch")
-    def test_collection_imports_batch(self, mock_batch):
+    def test_collection_imports_batch_created_201(self, mock_batch):
         mock_batch.return_value = {
             "stig_collection_id": "col1",
-            "results": [{"source_uri": "a.ckl", "status": "ok"}],
+            "results": [{"source_uri": "a.ckl", "status": "ok", "created": True}],
             "summary": {"total": 1, "succeeded": 1, "failed": 0, "created": 1, "updated": 0},
         }
         resp = self._dispatch(
@@ -101,7 +118,20 @@ class TestCollectionImportBuilderRest(unittest.TestCase):
             body={"files": [{"source_uri": "a.ckl", "format": "ckl", "content": "<x/>"}]},
         )
         self.assertEqual(resp["status"], 201)
-        mock_batch.assert_called_once()
+
+    @patch.object(stig_rest_handler.imports_svc, "import_checklist_batch")
+    def test_collection_imports_all_updates_200(self, mock_batch):
+        mock_batch.return_value = {
+            "stig_collection_id": "col1",
+            "results": [{"source_uri": "a.ckl", "status": "ok", "created": False}],
+            "summary": {"total": 1, "succeeded": 1, "failed": 0, "created": 0, "updated": 1},
+        }
+        resp = self._dispatch(
+            "POST",
+            "stig_collections/col1/imports",
+            body={"files": [{"source_uri": "a.ckl", "format": "ckl", "content": "<x/>"}]},
+        )
+        self.assertEqual(resp["status"], 200)
 
     @patch.object(stig_rest_handler.imports_svc, "import_checklist_batch")
     def test_collection_imports_partial_failure_200(self, mock_batch):
@@ -143,8 +173,24 @@ class TestCollectionImportBuilderRest(unittest.TestCase):
             query={"format": "zip", "stig_collection_id": "col1", "source_uri": "bundle.zip"},
             raw_payload="PK\x03\x04fake",
         )
-        self.assertIn(resp["status"], (200, 201))
+        self.assertEqual(resp["status"], 201)
         mock_zip.assert_called_once()
+
+    @patch.object(stig_rest_handler.imports_svc, "import_checklist_file")
+    def test_single_import_acl_when_collection_set(self, mock_import):
+        mock_import.side_effect = PermissionError("access denied")
+        resp = self._dispatch(
+            "POST",
+            "stig_imports",
+            query={
+                "format": "ckl",
+                "stig_collection_id": "col1",
+                "source_uri": "host.ckl",
+            },
+            raw_payload="<CHECKLIST/>",
+        )
+        self.assertEqual(resp["status"], 403)
+        mock_import.assert_called_once()
 
 
 class TestImportBatchService(unittest.TestCase):
@@ -180,6 +226,34 @@ class TestImportBatchService(unittest.TestCase):
 
     @patch.object(imports_svc, "import_checklist_file")
     @patch.object(imports_svc, "resolve_import_workspace")
+    def test_batch_isolates_unexpected_errors(self, mock_resolve, mock_one):
+        mock_resolve.return_value = "col1"
+        mock_one.side_effect = [
+            {
+                "source_uri": "good.ckl",
+                "format": "ckl",
+                "host": {"hostname": "h1", "created": True},
+                "checklists": [{"_key": "cl1", "created": True}],
+                "stats": {},
+                "finding_count": 1,
+            },
+            RuntimeError("hec unavailable"),
+        ]
+        out = imports_svc.import_checklist_batch(
+            MagicMock(),
+            _session(),
+            "alice",
+            "col1",
+            [
+                {"source_uri": "good.ckl", "format": "ckl", "content": "<x/>"},
+                {"source_uri": "bad.ckl", "format": "ckl", "content": "<x/>"},
+            ],
+        )
+        self.assertEqual(out["summary"]["failed"], 1)
+        self.assertIn("hec unavailable", out["results"][1]["error"])
+
+    @patch.object(imports_svc, "import_checklist_file")
+    @patch.object(imports_svc, "resolve_import_workspace")
     def test_batch_idempotent_updated_flag(self, mock_resolve, mock_one):
         mock_resolve.return_value = "col1"
         mock_one.return_value = {
@@ -199,6 +273,38 @@ class TestImportBatchService(unittest.TestCase):
         )
         self.assertFalse(out["results"][0]["created"])
         self.assertEqual(out["summary"]["updated"], 1)
+
+    @patch.object(imports_svc, "import_checklist_batch")
+    @patch("services.imports.list_checklist_files")
+    def test_import_checklist_zip_expands_members(self, mock_list, mock_batch):
+        mock_list.return_value = [("bundle/a.ckl", b"<x/>")]
+        mock_batch.return_value = {
+            "stig_collection_id": "col1",
+            "results": [],
+            "summary": {"total": 1, "succeeded": 1, "failed": 0, "created": 1, "updated": 0},
+        }
+        out = imports_svc.import_checklist_zip(
+            MagicMock(),
+            _session(),
+            "alice",
+            "col1",
+            b"PK",
+            source_uri="bundle.zip",
+        )
+        self.assertEqual(out["archive"]["member_count"], 1)
+        mock_batch.assert_called_once()
+
+    @patch.object(imports_svc.grants_svc, "require_workspace_write")
+    @patch.object(imports_svc.collections_svc, "get_collection")
+    @patch.object(imports_svc.collections_svc, "ensure_default_collection")
+    def test_resolve_import_workspace_denied(
+        self, mock_default, mock_get, mock_require
+    ):
+        mock_default.return_value = {"_key": "col-default"}
+        mock_get.return_value = {"_key": "col-default"}
+        mock_require.side_effect = PermissionError("access denied")
+        with self.assertRaises(PermissionError):
+            imports_svc.resolve_import_workspace(MagicMock(), _session(), "alice", "")
 
 
 if __name__ == "__main__":

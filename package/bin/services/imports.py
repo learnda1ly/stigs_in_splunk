@@ -232,7 +232,7 @@ def import_checklist_batch(
             succeeded += 1
             if row.get("created"):
                 created += 1
-        except (ValueError, KeyError, PermissionError) as exc:
+        except Exception as exc:
             failed += 1
             results.append(
                 {
