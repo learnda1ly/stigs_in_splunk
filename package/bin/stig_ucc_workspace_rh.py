@@ -116,11 +116,12 @@ class WorkspaceRestHandler(AdminExternalHandler):
             _fail("stig_admin required to delete a workspace")
         counts = collections_svc.collection_child_counts(service, rec["_key"])
         if collections_svc._has_blocking_children(counts):
-            total = sum(counts.values())
+            summary = collections_svc.format_dependent_children_summary(counts)
             _fail(
-                "Cannot delete workspace with hosts, checklists, or grants from "
-                "Configuration. Remove or reassign data first, or delete via REST "
-                f"with ?cascade=true ({total} dependent rows)."
+                "Cannot delete a workspace that still has hosts, checklists, reviews, "
+                "grants, or assignment rows from Configuration. Remove or reassign data "
+                "first, or delete via REST with ?cascade=true "
+                f"(dependent counts by type: {summary})."
             )
         collections_svc.delete_collection(
             service, rec["_key"], handler_username(self), source="ucc_configuration"

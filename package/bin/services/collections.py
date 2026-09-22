@@ -28,11 +28,29 @@ class CollectionDeleteBlockedError(ValueError):
 
     def __init__(self, counts: Dict[str, int]):
         self.counts = dict(counts)
-        total = sum(counts.values())
+        summary = format_dependent_children_summary(counts)
         super().__init__(
             "workspace has dependent data; retry DELETE with cascade=true to remove "
-            f"hosts, checklists, reviews, grants, and assignment rows ({total} total)"
+            f"hosts, checklists, reviews, grants, and assignment rows ({summary})"
         )
+
+
+def format_dependent_children_summary(counts: Dict[str, int]) -> str:
+    """Human-readable per-type counts for 409/UCC errors (not one deduplicated total)."""
+    labels = (
+        ("hosts", "hosts"),
+        ("checklists", "checklists"),
+        ("reviews", "reviews"),
+        ("grants", "grants"),
+        ("assignment_rules", "assignment rules"),
+        ("assignment_overrides", "assignment overrides"),
+    )
+    parts = [
+        f"{label}={counts[key]}"
+        for key, label in labels
+        if counts.get(key)
+    ]
+    return ", ".join(parts) if parts else "none"
 
 
 def parse_cascade_flag(*values: Any) -> bool:
@@ -50,7 +68,13 @@ def parse_cascade_flag(*values: Any) -> bool:
 
 
 def collection_child_counts(service, collection_id: str) -> Dict[str, int]:
-    """Counts of workspace-scoped KV rows (global baselines are excluded)."""
+    """Counts of workspace-scoped KV rows (global baselines are excluded).
+
+    Each key is an independent count by entity type. ``reviews`` includes rows
+    linked to workspace checklists (and may overlap checklist rows); do not sum
+    all values for a deduplicated "dependent row" total — use
+    ``format_dependent_children_summary`` for operator-facing messages.
+    """
     counts = {
         "hosts": len(
             kv_client.query_all(

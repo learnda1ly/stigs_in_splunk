@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
+import types
 import unittest
 from typing import Any, Dict, List
 from unittest.mock import MagicMock, patch
@@ -11,6 +13,26 @@ from unittest.mock import MagicMock, patch
 _BIN = os.path.join(os.path.dirname(__file__), "..", "package", "bin")
 if _BIN not in sys.path:
     sys.path.insert(0, _BIN)
+
+if "splunk" not in sys.modules:
+    persistconn = types.ModuleType("splunk.persistconn")
+    application = types.ModuleType("splunk.persistconn.application")
+
+    class PersistentServerConnectionApplication:  # noqa: D101
+        def __init__(self, *args, **kwargs):
+            pass
+
+    application.PersistentServerConnectionApplication = (
+        PersistentServerConnectionApplication
+    )
+    persistconn.application = application
+    splunk = types.ModuleType("splunk")
+    splunk.persistconn = persistconn
+    sys.modules["splunk"] = splunk
+    sys.modules["splunk.persistconn"] = persistconn
+    sys.modules["splunk.persistconn.application"] = application
+
+import stig_rest_handler  # noqa: E402
 
 from models import (  # noqa: E402
     KV_STIG_ASSIGNMENT_RULES,
@@ -157,10 +179,14 @@ class TestCollectionCascadeDelete(unittest.TestCase):
             self.assertEqual(result["removed"]["checklists"], 1)
             self.assertGreaterEqual(result["removed"]["reviews"], 1)
             self.assertEqual(result["removed"]["grants"], 1)
+            self.assertEqual(result["removed"]["assignment_rules"], 1)
+            self.assertEqual(result["removed"]["assignment_overrides"], 1)
             self.assertNotIn(self.ws, self.kv.store[KV_STIG_COLLECTIONS])
             self.assertEqual(self.kv.store[KV_STIG_HOSTS], {})
             self.assertEqual(self.kv.store[KV_STIG_CHECKLISTS], {})
             self.assertEqual(self.kv.store[KV_STIG_REVIEWS], {})
+            self.assertEqual(self.kv.store[KV_STIG_ASSIGNMENT_RULES], {})
+            self.assertEqual(self.kv.store[KV_STIG_HOST_BASELINE_ASSIGNMENTS], {})
             self.assertIn("base1", self.kv.store[KV_STIG_BASELINES])
 
     def test_empty_workspace_deletes_without_cascade_flag(self):
@@ -177,13 +203,23 @@ class TestCollectionCascadeDelete(unittest.TestCase):
             self.assertFalse(result["cascade"])
             self.assertNotIn(empty, self.kv.store[KV_STIG_COLLECTIONS])
 
+    def test_default_workspace_delete_raises_value_error(self):
+        default = "ws_default"
+        self.kv.store[KV_STIG_COLLECTIONS][default] = {
+            "_key": default,
+            "name": "Default",
+            "is_default": True,
+        }
+        with self._patch_kv(), patch.object(collections_svc.audit, "log_event"):
+            with self.assertRaises(ValueError) as ctx:
+                collections_svc.delete_collection(
+                    self.service, default, "admin", cascade=False
+                )
+            self.assertIn("default workspace", str(ctx.exception).casefold())
+
 
 class TestCollectionDeleteRestAcl(unittest.TestCase):
     def test_rest_delete_requires_stig_admin(self):
-        import json
-
-        import stig_rest_handler  # noqa: E402
-
         handler = stig_rest_handler.StigRestHandler("", "")
         payload = {
             "method": "DELETE",
@@ -202,11 +238,6 @@ class TestCollectionDeleteRestAcl(unittest.TestCase):
         self.assertEqual(resp["status"], 403)
 
     def test_rest_blocked_returns_409(self):
-        import json
-        from unittest.mock import patch
-
-        import stig_rest_handler  # noqa: E402
-
         handler = stig_rest_handler.StigRestHandler("", "")
         payload = {
             "method": "DELETE",
@@ -229,6 +260,55 @@ class TestCollectionDeleteRestAcl(unittest.TestCase):
         self.assertEqual(resp["status"], 409)
         body = json.loads(resp["payload"])
         self.assertTrue(body.get("cascade_required"))
+
+    def test_rest_delete_passes_cascade_query_param(self):
+        handler = stig_rest_handler.StigRestHandler("", "")
+        payload = {
+            "method": "DELETE",
+            "session": {
+                "authtoken": "token",
+                "user": "admin",
+                "capabilities": {"stig_admin": True},
+            },
+            "rest_path": "stig_collections/ws1",
+            "query": [["cascade", "true"]],
+        }
+        with patch.object(stig_rest_handler.kv_client, "connect", return_value=MagicMock()):
+            with patch.object(
+                stig_rest_handler.collections_svc, "delete_collection"
+            ) as delete_mock:
+                delete_mock.return_value = {
+                    "deleted": "ws1",
+                    "cascade": True,
+                    "removed": {},
+                }
+                resp = handler.handle(json.dumps(payload))
+                delete_mock.assert_called_once()
+                self.assertTrue(delete_mock.call_args.kwargs.get("cascade"))
+        self.assertEqual(resp["status"], 200)
+
+    def test_rest_delete_default_workspace_returns_400(self):
+        handler = stig_rest_handler.StigRestHandler("", "")
+        payload = {
+            "method": "DELETE",
+            "session": {
+                "authtoken": "token",
+                "user": "admin",
+                "capabilities": {"stig_admin": True},
+            },
+            "rest_path": "stig_collections/ws_default",
+            "query": [],
+        }
+        with patch.object(stig_rest_handler.kv_client, "connect", return_value=MagicMock()):
+            with patch.object(
+                stig_rest_handler.collections_svc,
+                "delete_collection",
+                side_effect=ValueError(
+                    "cannot delete the default workspace; mark another workspace as default first"
+                ),
+            ):
+                resp = handler.handle(json.dumps(payload))
+        self.assertEqual(resp["status"], 400)
 
 
 if __name__ == "__main__":
