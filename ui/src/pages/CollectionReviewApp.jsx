@@ -465,7 +465,7 @@ export default function CollectionReviewApp() {
         );
     };
 
-    const workflowTargets = (action) => {
+    const workflowScope = (action) => {
         const scope =
             selectedReviewKeys.length > 0
                 ? rows.filter(
@@ -474,7 +474,7 @@ export default function CollectionReviewApp() {
                           selectedReviewKeys.indexOf(row.review._key) >= 0
                   )
                 : rows.filter((row) => row.review && row.review._key);
-        return scope.filter((row) => {
+        const eligible = scope.filter((row) => {
             const wf = reviewWorkflowState(row.review);
             if (action === "submit") {
                 return (
@@ -487,6 +487,7 @@ export default function CollectionReviewApp() {
             }
             return false;
         });
+        return { scope, eligible };
     };
 
     const onBatchWorkflow = (action) => {
@@ -506,20 +507,31 @@ export default function CollectionReviewApp() {
             });
             return;
         }
-        const targets = workflowTargets(action);
-        const ids = targets.map((row) => row.review._key);
+        const { scope, eligible } = workflowScope(action);
+        const ids = eligible.map((row) => row.review._key);
+        const skippedSelected =
+            selectedReviewKeys.length > 0 ? scope.length - eligible.length : 0;
         if (!ids.length) {
             const scopeLabel = selectedReviewKeys.length
                 ? "selected row(s)"
                 : "host row(s) for this rule";
+            let text =
+                "No " +
+                scopeLabel +
+                " match " +
+                action +
+                " (check workflow state and review completeness).";
+            if (skippedSelected > 0) {
+                text +=
+                    " " +
+                    skippedSelected +
+                    " selected row(s) were not eligible for " +
+                    action +
+                    ".";
+            }
             setBanner({
                 type: "warning",
-                text:
-                    "No " +
-                    scopeLabel +
-                    " match " +
-                    action +
-                    " (check workflow state and review completeness).",
+                text,
             });
             return;
         }
@@ -553,6 +565,14 @@ export default function CollectionReviewApp() {
                     (selectedReviewKeys.length
                         ? " (" + ids.length + " selected)"
                         : " (all eligible hosts)");
+                if (skippedSelected > 0) {
+                    text +=
+                        ", " +
+                        skippedSelected +
+                        " selected skipped (ineligible for " +
+                        action +
+                        ")";
+                }
                 if (errCount) {
                     text += ", " + errCount + " error(s)";
                     if (errDetail) {
