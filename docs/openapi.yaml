@@ -1,0 +1,181 @@
+openapi: 3.0.3
+info:
+  title: stigs_in_splunk persist REST (catalog reference)
+  version: 1.0.0
+  description: |
+    Partial OpenAPI for baseline catalog reference endpoints added for STIG Manager parity.
+    Full API is documented in spec.md.
+servers:
+  - url: https://{host}:8089/servicesNS/nobody/stigs_in_splunk
+    variables:
+      host:
+        default: localhost
+paths:
+  /stig_baselines/rules/{ruleRef}:
+    get:
+      summary: Find rules by id across baselines
+      parameters:
+        - name: ruleRef
+          in: path
+          required: true
+          schema:
+            type: string
+          description: SV-id, EX rule version, group V-id, or full DISA XCCDF rule id
+        - name: stig_id
+          in: query
+          schema:
+            type: string
+          description: Optional logical STIG id filter
+      responses:
+        "200":
+          description: One or more matching rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineRuleRefList"
+        "404":
+          description: No matching rules
+  /stig_baselines/ccis/{cci}:
+    get:
+      summary: Find rules by CCI across baselines
+      parameters:
+        - name: cci
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: stig_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Zero or more matches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineCciRefList"
+  /stig_baselines/groups/{groupId}:
+    get:
+      summary: Find rules by group V-id across baselines
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: stig_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Zero or more matches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineGroupRefList"
+  /stig_baselines/rule/{ruleKey}:
+    get:
+      summary: Get one baseline rule by KV key
+      parameters:
+        - name: ruleKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Rule with baseline pointer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineRuleMatch"
+        "404":
+          description: Unknown rule key
+components:
+  schemas:
+    BaselinePointer:
+      type: object
+      properties:
+        baseline_id:
+          type: string
+        stig_id:
+          type: string
+        version:
+          type: string
+        title:
+          type: string
+        benchmark_date:
+          type: string
+        content_fingerprint:
+          type: string
+    BaselineRuleMatch:
+      type: object
+      properties:
+        rule_key:
+          type: string
+        group_id:
+          type: string
+        rule_id:
+          type: string
+        rule_id_src:
+          type: string
+        rule_version:
+          type: string
+        severity:
+          type: string
+        rule_title:
+          type: string
+        group_title:
+          type: string
+        ccis:
+          type: array
+          items:
+            type: string
+        check_content_hash:
+          type: string
+        baseline:
+          $ref: "#/components/schemas/BaselinePointer"
+    BaselineRuleRefList:
+      type: object
+      properties:
+        rule_ref:
+          type: string
+        stig_id:
+          type: string
+          nullable: true
+        match_count:
+          type: integer
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/BaselineRuleMatch"
+    BaselineCciRefList:
+      type: object
+      properties:
+        cci:
+          type: string
+        stig_id:
+          type: string
+          nullable: true
+        match_count:
+          type: integer
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/BaselineRuleMatch"
+    BaselineGroupRefList:
+      type: object
+      properties:
+        group_id:
+          type: string
+        stig_id:
+          type: string
+          nullable: true
+        match_count:
+          type: integer
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/BaselineRuleMatch"

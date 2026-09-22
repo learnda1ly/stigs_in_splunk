@@ -629,6 +629,10 @@ DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 |--------|------|--------|
 | GET | `/stig_baselines` | List all baseline headers |
 | POST | `/stig_baselines/import` | Query `format` (`xccdf` \| `cklb` \| `ckl` \| `zip`), `source_uri`; raw body. Zip walks nested archives and imports only `*Manual-xccdf.xml` STIG baselines. |
+| GET | `/stig_baselines/rules/{ruleRef}` | Rules matching `ruleRef` across all imported baselines (`rule_id`, `rule_id_src`, `rule_version`, or `group_id`; DISA `xccdf_mil.disa.stig_rule_` prefix stripped). Query `stig_id?` optional. **404** when no matches. |
+| GET | `/stig_baselines/ccis/{cci}` | Rules whose imported `ccis` JSON array contains the CCI (normalized to `CCI-…`). Query `stig_id?` optional. **200** with empty `matches` when none. |
+| GET | `/stig_baselines/groups/{groupId}` | Rules with `group_id` (V-id) across baselines. Query `stig_id?` optional. |
+| GET | `/stig_baselines/rule/{ruleKey}` | One `stig_baseline_rules` row by KV `_key` plus baseline pointer. **404** when missing. |
 | GET | `/stig_baselines/{id}/rules` | All rules for baseline |
 | DELETE | `/stig_baselines/{id}` | Remove baseline + rules (UCC Configuration table or persist REST). |
 
