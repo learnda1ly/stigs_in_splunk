@@ -1,0 +1,11 @@
+<dashboard version="1.1" script="stig_meta_collection_dashboard_ui.js" hideEdit="true" hideExport="true" hideTitle="true">
+  <label>All workspaces</label>
+  <description>Cross-workspace metrics for workspaces you can read.</description>
+  <row>
+    <panel>
+      <html>
+        <div id="stig-ui-root"></div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

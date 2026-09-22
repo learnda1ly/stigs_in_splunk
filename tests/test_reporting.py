@@ -106,6 +106,47 @@ class TestAggregateMetrics(unittest.TestCase):
         )
 
 
+class TestRollupAggregateMetrics(unittest.TestCase):
+    def test_sums_totals_and_completion_percent(self):
+        parts = [
+            {
+                "totals": {"hosts": 1, "checklists": 2, "reviews": 4},
+                "completion": {
+                    "reviewed": 3,
+                    "not_reviewed": 1,
+                    "valid": 2,
+                    "open_findings": 1,
+                    "open_findings_by_status": 2,
+                },
+                "workflow": {"draft": 1, "submitted": 0, "accepted": 0, "rejected": 0, "open_unaccepted": 1},
+                "by_status": {"open": 2, "not_reviewed": 1, "not_a_finding": 1, "not_applicable": 0},
+                "by_severity": {"high": 1, "low": 1},
+                "open_by_severity": {"high": 1},
+            },
+            {
+                "totals": {"hosts": 2, "checklists": 1, "reviews": 6},
+                "completion": {
+                    "reviewed": 6,
+                    "not_reviewed": 0,
+                    "valid": 5,
+                    "open_findings": 0,
+                    "open_findings_by_status": 1,
+                },
+                "workflow": {"draft": 0, "submitted": 1, "accepted": 1, "rejected": 0, "open_unaccepted": 0},
+                "by_status": {"open": 1, "not_reviewed": 0, "not_a_finding": 5, "not_applicable": 0},
+                "by_severity": {"medium": 3},
+                "open_by_severity": {},
+            },
+        ]
+        rolled = reporting_svc.rollup_aggregate_metrics(parts)
+        self.assertEqual(rolled["totals"]["hosts"], 3)
+        self.assertEqual(rolled["totals"]["reviews"], 10)
+        self.assertEqual(rolled["completion"]["reviewed"], 9)
+        self.assertEqual(rolled["completion"]["percent_reviewed"], 90.0)
+        self.assertEqual(rolled["by_severity"]["high"], 1)
+        self.assertEqual(rolled["by_severity"]["medium"], 3)
+
+
 class TestFindingsFilters(unittest.TestCase):
     def test_parse_status_filter(self):
         parsed = reporting_svc._parse_status_filter("open,not_reviewed")

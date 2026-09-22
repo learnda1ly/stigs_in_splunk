@@ -107,6 +107,20 @@ class TestReportingRestRoutes(unittest.TestCase):
         resp = self._dispatch("/stig_collections/secret/unreviewed/assets")
         self.assertEqual(resp["status"], 404)
 
+    @patch.object(stig_rest_handler.reporting_svc, "meta_collection_metrics")
+    def test_meta_metrics_route(self, mock_meta):
+        mock_meta.return_value = {"workspace_count": 0, "workspaces": [], "summary": {}}
+        resp = self._dispatch("/stig_collections/meta/metrics")
+        self.assertEqual(resp["status"], 200)
+        mock_meta.assert_called_once()
+
+    @patch.object(stig_rest_handler.reporting_svc, "meta_collection_metrics_summary")
+    def test_meta_metrics_summary_route(self, mock_summary):
+        mock_summary.return_value = {"workspace_count": 1, "summary": {}}
+        resp = self._dispatch("/stig_collections/meta/metrics/summary")
+        self.assertEqual(resp["status"], 200)
+        mock_summary.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

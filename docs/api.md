@@ -42,7 +42,7 @@ Grant-based workspace ACLs further restrict which collections, hosts, and review
 
 | Prefix | Purpose |
 |--------|---------|
-| `/stig_collections` | Workspaces; subpaths for grants, labels, metrics, findings, POA&M, imports, clone, transfer, metadata, **`/review-history`**, **`/review_aging`** (+ `/stale`), **`/jobs`** (async archive export), `archive/ckl\|cklb\|xccdf`, … |
+| `/stig_collections` | Workspaces; **`/meta/metrics`** (+ `/summary`) for grant-filtered cross-workspace rollups; subpaths for grants, labels, metrics, findings, POA&M, imports, clone, transfer, metadata, **`/review-history`**, **`/review_aging`** (+ `/stale`), **`/jobs`** (async archive export), `archive/ckl\|cklb\|xccdf`, … |
 | `/stig_hosts` | Assets; `/metadata`, `/checklists`, `/stigs` |
 | `/stig_baselines` | STIG library; `/import`, `/jobs`, `/gc_orphan_rules`, `/hierarchy`, `/by_stig/{stigId}`, cross-catalog `/rules`, `/ccis`, `/groups`, `/rule/{key}`, `/{id}/rules`, `/{id}/rules/{ruleRef}` |
 | `/stig_checklists` | Checklists; export, upgrade, validate, `export_bulk` |
