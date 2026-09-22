@@ -609,14 +609,52 @@ def export_checklist_file(
     return content, export_filename(checklist, baseline, host, fmt)
 
 
+def checklist_ids_for_collection_export(
+    service,
+    collection_id: str,
+    session: Dict[str, Any],
+    host_id: Optional[str] = None,
+    baseline_id: Optional[str] = None,
+) -> List[str]:
+    """Workspace-scoped checklist keys for archive export (grant ACL applied)."""
+    _require_collection(service, collection_id, session)
+    host_filter = (host_id or "").strip()
+    baseline_filter = (baseline_id or "").strip()
+    ids: List[str] = []
+    for rec in list_checklists(service, session, collection_id):
+        if host_filter and rec.get("host_id") != host_filter:
+            continue
+        if baseline_filter and rec.get("baseline_id") != baseline_filter:
+            continue
+        key = rec.get("_key")
+        if key:
+            ids.append(str(key))
+    return sorted(ids)
+
+
 def export_checklists_bulk(
     service,
-    checklist_ids: List[str],
-    fmt: str,
-    session: Dict[str, Any],
+    checklist_ids: Optional[List[str]] = None,
+    fmt: str = "cklb",
+    session: Dict[str, Any] = None,
+    stig_collection_id: Optional[str] = None,
+    host_id: Optional[str] = None,
+    baseline_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    ids = [str(i).strip() for i in checklist_ids or [] if str(i).strip()]
+    collection_id = (stig_collection_id or "").strip()
+    if collection_id:
+        ids = checklist_ids_for_collection_export(
+            service,
+            collection_id,
+            session,
+            host_id=host_id,
+            baseline_id=baseline_id,
+        )
+    else:
+        ids = [str(i).strip() for i in checklist_ids or [] if str(i).strip()]
     if not ids:
+        if collection_id:
+            raise ValueError("no checklists match export filter")
         raise ValueError("checklist_ids is required")
     export_fmt = (fmt or "cklb").lower()
     if export_fmt not in {"ckl", "cklb"}:
@@ -627,7 +665,12 @@ def export_checklists_bulk(
     used: Dict[str, int] = {}
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
         for key in ids:
-            content, filename = export_checklist_file(service, key, export_fmt, session)
+            try:
+                content, filename = export_checklist_file(
+                    service, key, export_fmt, session
+                )
+            except KeyError:
+                raise KeyError(key) from None
             count = used.get(filename, 0)
             used[filename] = count + 1
             if count:
@@ -637,13 +680,51 @@ def export_checklists_bulk(
             files.append(filename)
 
     zip_name = f"stig-checklists-{export_fmt}.zip"
-    return {
+    payload: Dict[str, Any] = {
         "filename": zip_name,
         "format": export_fmt,
         "count": len(files),
         "files": files,
         "content_base64": base64.b64encode(buf.getvalue()).decode("ascii"),
     }
+    if collection_id:
+        payload["stig_collection_id"] = collection_id
+        payload["filters"] = {
+            "host_id": (host_id or "").strip() or None,
+            "baseline_id": (baseline_id or "").strip() or None,
+        }
+    return payload
+
+
+def export_collection_archive(
+    service,
+    collection_id: str,
+    fmt: str,
+    session: Dict[str, Any],
+    host_id: Optional[str] = None,
+    baseline_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Bulk CKL/CKLB zip for all checklists in a workspace (optional host/baseline filters)."""
+    collection = collections_svc.get_collection(service, collection_id)
+    if not collection:
+        raise KeyError(collection_id)
+    grants = grants_svc.query_grants(service, collection_id)
+    if not access.user_can_read_collection(collection, session, grants):
+        raise KeyError(collection_id)
+
+    result = export_checklists_bulk(
+        service,
+        None,
+        fmt,
+        session,
+        stig_collection_id=collection_id,
+        host_id=host_id,
+        baseline_id=baseline_id,
+    )
+    slug = _safe_filename_part(collection.get("name") or collection_id)
+    export_fmt = result.get("format") or (fmt or "cklb").lower()
+    result["filename"] = f"stig-archive-{slug}-{export_fmt}.zip"
+    return result
 
 
 def _by_key(records: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:

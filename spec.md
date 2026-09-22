@@ -576,6 +576,8 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 | GET | `/stig_collections/{id}/unreviewed/assets` | Filters (see §11.6) | Per-host unreviewed counts (`status=not_reviewed`). |
 | GET | `/stig_collections/{id}/unreviewed/rules` | Filters (see §11.6) | Per-rule unreviewed counts with hostnames. |
 | GET | `/stig_collections/{id}/poam` | `format?` (`json`, `csv`, `xlsx`) | POA&M-style export for governance-open findings. |
+| POST/PUT | `/stig_collections/{id}/archive/ckl` | Query or JSON `host_id?`, `baseline_id?` | Zip archive of all CKL checklists in the workspace (grant ACL applied). **400** when no checklists match. **404** when workspace hidden. Response JSON: `{filename, format, count, files, content_base64, stig_collection_id, filters}`. Zip entry names: `{hostname}_{stig_id}_{version}.ckl`. |
+| POST/PUT | `/stig_collections/{id}/archive/cklb` | Same filters as CKL archive | Same as CKL archive with `.cklb` entries. |
 
 Default `access_principals` on create: `["user:<creator>"]` if omitted. The Default holding workspace uses `[]` (any user with STIG caps).
 
@@ -632,6 +634,7 @@ Import responses:
 | POST | `/stig_checklists` | `{stig_collection_id, host_id, baseline_id?, stig_id?, title?, mode?, target_data?}` → spawns reviews. Duplicate host+baseline → **400**. Prefer **`POST /stig_hosts/{id}/stigs`** for idempotent assign. |
 | GET/PATCH/DELETE | `/stig_checklists/{id}` | DELETE cascades reviews |
 | GET | `/stig_checklists/{id}/export` | Query `format=cklb|ckl` |
+| POST/PUT | `/stig_checklists/export_bulk` | JSON `{checklist_ids?, stig_collection_id?, format, host_id?, baseline_id?}` | Zip of multiple checklists. Either `checklist_ids` **or** `stig_collection_id` (workspace-scoped, optional host/baseline filters). Same zip/filename rules as collection archive. |
 | POST/PUT | `/stig_checklists/{id}/upgrade` | `{baseline_id}` — same `stig_id`, newer revision; merge reviews when `check_content_hash` matches |
 | POST | `/stig_imports` | Query `format=ckl|cklb|xccdf-results`, `source_uri`, `stig_collection_id`; raw body (see §11.4.1) |
 | GET/POST/DELETE | `/stig_collections/{id}/baseline_defaults` | Workspace default `baseline_id` per `stig_id` (`default_baseline_map` on collection) |

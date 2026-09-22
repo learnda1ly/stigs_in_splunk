@@ -163,9 +163,17 @@ export default function ExportApp() {
                 );
             });
         } else {
-            work = apiFetch("stig_checklists/export_bulk", {
+            const allInWorkspace =
+                collectionId && ids.length === rows.length && rows.length > 0;
+            const bulkPath = allInWorkspace
+                ? "stig_collections/" + collectionId + "/archive/" + format
+                : "stig_checklists/export_bulk";
+            const bulkBody = allInWorkspace
+                ? {}
+                : { checklist_ids: ids, format };
+            work = apiFetch(bulkPath, {
                 method: "POST",
-                body: { checklist_ids: ids, format },
+                body: bulkBody,
             }).then((payload) => {
                 const doc = unwrap(payload);
                 if (!doc || !doc.content_base64) {

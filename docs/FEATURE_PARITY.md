@@ -66,8 +66,8 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count (approx.) |
 |--------|-----------------|
-| done | 27 |
-| partial | 11 |
+| done | 29 |
+| partial | 9 |
 | missing | 16 |
 | n/a | 8 |
 
@@ -140,8 +140,8 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 |---------|-------------------------|--------|-----------|-----------------------------|-----|------|
 | Import CKL/CKLB checklist | UI: Checklist menu. API: asset/collection import | **done** | `POST /stig_imports`; Import UI; Watcher-shaped events. | HEC + KV apply; workspace default. | P0 | — |
 | Import XCCDF **results** (scan) | Multi-source integration in README | **partial** | `POST /stig_imports?format=xccdf-results` parses XCCDF `TestResult` / `rule-result` (OpenSCAP-style); HEC + KV apply. Requires baseline in catalog (or workspace default). No full SCAP data stream bundle ingest. | Map pass/fail to review status; document Evaluate-STIG/SCAP path via HEC or REST. | P1 | L |
-| Collection archive export CKL | API: `POST .../archive/ckl` | **partial** | `GET /stig_checklists/{id}/export?format=ckl`; bulk `stig_checklists/export_bulk` zip. | Workspace-scoped bulk export; filename conventions (tests). | P1 | — |
-| Collection archive export CKLB | API: `POST .../archive/cklb` | **partial** | Same as CKL for CKLB. | Bulk zip includes all checklists in workspace filter. | P1 | — |
+| Collection archive export CKL | API: `POST .../archive/ckl` | **done** | `POST /stig_collections/{id}/archive/ckl` (optional `host_id` / `baseline_id` filters); `POST /stig_checklists/export_bulk` with `stig_collection_id`; per-checklist `GET .../export?format=ckl`. Zip entry names `{hostname}_{stig_id}_{version}.ckl` (tests). | Workspace-scoped bulk export; filename conventions (tests). | P1 | — |
+| Collection archive export CKLB | API: `POST .../archive/cklb` | **done** | Same as CKL for CKLB (`.../archive/cklb`, `.cklb` filenames). SplunkUI Export uses archive route for **Download all in view** when a workspace is selected. | Bulk zip includes all checklists in workspace filter. | P1 | — |
 | Collection archive export XCCDF | API: `POST .../archive/xccdf` | **missing** | — | Optional XCCDF results export from KV state. | P2 | L |
 | STIGMan Watcher integration | [stigman-watcher](https://github.com/NUWCDIVNPT/stigman-watcher) | **done** | HEC + `events.py` fat events; reconcile every 5m. Event schema and Watcher POST field parity documented in [watcher-hec.md](watcher-hec.md). | Document event schema; parity with Watcher POST fields. | P1 | S |
 | Async import/export jobs | API: `/jobs`, `/jobs/{jobId}/runs`, tasks | **partial** | `/stig_baselines/jobs` chunk upload only. | Extend job pattern for large collection import/export if needed. | P2 | M |
@@ -211,10 +211,10 @@ OpenAPI **tags** (approximate operation counts from `stig-manager.yaml`): Collec
 
 | Resource | Notes |
 |----------|--------|
-| `stig_collections` | Workspace CRUD |
+| `stig_collections` | Workspace CRUD; `POST .../archive/ckl` and `.../archive/cklb` collection archive export |
 | `stig_hosts` | Asset CRUD, move workspace, **assign STIG** (`POST .../stigs`), list host checklists |
 | `stig_baselines` | List, import, rules, delete, `jobs` chunk import |
-| `stig_checklists` | CRUD, export, `export_bulk` |
+| `stig_checklists` | CRUD, export, `export_bulk` (by `checklist_ids` or `stig_collection_id` + filters) |
 | `stig_reviews` | List, get, patch (`ingest_lock`), batch (`/batch`) |
 | `stig_imports` | CKL/CKLB ingest, reconcile |
 | `stig_settings` | Editor settings adapter |
