@@ -956,7 +956,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 "perms": {"read": ["*"], "write": ["*"]},
                 "sharing": "app",
             }
-            for rec in baselines_svc.list_baselines(service):
+            for rec in baselines_svc.list_baselines_for_user(service, session):
                 name = baselines_svc.ucc_name_for(rec)
                 if not name:
                     continue
@@ -1026,16 +1026,34 @@ class StigRestHandler(PersistentServerConnectionApplication):
         session: Dict[str, Any],
         username: str,
     ) -> Dict[str, Any]:
+        scope_filter = (query.get("stig_collection_id") or "").strip() or None
+        visible_ids = baselines_svc.visible_baseline_id_set(
+            service, session, stig_collection_id=scope_filter
+        )
+
         if parts == ["import"]:
             if method != "POST":
                 return _error("method not allowed", status=405)
             fmt = query.get("format") or "xccdf"
             source_uri = query.get("source_uri") or ""
+            body_json = _body_json(payload)
+            scope = (
+                body_json.get("stig_collection_id")
+                or query.get("stig_collection_id")
+                or ""
+            ).strip()
+            if scope:
+                grants_svc.require_workspace_write(service, scope, session)
             body = _body_bytes(payload)
             if not body:
                 return _error("empty import body")
             results = baselines_svc.import_baselines_payload(
-                service, body, fmt, username, source_uri
+                service,
+                body,
+                fmt,
+                username,
+                source_uri,
+                stig_collection_id=scope,
             )
             created_any = any(item.get("created") for item in results)
             payload_out = {
@@ -1072,13 +1090,24 @@ class StigRestHandler(PersistentServerConnectionApplication):
         if parts == ["hierarchy"]:
             if method != "GET":
                 return _error("method not allowed", status=405)
-            return _json_response(baseline_library_svc.list_hierarchy(service))
+            return _json_response(
+                baseline_library_svc.list_hierarchy(
+                    service,
+                    session,
+                    stig_collection_id=scope_filter,
+                )
+            )
 
         if len(parts) >= 2 and parts[0] == "by_stig":
             if method != "GET":
                 return _error("method not allowed", status=405)
             stig_id = "/".join(parts[1:])
-            entry = baseline_library_svc.get_benchmark(service, stig_id)
+            entry = baseline_library_svc.get_benchmark(
+                service,
+                stig_id,
+                session,
+                stig_collection_id=scope_filter,
+            )
             if not entry:
                 return _error("not found", status=404)
             return _json_response(entry)
@@ -1089,7 +1118,10 @@ class StigRestHandler(PersistentServerConnectionApplication):
             rule_ref = parts[1]
             stig_filter = (query.get("stig_id") or "").strip()
             matches = baselines_svc.find_catalog_rules_by_ref(
-                service, rule_ref, stig_id=stig_filter
+                service,
+                rule_ref,
+                stig_id=stig_filter,
+                visible_baseline_ids=visible_ids,
             )
             if not matches:
                 return _error("not found", status=404)
@@ -1108,7 +1140,10 @@ class StigRestHandler(PersistentServerConnectionApplication):
             cci = parts[1]
             stig_filter = (query.get("stig_id") or "").strip()
             matches = baselines_svc.find_catalog_rules_by_cci(
-                service, cci, stig_id=stig_filter
+                service,
+                cci,
+                stig_id=stig_filter,
+                visible_baseline_ids=visible_ids,
             )
             return _json_response(
                 {
@@ -1125,7 +1160,10 @@ class StigRestHandler(PersistentServerConnectionApplication):
             group_id = parts[1]
             stig_filter = (query.get("stig_id") or "").strip()
             matches = baselines_svc.find_catalog_rules_by_group_id(
-                service, group_id, stig_id=stig_filter
+                service,
+                group_id,
+                stig_id=stig_filter,
+                visible_baseline_ids=visible_ids,
             )
             return _json_response(
                 {
@@ -1142,6 +1180,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
             detail = baseline_library_svc.get_rule_by_key(service, parts[1])
             if not detail:
                 return _error("not found", status=404)
+            if str(detail.get("baseline_id") or "") not in visible_ids:
+                return _error("not found", status=404)
             return _json_response(detail)
 
         if len(parts) == 3 and parts[1] == "rules":
@@ -1149,6 +1189,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
             rule_ref = parts[2]
             if method != "GET":
                 return _error("method not allowed", status=405)
+            if baseline_id not in visible_ids:
+                return _error("not found", status=404)
             detail = baseline_library_svc.get_baseline_rule(
                 service,
                 baseline_id,
@@ -1163,19 +1205,23 @@ class StigRestHandler(PersistentServerConnectionApplication):
             baseline_id = parts[0]
             if method != "GET":
                 return _error("method not allowed", status=405)
-            if not baselines_svc.get_baseline(service, baseline_id):
+            if baseline_id not in visible_ids:
                 return _error("not found", status=404)
             rules = baselines_svc.list_baseline_rules(service, baseline_id)
             return _json_response(rules)
 
         if not parts:
             if method == "GET":
-                return _json_response(baselines_svc.list_baselines(service))
+                return _json_response(
+                    baselines_svc.list_baselines_for_user(
+                        service, session, stig_collection_id=scope_filter
+                    )
+                )
             return _error("method not allowed", status=405)
 
         key = parts[0]
         if method == "GET":
-            rec = baselines_svc.get_baseline(service, key)
+            rec = baselines_svc.get_baseline_for_user(service, session, key)
             if not rec:
                 return _error("not found", status=404)
             return _json_response(rec)

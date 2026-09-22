@@ -23,6 +23,15 @@ def _normalize_stig_key(stig_id: str) -> str:
     return (stig_id or "").strip().casefold()
 
 
+def _default_baseline_allowed(
+    baseline: Dict[str, Any], collection_id: str
+) -> bool:
+    scope = baselines_svc.baseline_workspace_id(baseline)
+    if not scope:
+        return True
+    return scope == (collection_id or "").strip()
+
+
 def _parse_map(rec: Optional[Dict[str, Any]]) -> Dict[str, str]:
     raw = parse_json_field((rec or {}).get(DEFAULTS_FIELD), default={}) or {}
     if not isinstance(raw, dict):
@@ -173,7 +182,8 @@ def lookup_default_baseline_id(
         key = _normalize_stig_key(candidate)
         if key and key in mapping:
             bid = mapping[key]
-            if baselines_svc.get_baseline(service, bid):
+            baseline = baselines_svc.get_baseline(service, bid)
+            if baseline and _default_baseline_allowed(baseline, collection_id):
                 return bid
     return None
 
@@ -208,6 +218,13 @@ def resolve_baseline_id(
         else:
             want_stig = xccdf_benchmark_id
     if want_stig:
+        cid = (collection_id or "").strip()
+        if cid:
+            found = baselines_svc.find_baseline_by_stig(
+                service, want_stig, version or "", stig_collection_id=cid
+            )
+            if found:
+                return found["_key"]
         found = baselines_svc.find_baseline_by_stig(service, want_stig, version or "")
         if found:
             return found["_key"]

@@ -179,8 +179,13 @@ class TestBaselineLibraryRest(unittest.TestCase):
         resp = self._dispatch("GET", "stig_baselines/by_stig/missing")
         self.assertEqual(resp["status"], 404)
 
+    @patch.object(
+        stig_rest_handler.baselines_svc,
+        "visible_baseline_id_set",
+        return_value={"b1"},
+    )
     @patch.object(stig_rest_handler.baseline_library_svc, "get_rule_by_key")
-    def test_get_rule_by_kv_key(self, mock_rule):
+    def test_get_rule_by_kv_key(self, mock_rule, _visible):
         mock_rule.return_value = {
             "baseline_id": "b1",
             "rule": {"_key": "rk", "rule_id": "SV-1"},
@@ -191,8 +196,13 @@ class TestBaselineLibraryRest(unittest.TestCase):
         self.assertEqual(body["rule"]["_key"], "rk")
         mock_rule.assert_called_once()
 
+    @patch.object(
+        stig_rest_handler.baselines_svc,
+        "visible_baseline_id_set",
+        return_value={"b1"},
+    )
     @patch.object(stig_rest_handler.baseline_library_svc, "get_baseline_rule")
-    def test_get_rule_in_baseline(self, mock_rule):
+    def test_get_rule_in_baseline(self, mock_rule, _visible):
         mock_rule.return_value = {
             "baseline_id": "b1",
             "rule": {"_key": "rk", "rule_id": "SV-1"},

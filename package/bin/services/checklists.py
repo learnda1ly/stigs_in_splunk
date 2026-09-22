@@ -342,9 +342,9 @@ def assign_stig_to_host(
         )
         return existing, False
 
-    baseline = baselines_svc.get_baseline(service, baseline_id)
-    if not baseline:
-        raise KeyError(baseline_id)
+    baseline = baselines_svc.require_baseline_usable_in_workspace(
+        service, session, baseline_id, collection_id
+    )
 
     rules = baselines_svc.list_baseline_rules(service, baseline_id)
     if not rules:
@@ -465,9 +465,9 @@ def create_checklist(
     host = hosts_svc.get_host(service, host_id, session)
     if not host or host.get("stig_collection_id") != collection_id:
         raise ValueError("host not found in stig_collection")
-    baseline = baselines_svc.get_baseline(service, baseline_id)
-    if not baseline:
-        raise KeyError(baseline_id)
+    baseline = baselines_svc.require_baseline_usable_in_workspace(
+        service, session, baseline_id, collection_id
+    )
 
     rules = baselines_svc.list_baseline_rules(service, baseline_id)
     if not rules:
@@ -806,7 +806,11 @@ def summarize_checklists(
     except Exception:
         hosts = {}
     try:
-        baselines = _by_key(baselines_svc.list_baselines(service))
+        baselines = _by_key(
+            baselines_svc.list_baselines_for_user(
+                service, session, stig_collection_id=stig_collection_id
+            )
+        )
     except Exception:
         baselines = {}
 

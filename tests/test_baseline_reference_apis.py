@@ -182,10 +182,11 @@ class TestBaselineReferenceServices(unittest.TestCase):
             )
         self.assertEqual(len(filtered), 2)
         self.assertEqual(len(cci_filtered), 2)
-        self.assertEqual(len(all_matches), 3)
-        orphan_rows = [m for m in all_matches if m.get("rule_key") == "orphan"]
-        self.assertEqual(len(orphan_rows), 1)
-        self.assertFalse((orphan_rows[0].get("baseline") or {}).get("baseline_id"))
+        self.assertEqual(len(all_matches), 2)
+        self.assertEqual(
+            [m for m in all_matches if m.get("rule_key") == "orphan"],
+            [],
+        )
 
     def test_stig_id_filter_on_group_and_cci(self):
         with self._patch():

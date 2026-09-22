@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Button from "@splunk/react-ui/Button";
 import Heading from "@splunk/react-ui/Heading";
 import Message from "@splunk/react-ui/Message";
+import Select from "@splunk/react-ui/Select";
 import Table from "@splunk/react-ui/Table";
 import Text from "@splunk/react-ui/Text";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
@@ -24,6 +25,8 @@ export default function LibraryApp() {
     const [rules, setRules] = useState([]);
     const [ruleDetail, setRuleDetail] = useState(null);
     const [filter, setFilter] = useState("");
+    const [workspaces, setWorkspaces] = useState([]);
+    const [workspaceFilter, setWorkspaceFilter] = useState("");
     const [loading, setLoading] = useState(true);
     const [rulesLoading, setRulesLoading] = useState(false);
     const [error, setError] = useState("");
@@ -63,13 +66,22 @@ export default function LibraryApp() {
         setLoading(true);
         setError("");
         try {
-            const data = await apiGet("stig_baselines/hierarchy");
+            const qs = workspaceFilter
+                ? "?stig_collection_id=" + encodeURIComponent(workspaceFilter)
+                : "";
+            const data = await apiGet("stig_baselines/hierarchy" + qs);
             setHierarchy(data);
         } catch (err) {
             setError(String(err.message || err));
         } finally {
             setLoading(false);
         }
+    }, [workspaceFilter]);
+
+    useEffect(() => {
+        apiGet("stig_collections")
+            .then((rows) => setWorkspaces(Array.isArray(rows) ? rows : []))
+            .catch(() => setWorkspaces([]));
     }, []);
 
     useEffect(() => {
@@ -131,11 +143,26 @@ export default function LibraryApp() {
                     <WaitSpinner size="large" />
                 ) : (
                     <>
-                        <Text
-                            placeholder="Filter benchmarks…"
-                            value={filter}
-                            onChange={(_, { value }) => setFilter(value)}
-                        />
+                        <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
+                            <Text
+                                placeholder="Filter benchmarks…"
+                                value={filter}
+                                onChange={(_, { value }) => setFilter(value)}
+                            />
+                            <Select
+                                value={workspaceFilter}
+                                onChange={(_, { value }) => setWorkspaceFilter(value)}
+                            >
+                                <Select.Option label="All visible catalogs" value="" />
+                                {workspaces.map((ws) => (
+                                    <Select.Option
+                                        key={ws._key}
+                                        label={ws.name || ws._key}
+                                        value={ws._key}
+                                    />
+                                ))}
+                            </Select>
+                        </div>
                         <Table>
                             <Table.Head>
                                 <Table.HeadCell>STIG / benchmark</Table.HeadCell>
@@ -175,6 +202,7 @@ export default function LibraryApp() {
                                 <Table>
                                     <Table.Head>
                                         <Table.HeadCell>Version</Table.HeadCell>
+                                        <Table.HeadCell>Scope</Table.HeadCell>
                                         <Table.HeadCell>Rules</Table.HeadCell>
                                         <Table.HeadCell>Fingerprint</Table.HeadCell>
                                     </Table.Head>
@@ -186,6 +214,11 @@ export default function LibraryApp() {
                                             >
                                                 <Table.Cell>
                                                     {revisionLabel(rev)}
+                                                </Table.Cell>
+                                                <Table.Cell>
+                                                    {rev.scope === "workspace"
+                                                        ? "workspace"
+                                                        : "global"}
                                                 </Table.Cell>
                                                 <Table.Cell>
                                                     {rev.rule_count}

@@ -417,8 +417,11 @@ REST: `GET/POST /stig_collections/{id}/labels`, `GET/PATCH/DELETE .../labels/{la
 | `content_fingerprint` | string | SHA-256 hex; dedup key (§9) |
 | `imported_at` | time | |
 | `imported_by` | string | |
+| `stig_collection_id` | string | Optional workspace owner; **empty = global** (legacy rows). Workspace-scoped baselines are visible only to users with **read** on that `stig_collection`. |
 
-**Baselines are global:** not scoped to `stig_collection`. Any user with REST caps can list/import.
+**Catalog scope:** Global baselines remain shared. Workspace-scoped rows are private to the owning workspace (plus **stig_admin**). `GET /stig_baselines` returns globals plus baselines for workspaces the caller can read. Query `stig_collection_id` narrows to globals + that workspace (requires workspace read). Import without scope creates globals; `stig_collection_id` on `POST /stig_baselines/import` (query or JSON) requires workspace **write**. Dedup (`content_fingerprint`, optional `stig_id`+`version`) is per scope. Existing checklist `baseline_id` references are unchanged.
+
+**Default / assign resolution** (when `baseline_id` omitted): explicit id → workspace `default_baseline_map` → latest matching revision in **workspace-scoped** catalog → latest **global** catalog match.
 
 ### 7.4 `stig_baseline_rules`
 
@@ -687,15 +690,15 @@ DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 
 | Method | Path | Notes |
 |--------|------|--------|
-| GET | `/stig_baselines` | List all baseline headers |
-| GET | `/stig_baselines/hierarchy` | Benchmark-centric library: groups catalog rows by `stig_id` with per-revision metadata (`version`, `release_info`, `content_fingerprint`, `rule_count`, `imported_at`, …) |
+| GET | `/stig_baselines` | List baseline headers visible to the caller (globals + readable workspace catalogs). Query `stig_collection_id?` → globals + that workspace only. |
+| GET | `/stig_baselines/hierarchy` | Benchmark-centric library (same visibility + optional `stig_collection_id` filter). Revisions include `stig_collection_id` / `scope`. |
 | GET | `/stig_baselines/by_stig/{stigId}` | One benchmark entry from hierarchy (404 when unknown) |
 | GET | `/stig_baselines/rule/{ruleKey}` | Stable rule detail by KV `_key` on `stig_baseline_rules` (includes parent baseline summary) |
 | GET | `/stig_baselines/{id}/rules/{ruleRef}` | Rule in baseline context. `ruleRef` may be the rule KV `_key`, composite `group_id\|rule_id` (V-id\|SV-id), or SV-id via `rule_id` / `rule_id_src`. A bare V-id is not accepted (avoids first-row scans). Optional query `group_id` disambiguates duplicate SV-ids in one baseline. Ambiguous matches return **404**. |
-| POST | `/stig_baselines/import` | Query `format` (`xccdf` \| `cklb` \| `ckl` \| `zip`), `source_uri`; raw body. Zip walks nested archives and imports only `*Manual-xccdf.xml` STIG baselines. |
-| GET | `/stig_baselines/rules/{ruleRef}` | Rules matching `ruleRef` across all imported baselines (`rule_id`, `rule_id_src`, `rule_version`, or `group_id`; DISA `xccdf_mil.disa.stig_rule_` prefix stripped). Query `stig_id?` optional. **404** when no matches. |
-| GET | `/stig_baselines/ccis/{cci}` | Rules whose imported `ccis` JSON array contains the CCI (normalized to `CCI-…`). Query `stig_id?` optional. **200** with empty `matches` when none. |
-| GET | `/stig_baselines/groups/{groupId}` | Rules with `group_id` (V-id) across baselines. Query `stig_id?` optional. |
+| POST | `/stig_baselines/import` | Query `format` (`xccdf` \| `cklb` \| `ckl` \| `zip`), `source_uri`, optional `stig_collection_id`; JSON body may also set `stig_collection_id`. Workspace scope requires workspace **write**. Zip walks nested archives and imports only `*Manual-xccdf.xml` STIG baselines. |
+| GET | `/stig_baselines/rules/{ruleRef}` | Rules matching `ruleRef` across **visible** baselines (`rule_id`, `rule_id_src`, `rule_version`, or `group_id`; DISA `xccdf_mil.disa.stig_rule_` prefix stripped). Query `stig_id?` optional. **404** when no matches. |
+| GET | `/stig_baselines/ccis/{cci}` | Rules whose imported `ccis` JSON array contains the CCI (normalized to `CCI-…`), on visible baselines. Query `stig_id?` optional. **200** with empty `matches` when none. |
+| GET | `/stig_baselines/groups/{groupId}` | Rules with `group_id` (V-id) on visible baselines. Query `stig_id?` optional. |
 | GET | `/stig_baselines/{id}/rules` | All rules for baseline |
 | GET/POST | `/stig_baselines/gc_orphan_rules` | Admin orphan rule GC. **GET** and default **POST** are dry-run reports (`orphan_count`, `orphans[]`, `skipped_no_key_count`). Destructive delete when **POST** with `dry_run=false` or `confirm=true` (query or JSON). Removes only deletable `stig_baseline_rules` rows (requires KV `_key`); orphans without `_key` are listed but skipped. Does **not** cascade to checklists or reviews. Audits only when `deleted_count > 0`. Requires **stig_admin** in handler (`restmap` admits GET/POST with read/write capabilities). |
 
@@ -979,7 +982,7 @@ curl $AUTH "$BASE/stig_checklists/CHECKLIST_ID/export?format=cklb"
 |------------|--------|
 | Orphan data | Failed imports before KV `_key` fix may leave orphan `stig_baseline_rules` or empty baselines; no automatic GC. Admins can report and delete orphan **rules** via `GET/POST /stig_baselines/gc_orphan_rules` (does not remove empty baseline headers or checklist/review rows). |
 | No baseline dedup for legacy rows | Missing `content_fingerprint` until re-import. |
-| Global baselines | All workspaces share baseline catalog. |
+| Global baselines | Default catalog is global; optional per-workspace rows via `stig_collection_id`. |
 | Collection delete | Blocked when children exist unless `?cascade=true`; cascades workspace hosts/checklists/reviews/grants/assignment rows; baselines stay global. UCC Configuration delete only allows empty workspaces. |
 | Export review join | By `group_id` only; empty `group_id` in XCCDF may weaken CKL/CKLB status linkage for some rules. |
 | Batch rule insert | Sequential inserts via `batch_save`; large STIGs (~366 rules) take seconds. |
@@ -1005,6 +1008,6 @@ curl $AUTH "$BASE/stig_checklists/CHECKLIST_ID/export?format=cklb"
 
 - Ingested findings → CIM / macros / dashboards.
 - ~~Cross-revision review merge using `check_content_hash`~~ (see §11.4 `upgrade`).
-- Workspace-scoped baselines or sharing model.
+- ~~Workspace-scoped baselines or sharing model.~~ (`stig_collection_id` on `stig_baselines`; see §7.3).
 - ~~Stronger audit (dedicated index, UI).~~ (see §14, `stig_audit` index + **STIG audit** dashboard).
 - KV cleanup jobs; cascade deletes; bulk review update.

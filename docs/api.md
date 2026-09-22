@@ -57,7 +57,7 @@ Implementation source of truth: `package/bin/stig_rest_handler.py` and `package/
 
 ## Baseline catalog reference (CCI / group / rule)
 
-Global baseline rules live in KV `stig_baseline_rules`. These endpoints search **across all imported baselines** (not workspace-scoped). CCI coverage depends on DISA XCCDF / CKL / CKLB import: only CCIs present on imported rule rows are searchable.
+Baseline rules live in KV `stig_baseline_rules`. Catalog list/hierarchy/import and cross-baseline reference endpoints (`/rules`, `/ccis`, `/groups`) only include baselines **visible** to the caller: global rows (empty `stig_collection_id`) plus workspace-scoped rows for workspaces the session can read. Optional query `stig_collection_id` on list/hierarchy narrows to globals + that workspace. `POST /stig_baselines/import` accepts `stig_collection_id` (query or JSON) to attach a workspace-scoped catalog entry (requires workspace **write**). CCI coverage depends on DISA XCCDF / CKL / CKLB import: only CCIs present on imported rule rows are searchable.
 
 **Reserved segments:** `rules`, `ccis`, `groups`, and `rule` are catalog path literals (not baseline `_key` values) for `GET /stig_baselines/{id}` — see [spec.md](../spec.md) §11.3.
 

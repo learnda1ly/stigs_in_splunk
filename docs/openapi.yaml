@@ -1284,6 +1284,12 @@ paths:
       tags: [Baselines]
       summary: List baselines in catalog
       operationId: listBaselines
+      parameters:
+        - name: stig_collection_id
+          in: query
+          schema:
+            type: string
+          description: When set, returns global baselines plus baselines scoped to this workspace (requires workspace read).
       responses:
         "200":
           content:
@@ -1310,6 +1316,11 @@ paths:
           in: query
           schema:
             type: string
+        - name: stig_collection_id
+          in: query
+          schema:
+            type: string
+          description: Optional workspace scope for imported rows (requires workspace write). Omit for global catalog.
       requestBody:
         required: true
         content:
@@ -1321,6 +1332,13 @@ paths:
             schema:
               type: string
               format: binary
+          application/json:
+            schema:
+              type: object
+              properties:
+                stig_collection_id:
+                  type: string
+                  description: Workspace scope when body carries metadata alongside binary (import handler).
       responses:
         "200":
           description: Import succeeded; baseline deduplicated (no new KV row)
@@ -1340,6 +1358,12 @@ paths:
       tags: [Baselines]
       summary: Benchmark-centric library hierarchy
       operationId: getBaselineHierarchy
+      parameters:
+        - name: stig_collection_id
+          in: query
+          schema:
+            type: string
+          description: Optional filter — globals plus baselines for this workspace.
       responses:
         "200":
           content:
@@ -2823,6 +2847,9 @@ components:
       properties:
         _key:
           type: string
+        stig_collection_id:
+          type: string
+          description: Empty or omitted = global catalog; otherwise workspace-scoped baseline.
         stig_id:
           type: string
         title:

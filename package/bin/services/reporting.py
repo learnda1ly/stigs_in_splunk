@@ -391,8 +391,19 @@ def _collection_workspace_context(
 ) -> Dict[str, Any]:
     checklists = checklists_svc.list_checklists(service, session, collection_id)
     hosts = hosts_svc.list_hosts(service, session, collection_id)
-    baselines = {b["_key"]: b for b in baselines_svc.list_baselines(service) if b.get("_key")}
+    baselines = {
+        b["_key"]: b
+        for b in baselines_svc.list_baselines_for_user(
+            service, session, stig_collection_id=collection_id
+        )
+        if b.get("_key")
+    }
     baseline_ids = {c.get("baseline_id") for c in checklists if c.get("baseline_id")}
+    for bid in baseline_ids:
+        if bid and bid not in baselines:
+            legacy = baselines_svc.get_baseline(service, bid)
+            if legacy:
+                baselines[bid] = legacy
     rule_meta_index = _rule_meta_index(service, baseline_ids)
     return {
         "checklist_by_id": {c["_key"]: c for c in checklists if c.get("_key")},
