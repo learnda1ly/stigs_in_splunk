@@ -69,9 +69,9 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count (approx.) |
 |--------|-----------------|
-| done | 39 |
+| done | 40 |
 | partial | 6 |
-| missing | 10 |
+| missing | 9 |
 | n/a | 8 |
 
 Priorities are suggestions for **this** Splunk port; adjust per your deployment (e.g. heavy automation → bump XCCDF results).
@@ -91,7 +91,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Labels on assets | UI: label assignment, filter. API: `/collections/{id}/labels`, `.../labels/{labelId}/assets` | **done** | KV `stig_labels` + host `label_ids`; REST CRUD + `POST .../labels/{id}/assets`; `GET /stig_hosts?label_id=`; STIG Editor label filter; SplunkUI **Asset labels** page (create/rename/delete, per-host and bulk assign/unassign); Workspace grants shows label names in ACL picker. | KV collection or embedded labels; filter `GET /stig_hosts` and editor by label; SplunkUI label catalog + host assignment. | P2 | M |
 | Transfer assets between collections | UI: transfer workflow. API: `POST /collections/{id}/export-to/{dstCollectionId}` | **done** | `PATCH /stig_hosts/{id}` with `stig_collection_id` moves one host (checklists follow). Bulk: `POST /stig_collections/{src}/export-to/{dst}` with `host_ids[]`; SplunkUI **Transfer assets**; `transfer` audit per host; labels sanitized to destination workspace. | Bulk move API + UI; audit log per host. | P2 | M |
 | Clone collection | API: `POST /collections/{collectionId}/clone` | **done** | `POST /stig_collections/{id}/clone` with boolean flags (`copy_hosts`, `copy_checklists`, `copy_reviews`, `copy_grants`, `copy_labels`, `copy_metadata`, `copy_baseline_defaults`, `copy_review_requirements`; defaults documented in spec). SplunkUI **Transfer assets** clone panel. Global baselines not copied; host/checklist/review/label ids remapped. | Clone workspace with hosts, checklists, reviews (optional flags). | P2 | M |
-| Meta-collection dashboard | UI: org-wide metrics. API: `/collections/meta/metrics/...` | **missing** | No cross-workspace UI; SPL can aggregate lookups with care. | Splunk dashboard or `GET` meta-metrics across workspaces user can read. | P2 | L |
+| Meta-collection dashboard | UI: org-wide metrics. API: `/collections/meta/metrics/...` | **done** | SplunkUI **All workspaces** (`stig_meta_collection_dashboard_ui`) + `GET /stig_collections/meta/metrics` (and `/summary`); grant-filtered like `list_collections`. SPL `inputlookup` still not ACL-safe for cross-workspace use. | Splunk dashboard or `GET` meta-metrics across workspaces user can read. | P2 | L |
 | Splunk capabilities / roles | Splunk `authorize.conf` | **done** | `stig_user`, `stig_admin`, caps on REST methods. | Parity doc lists cap matrix; integration test for 403 paths. | P0 | — |
 | OIDC / IdP authentication | Keycloak, Okta, etc.; API OAuth scopes `stig-manager:collection:*` | **n/a** | Splunk Web + `requireAuthentication` on REST; use Splunk SSO/SAML. | Document “use Splunk auth”; no parallel IdP in app. | — | — |
 | User & user-group admin API | API: `/users`, `/user-groups`, `/user` | **n/a** | Splunk native users/roles. | Map STIG Manager privileges to Splunk roles in admin guide. | — | — |

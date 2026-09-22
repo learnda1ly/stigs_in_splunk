@@ -216,6 +216,145 @@ def collection_metrics(
     }
 
 
+def rollup_aggregate_metrics(metric_parts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Sum multiple ``aggregate_metrics`` payloads into org-wide totals."""
+    totals = {"hosts": 0, "checklists": 0, "reviews": 0}
+    completion_keys = (
+        "reviewed",
+        "not_reviewed",
+        "valid",
+        "open_findings",
+        "open_findings_by_status",
+    )
+    completion = {key: 0 for key in completion_keys}
+    workflow_keys = ("draft", "submitted", "accepted", "rejected", "open_unaccepted")
+    workflow = {key: 0 for key in workflow_keys}
+    by_status = {status: 0 for status in STATUSES}
+    by_severity: Dict[str, int] = {}
+    open_by_severity: Dict[str, int] = {}
+
+    for part in metric_parts:
+        part_totals = part.get("totals") or {}
+        for key in totals:
+            totals[key] += int(part_totals.get(key) or 0)
+        part_completion = part.get("completion") or {}
+        for key in completion_keys:
+            completion[key] += int(part_completion.get(key) or 0)
+        part_workflow = part.get("workflow") or {}
+        for key in workflow_keys:
+            workflow[key] += int(part_workflow.get(key) or 0)
+        for status, count in (part.get("by_status") or {}).items():
+            if status in by_status:
+                by_status[status] += int(count or 0)
+        for sev, count in (part.get("by_severity") or {}).items():
+            by_severity[sev] = by_severity.get(sev, 0) + int(count or 0)
+        for sev, count in (part.get("open_by_severity") or {}).items():
+            open_by_severity[sev] = open_by_severity.get(sev, 0) + int(count or 0)
+
+    total_reviews = totals["reviews"]
+    reviewed = completion["reviewed"]
+    completion["percent_reviewed"] = (
+        round((reviewed / total_reviews) * 100.0, 1) if total_reviews else 0.0
+    )
+
+    return {
+        "totals": totals,
+        "completion": completion,
+        "workflow": workflow,
+        "by_status": by_status,
+        "by_severity": dict(sorted(by_severity.items())),
+        "open_by_severity": dict(sorted(open_by_severity.items())),
+    }
+
+
+def _workspace_metrics_row(metrics: Dict[str, Any], collection: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "stig_collection_id": metrics.get("stig_collection_id")
+        or collection.get("_key")
+        or "",
+        "collection_name": metrics.get("collection_name")
+        or collection.get("name")
+        or "",
+        "totals": metrics.get("totals") or {},
+        "completion": metrics.get("completion") or {},
+        "workflow": metrics.get("workflow") or {},
+        "by_status": metrics.get("by_status") or {},
+        "by_severity": metrics.get("by_severity") or {},
+        "open_by_severity": metrics.get("open_by_severity") or {},
+    }
+
+
+def _readable_collections_sorted(
+    service, session: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    collections = collections_svc.list_collections(service, session)
+    return sorted(
+        collections, key=lambda rec: (rec.get("name") or rec.get("_key") or "").lower()
+    )
+
+
+def _meta_metrics_workspace_rows(
+    service, session: Dict[str, Any], collections: List[Dict[str, Any]]
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Compute per-workspace metrics for every readable collection (O(N) KV walks)."""
+    workspaces: List[Dict[str, Any]] = []
+    metric_parts: List[Dict[str, Any]] = []
+    for coll in collections:
+        cid = coll.get("_key") or ""
+        if not cid:
+            continue
+        metrics = collection_metrics(service, cid, session)
+        metric_parts.append(metrics)
+        workspaces.append(_workspace_metrics_row(metrics, coll))
+    return workspaces, metric_parts
+
+
+def meta_collection_metrics(
+    service, session: Dict[str, Any], query: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Aggregate dashboard metrics across workspaces the session may read.
+
+    ``summary`` is always rolled up across **all** grant-visible workspaces.
+    ``workspaces`` is paginated via ``offset`` / ``limit`` only.
+    """
+    query = query or {}
+    limit = _parse_int((query or {}).get("limit"), default=500, minimum=1, maximum=500)
+    offset = _parse_int((query or {}).get("offset"), default=0, minimum=0)
+
+    collections = _readable_collections_sorted(service, session)
+    total_visible = len(collections)
+    all_workspaces, metric_parts = _meta_metrics_workspace_rows(
+        service, session, collections
+    )
+    page = all_workspaces[offset : offset + limit]
+
+    return {
+        "generated_at": now_epoch(),
+        "workspace_count": total_visible,
+        "pagination": {
+            "offset": offset,
+            "limit": limit,
+            "returned": len(page),
+            "total": total_visible,
+        },
+        "summary": rollup_aggregate_metrics(metric_parts),
+        "workspaces": page,
+    }
+
+
+def meta_collection_metrics_summary(
+    service, session: Dict[str, Any], _query: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Org-wide rollup without per-workspace rows (same ACL as meta metrics)."""
+    collections = _readable_collections_sorted(service, session)
+    _, metric_parts = _meta_metrics_workspace_rows(service, session, collections)
+    return {
+        "generated_at": now_epoch(),
+        "workspace_count": len(collections),
+        "summary": rollup_aggregate_metrics(metric_parts),
+    }
+
+
 def _enrich_finding(
     review: Dict[str, Any],
     *,

@@ -629,6 +629,8 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 | Method | Path | Body | Response |
 |--------|------|------|----------|
 | GET | `/stig_collections` | — | Array of workspaces user can read. Ensures a Default workspace exists. |
+| GET | `/stig_collections/meta/metrics` | Query `offset?`, `limit?` (max 500) | Cross-workspace metrics: `summary` rolled up across **all** readable workspaces; `workspaces[]` paginated only. Uses the same grant filter as `GET /stig_collections`. Requires **stig_read**. **Performance:** one `collection_metrics` KV pass per readable workspace for `summary` (and the same passes populate paginated rows); large orgs should use a modest `limit` for the table or call `/summary` when only rollups are needed. |
+| GET | `/stig_collections/meta/metrics/summary` | — | Same org-wide `summary` as meta metrics; no pagination; omits `workspaces[]`. |
 | POST | `/stig_collections` | JSON `{name, description?, access_principals?, is_default?}` | **201** created record |
 | GET | `/stig_collections/{id}` | — | Record or **404** |
 | PATCH/PUT | `/stig_collections/{id}` | Partial JSON | Updated record. Setting `is_default` true unsets the previous default. |
@@ -802,7 +804,7 @@ When both `require_*` flags are false and both minimums are zero, validation mat
 
 Each finding row includes: `hostname`, `host_id`, `baseline_id`, `baseline_title`, `stig_id`, `group_id`, `rule_id`, `rule_version`, `severity`, `status`, `finding_details`, `comments`, `valid`, `ingest_lock`, `updated_at`, `updated_by`, `checklist_id`, `_key`.
 
-SplunkUI **Collection dashboard** (`stig_collection_dashboard_ui`) loads metrics, findings, **aggregated open findings** (by group, rule, CCI), **unreviewed** rules/assets reports, and **POA&M** CSV/XLSX export for governance-open rows. Optional Simple XML dashboard: `stig_collection_metrics_lookup`.
+SplunkUI **Collection dashboard** (`stig_collection_dashboard_ui`) loads metrics, findings, **aggregated open findings** (by group, rule, CCI), **unreviewed** rules/assets reports, and **POA&M** CSV/XLSX export for governance-open rows. SplunkUI **All workspaces** (`stig_meta_collection_dashboard_ui`) loads `GET /stig_collections/meta/metrics` for grant-filtered cross-workspace rollups. Optional Simple XML dashboard: `stig_collection_metrics_lookup`.
 
 ### 11.7 `stig_settings` (app configuration adapter)
 

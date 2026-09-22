@@ -216,6 +216,23 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _json_response(rec, status=201)
             return _error("method not allowed", status=405)
 
+        if parts[0] == "meta":
+            if len(parts) == 2 and parts[1] == "metrics":
+                if method != "GET":
+                    return _error("method not allowed", status=405)
+                return _json_response(
+                    reporting_svc.meta_collection_metrics(service, session, query)
+                )
+            if len(parts) == 3 and parts[1] == "metrics" and parts[2] == "summary":
+                if method != "GET":
+                    return _error("method not allowed", status=405)
+                return _json_response(
+                    reporting_svc.meta_collection_metrics_summary(
+                        service, session, query
+                    )
+                )
+            return _error("not found", status=404)
+
         key = parts[0]
         if len(parts) >= 2 and parts[1] == "baseline_defaults":
             if method == "GET" and len(parts) == 2:
