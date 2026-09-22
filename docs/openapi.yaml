@@ -271,11 +271,17 @@ paths:
                     type: string
       responses:
         "200":
-        "201":
+          description: Transfer finished; no hosts moved (`summary.moved` is 0)
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/CollectionTransferResult"
+        "201":
+          description: At least one host moved to the destination workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionTransferResult"
 
   /stig_collections/{collectionId}/baseline_defaults:
     parameters:
@@ -521,11 +527,19 @@ paths:
             description: Zip body with format=zip (query or JSON hint)
       responses:
         "200":
-        "201":
+          description: |
+            Batch or zip import finished without new host/checklist rows, with partial
+            per-file failures (`summary.failed` > 0), or idempotent updates only.
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/ImportBatchResult"
+        "201":
+          description: At least one imported file created a new host or checklist (`summary.created` > 0)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportBatchResult"
 
   /stig_collections/{collectionId}/archive/{format}:
     parameters:
@@ -642,25 +656,38 @@ paths:
       operationId: putGrantAcl
       x-splunk-capability: stig_write
       requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                host_ids:
-                  type: array
-                  items:
-                    type: string
-                baseline_ids:
-                  type: array
-                  items:
-                    type: string
-                label_ids:
-                  type: array
-                  items:
-                    type: string
+        $ref: "#/components/requestBodies/GrantAclBody"
       responses:
         "200":
+          description: Updated grant ACL
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      tags: [Collection grants]
+      summary: Set restricted grant ACL filters (alias)
+      operationId: patchGrantAcl
+      x-splunk-capability: stig_write
+      requestBody:
+        $ref: "#/components/requestBodies/GrantAclBody"
+      responses:
+        "200":
+          description: Updated grant ACL
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      tags: [Collection grants]
+      summary: Set restricted grant ACL filters (alias)
+      operationId: postGrantAcl
+      x-splunk-capability: stig_write
+      requestBody:
+        $ref: "#/components/requestBodies/GrantAclBody"
+      responses:
+        "200":
+          description: Updated grant ACL
           content:
             application/json:
               schema:
@@ -945,9 +972,29 @@ paths:
                   type: string
       responses:
         "200":
-          description: Checklist already existed
+          description: Checklist already existed (idempotent assign)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Checklist"
+                  - type: object
+                    properties:
+                      created:
+                        type: boolean
+                        enum: [false]
         "201":
-          description: Checklist created
+          description: New checklist created for host + baseline
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Checklist"
+                  - type: object
+                    properties:
+                      created:
+                        type: boolean
+                        enum: [true]
 
   /stig_hosts/{hostId}/stigs/{baselineRef}:
     parameters:
@@ -1014,7 +1061,13 @@ paths:
               format: binary
       responses:
         "200":
+          description: Import succeeded; baseline deduplicated (no new KV row)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineImportResult"
         "201":
+          description: Import created at least one new baseline record
           content:
             application/json:
               schema:
@@ -1198,11 +1251,18 @@ paths:
                 - $ref: "#/components/schemas/BaselineJobImportMember"
       responses:
         "200":
-        "201":
+          description: |
+            Chunk appended, job finalized, or `action=import` deduplicated an existing baseline.
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/BaselineJobActionResult"
+        "201":
+          description: action=import created a new baseline from a zip member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineJobActionResult"
 
   /stig_checklists:
     get:
@@ -1588,11 +1648,23 @@ paths:
               format: binary
       responses:
         "200":
-        "201":
+          description: |
+            Checklist ingest updated existing host/checklist in place, zip/xccdf-results-zip
+            batch finished without new rows or with partial failures, or reconcile-style replay.
           content:
             application/json:
               schema:
-                type: object
+                oneOf:
+                  - $ref: "#/components/schemas/ChecklistFileImportResult"
+                  - $ref: "#/components/schemas/ImportBatchResult"
+        "201":
+          description: Ingest created a new host or checklist row
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ChecklistFileImportResult"
+                  - $ref: "#/components/schemas/ImportBatchResult"
 
   /stig_imports/reconcile:
     get:
@@ -1648,12 +1720,38 @@ paths:
       operationId: patchSettings
       x-splunk-capability: stig_write
       requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
+        $ref: "#/components/requestBodies/SettingsBody"
       responses:
         "200":
+          description: Saved settings (HEC token is never returned)
+          content:
+            application/json:
+              schema:
+                type: object
+    put:
+      tags: [Settings]
+      summary: Update editor settings (alias)
+      operationId: putSettings
+      x-splunk-capability: stig_write
+      requestBody:
+        $ref: "#/components/requestBodies/SettingsBody"
+      responses:
+        "200":
+          description: Saved settings (HEC token is never returned)
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      tags: [Settings]
+      summary: Update editor settings (alias)
+      operationId: postSettings
+      x-splunk-capability: stig_write
+      requestBody:
+        $ref: "#/components/requestBodies/SettingsBody"
+      responses:
+        "200":
+          description: Saved settings (HEC token is never returned)
           content:
             application/json:
               schema:
@@ -1906,6 +2004,32 @@ paths:
                 type: object
 
 components:
+  requestBodies:
+    GrantAclBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              host_ids:
+                type: array
+                items:
+                  type: string
+              baseline_ids:
+                type: array
+                items:
+                  type: string
+              label_ids:
+                type: array
+                items:
+                  type: string
+    SettingsBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+
   securitySchemes:
     splunkBasicAuth:
       type: http
@@ -2223,3 +2347,61 @@ components:
           type: array
           items:
             type: object
+
+    ImportBatchResult:
+      type: object
+      description: Batch or zip import summary from imports services
+      properties:
+        summary:
+          type: object
+          properties:
+            created:
+              type: integer
+            failed:
+              type: integer
+            updated:
+              type: integer
+        results:
+          type: array
+          items:
+            type: object
+      additionalProperties: true
+
+    ChecklistFileImportResult:
+      type: object
+      description: Single-file CKL/CKLB/xccdf-results ingest response
+      properties:
+        host:
+          type: object
+          properties:
+            created:
+              type: boolean
+        checklists:
+          type: array
+          items:
+            type: object
+            properties:
+              created:
+                type: boolean
+      additionalProperties: true
+
+    CollectionTransferResult:
+      type: object
+      properties:
+        summary:
+          type: object
+          properties:
+            moved:
+              type: integer
+      additionalProperties: true
+
+    BaselineJobActionResult:
+      type: object
+      properties:
+        action:
+          type: string
+        created:
+          type: boolean
+        deduplicated:
+          type: boolean
+      additionalProperties: true
