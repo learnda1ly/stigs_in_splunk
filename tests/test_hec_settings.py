@@ -10,8 +10,34 @@ if ROOT not in sys.path:
 from services import hec as hec_svc  # noqa: E402
 from services import settings as settings_svc  # noqa: E402
 
+# Catalog in globalConfig.yaml (general tab) + spec §4.3.1 — not hec_token.
+DOCUMENTED_SETTING_FIELDS = frozenset(
+    {
+        "vim_mode",
+        "trust_event_collection_id",
+        "ingest_index",
+        "ingest_sourcetype",
+        "hec_url",
+        "reconcile_earliest",
+    }
+)
+
 
 class TestSettingsNeverExposeHecToken(unittest.TestCase):
+    def test_public_payload_matches_documented_catalog(self):
+        rec = {
+            "vim_mode": True,
+            "trust_event_collection_id": False,
+            "ingest_index": "stig",
+            "ingest_sourcetype": "stig:finding",
+            "hec_url": "https://localhost:8088/services/collector/event",
+            "reconcile_earliest": "-15m",
+        }
+        public = settings_svc._public(rec, "admin")
+        for key in DOCUMENTED_SETTING_FIELDS:
+            self.assertIn(key, public)
+        self.assertNotIn("hec_token", public)
+
     def test_public_payload_strips_token(self):
         rec = {
             "_key": "settings",

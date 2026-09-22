@@ -72,6 +72,10 @@ pages:
                     host. Only one workspace is default.
         -   name: general
             title: Editor & ingest
+            description: Stored in local stigs_in_splunk_settings.conf stanza
+                [general]. Splunk admins edit here (app conf write per
+                metadata/default.meta). The HEC token is never a field on this
+                form; it lives on the stig_findings HEC input only.
             entity:
             -   field: vim_mode
                 label: Enable vim-style keyboard shortcuts
@@ -97,6 +101,8 @@ pages:
                 type: text
                 required: true
                 defaultValue: stig:finding
+                help: Sourcetype for stig:finding events (must match HEC input and
+                    the scheduled reconcile search).
             -   field: hec_url
                 label: HEC URL
                 type: text

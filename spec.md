@@ -162,7 +162,28 @@ The Splunk Web **Configuration** view is the UCC-generated page (`/app/stigs_in_
 
 **HEC token:** never an entity on Configuration. Token is read server-side from the `stig_findings` HTTP Event Collector input (`services/hec.py`).
 
-**Editor vim toggle:** the React editor may still `GET`/`POST` `/stig_settings` as a JSON adapter over `[general]`. That adapter must not accept or return `hec_token`.
+**Editor vim toggle:** the React editor may still `GET`/`PATCH` `/stig_settings` as a JSON adapter over `[general]`. That adapter must not accept or return `hec_token`.
+
+#### 4.3.1 App settings (`stigs_in_splunk_settings.conf` / `stig_settings`)
+
+STIG Manager’s `/op/configuration` maps to Splunk **UCC Configuration → Editor & ingest** plus persist **`/stig_settings`**. There is no separate app-settings KV collection in normal deployments; values live in **`local/stigs_in_splunk_settings.conf`** stanza **`[general]`** (UCC-generated handler `stigs_in_splunk_rh_settings.py`). If that stanza is missing (legacy PoC), `services/settings.py` falls back to KV **`stig_editor_settings`** on read/write.
+
+| Field | Type | Default | Who can change | Purpose |
+|-------|------|---------|----------------|---------|
+| `vim_mode` | bool | `false` | **UCC:** Splunk users with **write** on app configuration (`admin` / `sc_admin` per `metadata/default.meta`). **REST:** any user with **`stig_write`** (`POST`/`PATCH`/`PUT` `/stig_settings`; editor sends `vim_mode` only). | Enable vim-style keyboard layers in the STIG Editor (INSERT / field NORMAL / NAV). Per-browser badge can override until reload. |
+| `trust_event_collection_id` | bool | `false` | UCC (admins) or **`stig_write`** via `/stig_settings` | When **false** (default), HEC ingest resolves workspace via assignment rules, host×baseline overrides, then Default. When **true**, honor `collectionId` on the event **before** rules (legacy Watcher senders). See [watcher-hec.md](docs/watcher-hec.md). |
+| `ingest_index` | string | `stig` | UCC or **`stig_write`** | Target index for `stig:finding` events emitted by checklist import and server-side HEC posts (`services/hec.py`). |
+| `ingest_sourcetype` | string | `stig:finding` | UCC or **`stig_write`** | Sourcetype for those events; must match the `stig_findings` HEC input and the scheduled reconcile search. |
+| `hec_url` | string | `https://localhost:8088/services/collector/event` | UCC or **`stig_write`** | Server-side HEC collector URL used when applying imports (not exposed to browsers as a secret channel). |
+| `reconcile_earliest` | string | `-15m` | UCC or **`stig_write`** | SPL earliest time for `| stigkvreconcile` and `GET|POST /stig_imports/reconcile` (relative or absolute). Saved search **STIG reconcile findings to KV** also sets `dispatch.earliest_time = -15m`; align both when changing the window. |
+
+**Intentionally excluded (never stored in app settings):**
+
+| Field | Where it lives |
+|-------|----------------|
+| `hec_token` | Splunk HTTP Event Collector input stanza **`[http://stig_findings]`** in `inputs.conf` (read server-side by `services/hec.py::lookup_hec_token`). Never returned from `/stig_settings`, never written from REST bodies (stripped in `save_settings`). |
+
+**UCC admin REST (Configuration UI backend):** `GET|POST /servicesNS/nobody/stigs_in_splunk/stigs_in_splunk_settings/general` (Splunk Web proxies `stigs_in_splunk_settings` per `web.conf`). Field definitions and help text are authored in **`globalConfig.yaml`** tab `general`.
 
 **Workspace names** are unique (case-insensitive). The UCC table row id is the workspace `name`. Baseline table row id is `ucc_name` (set on import; falls back to `_key` for legacy rows).
 
@@ -229,7 +250,7 @@ Map capabilities to HTTP methods in **each** `restmap.conf` stanza (see §7).
 https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 ```
 
-Resources: `stig_collections`, `stig_collection_grants` (nested under collections), `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`.
+Resources: `stig_collections`, `stig_collection_grants` (nested under collections), `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_settings` (§4.3.1, §11.7).
 
 Authentication: Splunk session or Basic Auth (`-u user:pass`). TLS verify often disabled in dev (`curl -k`).
 
@@ -731,6 +752,19 @@ When both `require_*` flags are false and both minimums are zero, validation mat
 Each finding row includes: `hostname`, `host_id`, `baseline_id`, `baseline_title`, `stig_id`, `group_id`, `rule_id`, `rule_version`, `severity`, `status`, `finding_details`, `comments`, `valid`, `ingest_lock`, `updated_at`, `updated_by`, `checklist_id`, `_key`.
 
 SplunkUI **Collection dashboard** (`stig_collection_dashboard_ui`) loads metrics, findings, **aggregated open findings** (by group, rule, CCI), **unreviewed** rules/assets reports, and **POA&M** CSV/XLSX export for governance-open rows. Optional Simple XML dashboard: `stig_collection_metrics_lookup`.
+
+### 11.7 `stig_settings` (app configuration adapter)
+
+JSON adapter over **`stigs_in_splunk_settings.conf`** `[general]` (see §4.3.1). STIG Manager migrators can treat this as the Splunk-shaped **`/op/configuration`** surface for editor + ingest (not workspace catalog).
+
+| Method | Path | Capability | Body | Response |
+|--------|------|------------|------|----------|
+| GET | `/stig_settings` | **`stig_read`** | — | Public settings object (no `hec_token`). |
+| POST / PATCH / PUT | `/stig_settings` | **`stig_write`** | Partial JSON; any §4.3.1 field except `hec_token` | Updated public object. Unmentioned fields are preserved. `hec_token` in the body is ignored. |
+
+**GET response fields:** `_key` (always `general`), `vim_mode`, `trust_event_collection_id`, `ingest_index`, `ingest_sourcetype`, `hec_url`, `reconcile_earliest`, `updated_at`, `updated_by`. Missing conf values use defaults from `models.py`.
+
+**Typical callers:** STIG Editor (`vim_mode` only), classic **Editor shortcuts** view, automation scripts with **`stig_write`**. Full-form edits should use the UCC **Configuration** page so Splunk audits conf changes.
 
 ---
 

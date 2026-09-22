@@ -68,7 +68,7 @@ Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
 - **STIG library** — browse imported benchmarks grouped by `stig_id`, revision metadata, and rule detail (`GET /stig_baselines/hierarchy` and related persist paths). The SplunkUI table shows the first **200** rules per revision; use `GET /stig_baselines/{id}/rules` for the full list.
 - **Import** — checklists (`.ckl` / `.cklb` / `.zip` archive → HEC and KV; multi-file queue in UI) and STIG baselines (single XCCDF, CKL/CKLB, or a DISA product/quarterly zip via chunked persist REST `/stig_baselines/jobs`) on one page with **Checklists** and **Baselines** sections
 - **Export** — CKL / CKLB download; bulk zip by selection or workspace archive (`POST /stig_collections/{id}/archive/ckl|cklb`)
-- **Configuration** — UCC-generated page for workspaces and editor/HEC settings. A **Default** workspace is created automatically; checklist imports with no workspace go there until you move the host. The HEC token stays on the Splunk `stig_findings` input and is never returned to the browser.
+- **Configuration** — UCC-generated page for workspaces and **Editor & ingest** settings (`stigs_in_splunk_settings.conf` `[general]`). A **Default** workspace is created automatically; checklist imports with no workspace go there until you move the host. The HEC token stays on the Splunk `stig_findings` input and is never stored in app settings or returned to the browser. Field reference: [spec.md §4.3.1](spec.md#431-app-settings-stigs_in_splunk_settingsconf--stig_settings).
 
 Classic Simple XML + jQuery views remain under the **Classic** nav menu.
 
@@ -94,7 +94,20 @@ Assign `stig_user` or `stig_admin`, or grant capabilities `stig_read`, `stig_wri
 https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 ```
 
-Resources: `stig_collections` (including `/{id}/grants`, `/{id}/baseline_defaults`, `/{id}/review_requirements`, `/{id}/metrics`, `/{id}/findings`), `stig_hosts`, `stig_baselines` (including `/hierarchy`, `/by_stig/{stigId}`, `/rule/{ruleKey}`, `/{id}/rules/{ruleRef}`), `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_assignment_rules`.
+Resources: `stig_collections` (including `/{id}/grants`, `/{id}/baseline_defaults`, `/{id}/review_requirements`, `/{id}/metrics`, `/{id}/findings`), `stig_hosts`, `stig_baselines` (including `/hierarchy`, `/by_stig/{stigId}`, `/rule/{ruleKey}`, `/{id}/rules/{ruleRef}`), `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_assignment_rules`, `stig_settings` (app configuration JSON adapter; see [spec.md §11.7](spec.md#117-stig_settings-app-configuration-adapter)).
+
+### App configuration (`stig_settings`)
+
+| Setting | Default | Notes |
+|---------|---------|--------|
+| `vim_mode` | `false` | Vim-style editor shortcuts |
+| `trust_event_collection_id` | `false` | Honor HEC `collectionId` before assignment rules |
+| `ingest_index` | `stig` | Index for `stig:finding` HEC posts |
+| `ingest_sourcetype` | `stig:finding` | Must match HEC input + reconcile search |
+| `hec_url` | `https://localhost:8088/services/collector/event` | Server-side collector URL |
+| `reconcile_earliest` | `-15m` | Window for `\| stigkvreconcile` |
+
+Edit via **Configuration → Editor & ingest** (Splunk admins) or `GET` / `POST` / `PATCH` `/stig_settings` (`stig_read` / `stig_write`). **`hec_token` is not a setting** — configure the token on the `stig_findings` HEC input only.
 
 **Delete workspace:** `DELETE /stig_collections/{id}` requires **stig_admin**. If the workspace still has hosts, checklists, grants, or assignment rows, the API returns **409** unless you pass `?cascade=true` (or JSON `{"cascade": true}`), which removes those workspace-scoped rows and leaves **global baselines** unchanged. The UCC **Workspaces** tab only deletes empty workspaces (Splunk’s table delete confirm); use REST for cascade.
 
