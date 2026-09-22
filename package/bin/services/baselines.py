@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import audit
 import kv_client
 from importers import ckl, cklb, xccdf
+from importers.events import strip_disa_rule_id
 from models import (
     KV_STIG_BASELINES,
     KV_STIG_BASELINE_RULES,
@@ -16,16 +17,6 @@ from models import (
     now_epoch,
     parse_json_field,
 )
-
-_DISA_RULE_PREFIX = "xccdf_mil.disa.stig_rule_"
-
-
-def _normalize_rule_ref(value: Any) -> str:
-    text = str(value or "").strip()
-    if text.startswith(_DISA_RULE_PREFIX):
-        return text[len(_DISA_RULE_PREFIX) :]
-    return text
-
 
 def normalize_cci(value: Any) -> str:
     text = str(value or "").strip().upper()
@@ -77,6 +68,17 @@ def _baselines_by_id(service) -> Dict[str, Dict[str, Any]]:
     }
 
 
+def _rule_matches_stig_filter(
+    baseline: Optional[Dict[str, Any]], want_stig: str
+) -> bool:
+    """Optional catalog filter; orphan rules (missing baseline row) never match."""
+    if not want_stig:
+        return True
+    if not baseline:
+        return False
+    return (baseline.get("stig_id") or "").strip().casefold() == want_stig
+
+
 def list_all_catalog_rules(service) -> List[Dict[str, Any]]:
     coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
     return kv_client.query_all(coll)
@@ -91,12 +93,12 @@ def get_catalog_rule_by_key(service, rule_key: str) -> Optional[Dict[str, Any]]:
 
 
 def _rule_ref_matches(rule: Dict[str, Any], want: str) -> bool:
-    ref = _normalize_rule_ref(want)
+    ref = strip_disa_rule_id(want)
     if not ref:
         return False
     candidates = {
-        _normalize_rule_ref(rule.get("rule_id")),
-        _normalize_rule_ref(rule.get("rule_id_src")),
+        strip_disa_rule_id(rule.get("rule_id")),
+        strip_disa_rule_id(rule.get("rule_id_src")),
         str(rule.get("rule_version") or "").strip(),
         str(rule.get("group_id") or "").strip(),
     }
@@ -113,7 +115,7 @@ def find_catalog_rules_by_ref(
         if not _rule_ref_matches(rule, rule_ref):
             continue
         baseline = baselines.get(str(rule.get("baseline_id") or ""))
-        if want_stig and (baseline.get("stig_id") or "").strip().casefold() != want_stig:
+        if not _rule_matches_stig_filter(baseline, want_stig):
             continue
         matches.append(_rule_match_view(rule, baseline))
     matches.sort(
@@ -139,7 +141,7 @@ def find_catalog_rules_by_group_id(
     matches: List[Dict[str, Any]] = []
     for rule in kv_client.query_all(coll, {"group_id": gid}):
         baseline = baselines.get(str(rule.get("baseline_id") or ""))
-        if want_stig and (baseline.get("stig_id") or "").strip().casefold() != want_stig:
+        if not _rule_matches_stig_filter(baseline, want_stig):
             continue
         matches.append(_rule_match_view(rule, baseline))
     matches.sort(
@@ -169,7 +171,7 @@ def find_catalog_rules_by_cci(
         if want not in normalized:
             continue
         baseline = baselines.get(str(rule.get("baseline_id") or ""))
-        if want_stig and (baseline.get("stig_id") or "").strip().casefold() != want_stig:
+        if not _rule_matches_stig_filter(baseline, want_stig):
             continue
         matches.append(_rule_match_view(rule, baseline))
     matches.sort(

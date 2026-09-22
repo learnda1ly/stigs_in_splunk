@@ -634,6 +634,8 @@ DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 | GET | `/stig_baselines/groups/{groupId}` | Rules with `group_id` (V-id) across baselines. Query `stig_id?` optional. |
 | GET | `/stig_baselines/rule/{ruleKey}` | One `stig_baseline_rules` row by KV `_key` plus baseline pointer. **404** when missing. |
 | GET | `/stig_baselines/{id}/rules` | All rules for baseline |
+
+**Reserved path literals:** The first segment after `/stig_baselines/` cannot be used as a baseline KV `_key` for `GET /stig_baselines/{id}` when it equals `import`, `jobs`, `rules`, `ccis`, `groups`, or `rule` (those paths are routed to catalog/import handlers). UCC `ucc_name` values should avoid these tokens.
 | DELETE | `/stig_baselines/{id}` | Remove baseline + rules (UCC Configuration table or persist REST). |
 
 UCC Configuration **Baselines** tab is the management UI: list, import (including zip-of-zips), delete.

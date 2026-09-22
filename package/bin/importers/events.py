@@ -73,11 +73,14 @@ def _strip_disa_benchmark_id(value: Any) -> str:
     return text
 
 
-def _strip_disa_rule_id(value: Any) -> str:
+def strip_disa_rule_id(value: Any) -> str:
     text = str(value or "").strip()
     if text.startswith(_DISA_RULE_PREFIX):
         return text[len(_DISA_RULE_PREFIX) :]
     return text
+
+
+_strip_disa_rule_id = strip_disa_rule_id
 
 
 def _coerce_watcher_aliases(event: Dict[str, Any]) -> None:

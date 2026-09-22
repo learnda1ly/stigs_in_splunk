@@ -12,6 +12,8 @@ Full resource list: [spec.md](../spec.md) §11.
 
 Global baseline rules live in KV `stig_baseline_rules`. These endpoints search **across all imported baselines** (not workspace-scoped). CCI coverage depends on DISA XCCDF / CKL / CKLB import: only CCIs present on imported rule rows are searchable.
 
+**Reserved segments:** `rules`, `ccis`, `groups`, and `rule` are catalog path literals (not baseline `_key` values) for `GET /stig_baselines/{id}` — see [spec.md](../spec.md) §11.3.
+
 | Method | Path | Notes |
 |--------|------|--------|
 | GET | `/stig_baselines/rules/{ruleRef}` | Match `rule_id`, `rule_id_src`, `rule_version`, or `group_id`. Optional query `stig_id`. **404** if no matches. |

@@ -157,41 +157,151 @@ class TestBaselineReferenceServices(unittest.TestCase):
         self.assertEqual(row.get("rule_key"), "rule_a")
         self.assertEqual((row.get("baseline") or {}).get("baseline_id"), "base_v1")
 
+    def test_stig_id_filter_skips_orphan_baseline_without_500(self):
+        rule = self.rules[0]
+        self.kv.tables["stig_baseline_rules"]["orphan"] = {
+            "_key": "orphan",
+            "baseline_id": "missing_baseline",
+            "group_id": rule["group_id"],
+            "rule_id": rule["rule_id"],
+            "rule_id_src": "",
+            "rule_version": rule["rule_version"],
+            "severity": rule["severity"],
+            "rule_title": "orphan",
+            "group_title": "",
+            "ccis": baselines_svc.dumps_json(rule.get("ccis") or []),
+            "check_content_hash": rule["check_content_hash"],
+        }
+        with self._patch():
+            filtered = baselines_svc.find_catalog_rules_by_ref(
+                self.kv, "SV-000001", stig_id="Example_STIG"
+            )
+            all_matches = baselines_svc.find_catalog_rules_by_ref(self.kv, "SV-000001")
+            cci_filtered = baselines_svc.find_catalog_rules_by_cci(
+                self.kv, "CCI-000366", stig_id="Example_STIG"
+            )
+        self.assertEqual(len(filtered), 2)
+        self.assertEqual(len(cci_filtered), 2)
+        self.assertEqual(len(all_matches), 3)
+        orphan_rows = [m for m in all_matches if m.get("rule_key") == "orphan"]
+        self.assertEqual(len(orphan_rows), 1)
+        self.assertFalse((orphan_rows[0].get("baseline") or {}).get("baseline_id"))
+
+    def test_stig_id_filter_on_group_and_cci(self):
+        with self._patch():
+            by_group = baselines_svc.find_catalog_rules_by_group_id(
+                self.kv, "V-000001", stig_id="Example_STIG"
+            )
+            by_group_miss = baselines_svc.find_catalog_rules_by_group_id(
+                self.kv, "V-000001", stig_id="Other_STIG"
+            )
+        self.assertEqual(len(by_group), 2)
+        self.assertEqual(by_group_miss, [])
+
 
 class TestBaselineReferenceRest(unittest.TestCase):
-    def _dispatch(self, method: str, rest_path: str, session=None):
+    @classmethod
+    def setUpClass(cls):
+        cls.kv = _RefKv()
+        cls.meta, cls.rules = _load_fixture_rules()
+        cls.kv.tables["stig_baselines"]["base_v1"] = {
+            "_key": "base_v1",
+            "stig_id": "Example_STIG",
+            "version": "1",
+            "title": "Example STIG v1",
+        }
+        rule = cls.rules[0]
+        cls.kv.tables["stig_baseline_rules"]["rule_a"] = {
+            "_key": "rule_a",
+            "baseline_id": "base_v1",
+            "group_id": rule["group_id"],
+            "rule_id": rule["rule_id"],
+            "rule_id_src": "",
+            "rule_version": rule["rule_version"],
+            "severity": rule["severity"],
+            "rule_title": rule["rule_title"],
+            "group_title": "",
+            "ccis": baselines_svc.dumps_json(rule.get("ccis") or []),
+            "check_content_hash": rule["check_content_hash"],
+        }
+
+    def _kv_patches(self):
+        return patch.multiple(
+            stig_rest_handler.baselines_svc.kv_client,
+            get_collection=self.kv.get_collection,
+            query_all=self.kv.query_all,
+            get_by_key=self.kv.get_by_key,
+        )
+
+    def _dispatch(
+        self,
+        method: str,
+        rest_path: str,
+        session=None,
+        query=None,
+    ):
         handler = stig_rest_handler.StigRestHandler("", "")
+        q = query or []
+        if isinstance(q, dict):
+            q = list(q.items())
         payload = {
             "method": method,
             "session": session
             or {"authtoken": "token", "user": "reader", "capabilities": {"stig_read": True}},
             "rest_path": rest_path,
-            "query": [],
+            "query": q,
         }
-        with patch.object(stig_rest_handler.kv_client, "connect", return_value=MagicMock()):
+        with patch.object(
+            stig_rest_handler.kv_client, "connect", return_value=MagicMock()
+        ), self._kv_patches():
             return handler.handle(json.dumps(payload))
 
-    @patch.object(stig_rest_handler.baselines_svc, "find_catalog_rules_by_ref")
-    def test_get_rules_ref_200(self, mock_find):
-        mock_find.return_value = [{"rule_id": "SV-000001", "baseline": {"baseline_id": "b1"}}]
+    def test_get_rules_ref_200_and_404(self):
         resp = self._dispatch("GET", "stig_baselines/rules/SV-000001")
         self.assertEqual(resp["status"], 200)
         body = json.loads(resp["payload"])
         self.assertEqual(body["match_count"], 1)
+        resp404 = self._dispatch("GET", "stig_baselines/rules/missing-rule")
+        self.assertEqual(resp404["status"], 404)
 
-    @patch.object(stig_rest_handler.baselines_svc, "find_catalog_rules_by_ref")
-    def test_get_rules_ref_404(self, mock_find):
-        mock_find.return_value = []
-        resp = self._dispatch("GET", "stig_baselines/rules/missing")
-        self.assertEqual(resp["status"], 404)
+    def test_get_cci_hit_and_empty(self):
+        hit = self._dispatch("GET", "stig_baselines/ccis/CCI-000366")
+        self.assertEqual(hit["status"], 200)
+        self.assertEqual(json.loads(hit["payload"])["match_count"], 1)
+        empty = self._dispatch("GET", "stig_baselines/ccis/CCI-999999")
+        self.assertEqual(json.loads(empty["payload"])["match_count"], 0)
 
-    @patch.object(stig_rest_handler.baselines_svc, "find_catalog_rules_by_cci")
-    def test_get_cci_empty_200(self, mock_find):
-        mock_find.return_value = []
-        resp = self._dispatch("GET", "stig_baselines/ccis/CCI-999999")
+    def test_get_groups_hit_and_empty(self):
+        hit = self._dispatch("GET", "stig_baselines/groups/V-000001")
+        self.assertEqual(hit["status"], 200)
+        self.assertEqual(json.loads(hit["payload"])["match_count"], 1)
+        empty = self._dispatch("GET", "stig_baselines/groups/V-999999")
+        self.assertEqual(json.loads(empty["payload"])["match_count"], 0)
+
+    def test_get_rule_key_200_and_404(self):
+        ok = self._dispatch("GET", "stig_baselines/rule/rule_a")
+        self.assertEqual(ok["status"], 200)
+        self.assertEqual(json.loads(ok["payload"])["rule_key"], "rule_a")
+        missing = self._dispatch("GET", "stig_baselines/rule/no-such-key")
+        self.assertEqual(missing["status"], 404)
+
+    def test_stig_id_query_on_rules_ref(self):
+        resp = self._dispatch(
+            "GET",
+            "stig_baselines/rules/SV-000001",
+            query={"stig_id": "Example_STIG"},
+        )
         self.assertEqual(resp["status"], 200)
         body = json.loads(resp["payload"])
-        self.assertEqual(body["match_count"], 0)
+        self.assertEqual(body["stig_id"], "Example_STIG")
+        self.assertEqual(body["match_count"], 1)
+
+    def test_per_baseline_rules_route_not_shadowed(self):
+        resp = self._dispatch("GET", "stig_baselines/base_v1/rules")
+        self.assertEqual(resp["status"], 200)
+        body = json.loads(resp["payload"])
+        self.assertIsInstance(body, list)
+        self.assertEqual(len(body), 1)
 
     def test_unauthenticated_401(self):
         handler = stig_rest_handler.StigRestHandler("", "")
