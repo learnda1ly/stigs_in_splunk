@@ -125,6 +125,9 @@ export default function CollectionDashboardApp() {
     const [findingsLoading, setFindingsLoading] = useState(false);
     const [aggregate, setAggregate] = useState(null);
     const [aggregateLoading, setAggregateLoading] = useState(false);
+    const [unreviewedAssets, setUnreviewedAssets] = useState(null);
+    const [unreviewedRules, setUnreviewedRules] = useState(null);
+    const [unreviewedLoading, setUnreviewedLoading] = useState(false);
     const [poamLoading, setPoamLoading] = useState(false);
     const [banner, setBanner] = useState(null);
 
@@ -184,6 +187,36 @@ export default function CollectionDashboardApp() {
             .finally(() => setAggregateLoading(false));
     };
 
+    const loadUnreviewed = (cid) => {
+        if (!cid) {
+            setUnreviewedAssets(null);
+            setUnreviewedRules(null);
+            return;
+        }
+        setUnreviewedLoading(true);
+        const query = {};
+        if (hostFilter) {
+            query.host_id = hostFilter;
+        }
+        if (severityFilter) {
+            query.severity = severityFilter;
+        }
+        Promise.all([
+            apiFetch("stig_collections/" + cid + "/unreviewed/assets", { query }),
+            apiFetch("stig_collections/" + cid + "/unreviewed/rules", { query }),
+        ])
+            .then(([assets, rules]) => {
+                setUnreviewedAssets(assets);
+                setUnreviewedRules(rules);
+            })
+            .catch((err) => {
+                setUnreviewedAssets(null);
+                setUnreviewedRules(null);
+                setBanner({ type: "error", message: String(err.message || err) });
+            })
+            .finally(() => setUnreviewedLoading(false));
+    };
+
     const loadFindings = (cid, opts) => {
         opts = opts || {};
         if (!cid) {
@@ -235,6 +268,9 @@ export default function CollectionDashboardApp() {
         if (tab === "aggregate") {
             loadAggregate(collectionId);
         }
+        if (tab === "unreviewed") {
+            loadUnreviewed(collectionId);
+        }
     }, [collectionId]);
 
     useEffect(() => {
@@ -248,6 +284,12 @@ export default function CollectionDashboardApp() {
             loadAggregate(collectionId);
         }
     }, [tab, collectionId, statusFilter, severityFilter, hostFilter]);
+
+    useEffect(() => {
+        if (tab === "unreviewed" && collectionId) {
+            loadUnreviewed(collectionId);
+        }
+    }, [tab, collectionId, severityFilter, hostFilter]);
 
     const statusCounts = useMemo(
         () => countRows(metrics && metrics.by_status),
@@ -456,6 +498,7 @@ export default function CollectionDashboardApp() {
                         <TabBar.Tab label="Metrics" tabId="metrics" />
                         <TabBar.Tab label="Findings report" tabId="findings" />
                         <TabBar.Tab label="Aggregated findings" tabId="aggregate" />
+                        <TabBar.Tab label="Unreviewed" tabId="unreviewed" />
                     </TabBar>
 
                     {tab === "metrics" ? (
@@ -672,6 +715,122 @@ export default function CollectionDashboardApp() {
                             ) : !aggregateLoading ? (
                                 <Message type="info">
                                     Select a workspace to load aggregated open findings.
+                                </Message>
+                            ) : null}
+                        </>
+                    ) : null}
+
+                    {tab === "unreviewed" ? (
+                        <>
+                            {renderFindingsFilters(
+                                <Button onClick={() => loadUnreviewed(collectionId)}>
+                                    Refresh
+                                </Button>
+                            )}
+                            {unreviewedLoading ? <WaitSpinner /> : null}
+                            {unreviewedAssets ? (
+                                <>
+                                    <Message type="info">
+                                        {unreviewedAssets.definition ||
+                                            "Reviews with status not_reviewed."}{" "}
+                                        Total: {unreviewedAssets.total_unreviewed || 0} across{" "}
+                                        {unreviewedAssets.asset_count || 0} host(s).
+                                    </Message>
+                                    <Heading level={4} style={{ marginTop: 16 }}>
+                                        By host (per baseline)
+                                    </Heading>
+                                    <Table>
+                                        <Table.Head>
+                                            <Table.HeadCell>Host</Table.HeadCell>
+                                            <Table.HeadCell>STIG</Table.HeadCell>
+                                            <Table.HeadCell>Unreviewed</Table.HeadCell>
+                                        </Table.Head>
+                                        <Table.Body>
+                                            {(unreviewedAssets.assets || []).flatMap((asset) => {
+                                                const baselines = asset.by_baseline || [];
+                                                if (!baselines.length) {
+                                                    return [
+                                                        <Table.Row key={asset.host_id}>
+                                                            <Table.Cell>
+                                                                {asset.hostname || asset.host_id}
+                                                            </Table.Cell>
+                                                            <Table.Cell>—</Table.Cell>
+                                                            <Table.Cell>
+                                                                {asset.unreviewed_count}
+                                                            </Table.Cell>
+                                                        </Table.Row>,
+                                                    ];
+                                                }
+                                                return baselines.map((bl, idx) => (
+                                                    <Table.Row
+                                                        key={
+                                                            asset.host_id +
+                                                            ":" +
+                                                            (bl.baseline_id || idx)
+                                                        }
+                                                    >
+                                                        <Table.Cell>
+                                                            {idx === 0
+                                                                ? asset.hostname || asset.host_id
+                                                                : ""}
+                                                        </Table.Cell>
+                                                        <Table.Cell>
+                                                            {bl.stig_id || bl.baseline_id}
+                                                        </Table.Cell>
+                                                        <Table.Cell>
+                                                            {bl.unreviewed_count}
+                                                        </Table.Cell>
+                                                    </Table.Row>
+                                                ));
+                                            })}
+                                        </Table.Body>
+                                    </Table>
+                                    <Heading level={4} style={{ marginTop: 20 }}>
+                                        By rule (hosts affected)
+                                    </Heading>
+                                    <Table>
+                                        <Table.Head>
+                                            <Table.HeadCell>STIG / rule</Table.HeadCell>
+                                            <Table.HeadCell>Unreviewed</Table.HeadCell>
+                                            <Table.HeadCell>Hosts</Table.HeadCell>
+                                            <Table.HeadCell>Severity</Table.HeadCell>
+                                        </Table.Head>
+                                        <Table.Body>
+                                            {(unreviewedRules && unreviewedRules.rules
+                                                ? unreviewedRules.rules
+                                                : []
+                                            ).map((row) => (
+                                                <Table.Row
+                                                    key={
+                                                        (row.baseline_id || "") +
+                                                        ":" +
+                                                        (row.rule_id || row.group_id)
+                                                    }
+                                                >
+                                                    <Table.Cell>
+                                                        {(row.stig_id || row.baseline_id || "") +
+                                                            " " +
+                                                            (row.group_id || "") +
+                                                            (row.rule_id
+                                                                ? " / " + row.rule_id
+                                                                : "")}
+                                                    </Table.Cell>
+                                                    <Table.Cell>
+                                                        {row.unreviewed_count}
+                                                    </Table.Cell>
+                                                    <Table.Cell>{row.host_count}</Table.Cell>
+                                                    <Table.Cell>
+                                                        {SEVERITY_LABELS[row.severity] ||
+                                                            row.severity}
+                                                    </Table.Cell>
+                                                </Table.Row>
+                                            ))}
+                                        </Table.Body>
+                                    </Table>
+                                </>
+                            ) : !unreviewedLoading ? (
+                                <Message type="info">
+                                    Select a workspace to load unreviewed reports.
                                 </Message>
                             ) : null}
                         </>

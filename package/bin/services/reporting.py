@@ -33,6 +33,14 @@ from services import hosts as hosts_svc
 DEFAULT_FINDINGS_LIMIT = 500
 MAX_FINDINGS_LIMIT = 2000
 OPEN_STATUSES = frozenset({"open"})
+UNREVIEWED_STATUS = "not_reviewed"
+UNREVIEWED_DEFINITION = (
+    "A review counts as unreviewed when its assessor status is not_reviewed "
+    "(CKL Not Reviewed / STIG Manager notchecked). Rows with open, not_a_finding, "
+    "or not_applicable are excluded. Governance workflow (submitted/accepted/rejected) "
+    "does not override status; only not_reviewed rows appear in these reports. "
+    "Host and checklist visibility follows the same grant ACL filters as metrics and findings."
+)
 
 
 def _require_read_collection(service, collection_id: str, session: Dict[str, Any]) -> Dict[str, Any]:
@@ -653,4 +661,264 @@ def collection_poam(
         "row_count": row_count,
         "filters": filters,
         "splunk_alternative": splunk_poam_alternative(collection_id),
+    }
+
+
+def _parse_unreviewed_filters(query: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    query = query or {}
+    return {
+        "host_id_filter": (query.get("host_id") or "").strip(),
+        "hostname_filter": (query.get("hostname") or "").strip().casefold(),
+        "baseline_filter": (query.get("baseline_id") or "").strip(),
+        "rule_id_filter": (query.get("rule_id") or "").strip(),
+        "group_id_filter": (query.get("group_id") or "").strip(),
+        "severity_filter": (query.get("severity") or "").strip().lower(),
+        "raw": query,
+    }
+
+
+def _unreviewed_filters_response(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    query = parsed["raw"]
+    return {
+        "host_id": parsed["host_id_filter"] or None,
+        "hostname": query.get("hostname") or None,
+        "baseline_id": parsed["baseline_filter"] or None,
+        "rule_id": parsed["rule_id_filter"] or None,
+        "group_id": parsed["group_id_filter"] or None,
+        "severity": parsed["severity_filter"] or None,
+    }
+
+
+def _list_unreviewed_rows(
+    service,
+    collection_id: str,
+    session: Dict[str, Any],
+    query: Optional[Dict[str, Any]] = None,
+    *,
+    ctx: Optional[Dict[str, Any]] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Dict[str, Any]]:
+    parsed = _parse_unreviewed_filters(query)
+    if ctx is None:
+        ctx = _collection_workspace_context(service, collection_id, session)
+    reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
+    rows: List[Dict[str, Any]] = []
+    for checklist_id, checklist in ctx["checklist_by_id"].items():
+        host = ctx["host_by_id"].get(checklist.get("host_id") or "", {})
+        if parsed["host_id_filter"] and checklist.get("host_id") != parsed["host_id_filter"]:
+            continue
+        if parsed["hostname_filter"]:
+            host_name = (host.get("hostname") or "").casefold()
+            if parsed["hostname_filter"] not in host_name:
+                continue
+        if parsed["baseline_filter"] and checklist.get("baseline_id") != parsed["baseline_filter"]:
+            continue
+
+        baseline_id = str(checklist.get("baseline_id") or "")
+        baseline = ctx["baselines"].get(baseline_id, {})
+        for review in kv_client.query_all(reviews_coll, {"checklist_id": checklist_id}):
+            status = review.get("status") or UNREVIEWED_STATUS
+            if status != UNREVIEWED_STATUS:
+                continue
+            group_id = review.get("group_id") or ""
+            rule_id = review.get("rule_id") or ""
+            if parsed["rule_id_filter"] and rule_id != parsed["rule_id_filter"]:
+                continue
+            if parsed["group_id_filter"] and group_id != parsed["group_id_filter"]:
+                continue
+            sev = review_severity(review, ctx["severity_index"])
+            if parsed["severity_filter"] and sev != parsed["severity_filter"]:
+                continue
+            meta = _rule_meta_for_finding(
+                {
+                    "baseline_id": review.get("baseline_id") or baseline_id,
+                    "rule_id": rule_id,
+                    "group_id": group_id,
+                },
+                ctx["rule_meta_index"],
+            )
+            rows.append(
+                {
+                    "host_id": checklist.get("host_id") or "",
+                    "hostname": host.get("hostname") or "",
+                    "baseline_id": review.get("baseline_id") or baseline_id,
+                    "stig_id": baseline.get("stig_id") or "",
+                    "baseline_title": baseline.get("title") or "",
+                    "group_id": group_id,
+                    "rule_id": rule_id,
+                    "severity": sev,
+                    "rule_title": meta.get("rule_title") or "",
+                    "group_title": meta.get("group_title") or "",
+                }
+            )
+    rows.sort(
+        key=lambda row: (
+            row.get("hostname") or "",
+            row.get("stig_id") or "",
+            row.get("group_id") or "",
+            row.get("rule_id") or "",
+        )
+    )
+    return rows, _unreviewed_filters_response(parsed), ctx
+
+
+def splunk_unreviewed_alternative(collection_id: str) -> Dict[str, Any]:
+    cid = collection_id.replace('"', '\\"')
+    base = (
+        "| inputlookup stig_checklists "
+        f'| search stig_collection_id="{cid}" '
+        "| rename _key AS checklist_id "
+        "| join type=inner checklist_id [ | inputlookup stig_reviews "
+        '| search status=not_reviewed ] '
+        "| lookup stig_hosts _key AS host_id OUTPUT hostname "
+    )
+    return {
+        "definition": UNREVIEWED_DEFINITION,
+        "by_host_baseline_spl": (
+            base
+            + "| stats count AS unreviewed_count by hostname baseline_id "
+            + "| sort hostname baseline_id"
+        ),
+        "by_rule_spl": (
+            base
+            + "| stats count AS unreviewed_count dc(hostname) AS host_count by "
+            "baseline_id group_id rule_id "
+            + "| sort - unreviewed_count"
+        ),
+        "outputcsv_example": base + "| outputcsv stig_unreviewed_reviews.csv",
+    }
+
+
+def collection_unreviewed_assets(
+    service,
+    collection_id: str,
+    session: Dict[str, Any],
+    query: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Per-host unreviewed rule counts with per-baseline breakdown."""
+    _require_read_collection(service, collection_id, session)
+    rows, filters, _ctx = _list_unreviewed_rows(service, collection_id, session, query)
+    by_host: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        host_id = row.get("host_id") or ""
+        if not host_id:
+            continue
+        asset = by_host.setdefault(
+            host_id,
+            {
+                "host_id": host_id,
+                "hostname": row.get("hostname") or "",
+                "unreviewed_count": 0,
+                "_by_baseline": {},
+            },
+        )
+        asset["unreviewed_count"] += 1
+        baseline_id = str(row.get("baseline_id") or "")
+        if baseline_id:
+            bl = asset["_by_baseline"].setdefault(
+                baseline_id,
+                {
+                    "baseline_id": baseline_id,
+                    "stig_id": row.get("stig_id") or "",
+                    "baseline_title": row.get("baseline_title") or "",
+                    "unreviewed_count": 0,
+                },
+            )
+            bl["unreviewed_count"] += 1
+            if row.get("stig_id") and not bl.get("stig_id"):
+                bl["stig_id"] = row.get("stig_id")
+            if row.get("baseline_title") and not bl.get("baseline_title"):
+                bl["baseline_title"] = row.get("baseline_title")
+
+    assets: List[Dict[str, Any]] = []
+    for asset in by_host.values():
+        by_baseline = sorted(
+            asset.pop("_by_baseline", {}).values(),
+            key=lambda b: (b.get("stig_id") or "", b.get("baseline_id") or ""),
+        )
+        asset["by_baseline"] = by_baseline
+        assets.append(asset)
+    assets.sort(key=lambda a: (a.get("hostname") or "", a.get("host_id") or ""))
+
+    return {
+        "stig_collection_id": collection_id,
+        "generated_at": now_epoch(),
+        "definition": UNREVIEWED_DEFINITION,
+        "total_unreviewed": len(rows),
+        "asset_count": len(assets),
+        "filters": filters,
+        "assets": assets,
+        "splunk_alternative": splunk_unreviewed_alternative(collection_id),
+    }
+
+
+def collection_unreviewed_rules(
+    service,
+    collection_id: str,
+    session: Dict[str, Any],
+    query: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Per-rule unreviewed counts with host coverage (STIG Manager rules report shape)."""
+    _require_read_collection(service, collection_id, session)
+    rows, filters, _ctx = _list_unreviewed_rows(service, collection_id, session, query)
+    by_rule: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        baseline_id = str(row.get("baseline_id") or "")
+        rule_id = row.get("rule_id") or ""
+        group_id = row.get("group_id") or ""
+        if not baseline_id or not rule_id:
+            continue
+        key = _baseline_rule_bucket_key(baseline_id, rule_id)
+        bucket = by_rule.setdefault(
+            key,
+            {
+                "baseline_id": baseline_id,
+                "stig_id": row.get("stig_id") or "",
+                "baseline_title": row.get("baseline_title") or "",
+                "group_id": group_id,
+                "rule_id": rule_id,
+                "rule_title": row.get("rule_title") or "",
+                "group_title": row.get("group_title") or "",
+                "severity": row.get("severity") or "unknown",
+                "unreviewed_count": 0,
+                "_hosts": set(),
+            },
+        )
+        bucket["unreviewed_count"] += 1
+        hostname = row.get("hostname") or ""
+        if hostname:
+            bucket["_hosts"].add(hostname)
+        if group_id and not bucket.get("group_id"):
+            bucket["group_id"] = group_id
+        if row.get("rule_title") and not bucket.get("rule_title"):
+            bucket["rule_title"] = row.get("rule_title")
+        if row.get("group_title") and not bucket.get("group_title"):
+            bucket["group_title"] = row.get("group_title")
+        if row.get("severity") and bucket.get("severity") == "unknown":
+            bucket["severity"] = row.get("severity")
+
+    rules: List[Dict[str, Any]] = []
+    for bucket in by_rule.values():
+        hosts = bucket.pop("_hosts", set())
+        bucket["host_count"] = len(hosts)
+        bucket["hostnames"] = sorted(hosts)
+        rules.append(bucket)
+    rules.sort(
+        key=lambda r: (
+            -int(r.get("unreviewed_count") or 0),
+            r.get("stig_id") or "",
+            r.get("baseline_id") or "",
+            r.get("group_id") or "",
+            r.get("rule_id") or "",
+        )
+    )
+
+    return {
+        "stig_collection_id": collection_id,
+        "generated_at": now_epoch(),
+        "definition": UNREVIEWED_DEFINITION,
+        "total_unreviewed": len(rows),
+        "rule_count": len(rules),
+        "filters": filters,
+        "rules": rules,
+        "splunk_alternative": splunk_unreviewed_alternative(collection_id),
     }

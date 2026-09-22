@@ -288,6 +288,33 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 )
             except KeyError:
                 return _error("not found", status=404)
+        if len(parts) == 3 and parts[1] == "unreviewed" and parts[2] == "rules":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            try:
+                return _json_response(
+                    reporting_svc.collection_unreviewed_rules(
+                        service, key, session, query
+                    )
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+        if len(parts) == 3 and parts[1] == "unreviewed" and parts[2] == "assets":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            try:
+                return _json_response(
+                    reporting_svc.collection_unreviewed_assets(
+                        service, key, session, query
+                    )
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+
         if len(parts) == 2 and parts[1] == "poam":
             if method != "GET":
                 return _error("method not allowed", status=405)
