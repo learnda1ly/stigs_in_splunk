@@ -118,6 +118,9 @@ export default function EditorApp() {
     const [reviewHistory, setReviewHistory] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyError, setHistoryError] = useState(null);
+    const [reviewPeers, setReviewPeers] = useState([]);
+    const [peersLoading, setPeersLoading] = useState(false);
+    const [peersError, setPeersError] = useState(null);
     const [finding, setFinding] = useState("");
     const [comments, setComments] = useState("");
     const [status, setStatus] = useState("not_reviewed");
@@ -512,6 +515,40 @@ export default function EditorApp() {
         };
     }, [selected && selected.review._key, selected && selected.review.updated_at]);
 
+    useEffect(() => {
+        if (!selected || !selected.review || !selected.review._key) {
+            setReviewPeers([]);
+            setPeersError(null);
+            return undefined;
+        }
+        const reviewKey = selected.review._key;
+        let cancelled = false;
+        setPeersLoading(true);
+        setPeersError(null);
+        apiGet("stig_reviews/" + reviewKey + "/peers")
+            .then((data) => {
+                if (cancelled) {
+                    return;
+                }
+                setReviewPeers(Array.isArray(data.peers) ? data.peers : []);
+            })
+            .catch((err) => {
+                if (cancelled) {
+                    return;
+                }
+                setReviewPeers([]);
+                setPeersError(err.message || "Failed to load peer reviews");
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setPeersLoading(false);
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [selected && selected.review._key, selected && selected.review.updated_at]);
+
     const doneCount = items.filter((item) => reviewIsValid(item.review, reviewRequirements)).length;
     const workflowCounts = useMemo(() => {
         const counts = { draft: 0, submitted: 0, accepted: 0 };
@@ -755,6 +792,44 @@ export default function EditorApp() {
             finding_details: selected.savedFinding,
             comments: selected.savedComments,
         });
+    };
+
+    const onCopyFromPeer = (peerReviewId) => {
+        if (!selected || busy || !reviewIsEditable(selected.review)) {
+            return;
+        }
+        const key = selected.review._key;
+        setBusy(true);
+        apiFetch("stig_reviews/" + key + "/copy_from/" + peerReviewId, {
+            method: "POST",
+            body: {},
+        })
+            .then((result) => {
+                const updated = (result && result.review) || result;
+                const nextFinding = updated.finding_details || "";
+                const nextComments = updated.comments || "";
+                const nextStatus = updated.status || selected.review.status;
+                setFinding(nextFinding);
+                setComments(nextComments);
+                setStatus(nextStatus);
+                patchItem(
+                    key,
+                    { ...selected.review, ...updated },
+                    {
+                        dirty: false,
+                        savedFinding: nextFinding,
+                        savedComments: nextComments,
+                    }
+                );
+                setBanner({
+                    type: "success",
+                    text: "Copied status, finding details, and comments from peer host.",
+                });
+            })
+            .catch((err) =>
+                setBanner({ type: "error", text: "Copy from peer failed: " + err.message })
+            )
+            .finally(() => setBusy(false));
     };
 
     const onValidate = () => {
@@ -1685,6 +1760,55 @@ export default function EditorApp() {
                                     onChange={(e, { value }) => setRejectFeedback(value)}
                                     placeholder="Optional feedback when rejecting"
                                 />
+                            </ControlGroup>
+                            <ControlGroup label="Peer hosts (same rule)">
+                                {peersLoading ? (
+                                    <WaitSpinner size="small" />
+                                ) : reviewPeers.length ? (
+                                    <div>
+                                        {reviewPeers.map((peer) => (
+                                            <div
+                                                key={peer.review_id}
+                                                style={{
+                                                    display: "flex",
+                                                    gap: "8px",
+                                                    alignItems: "flex-start",
+                                                    marginBottom: "8px",
+                                                    flexWrap: "wrap",
+                                                }}
+                                            >
+                                                <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+                                                    <strong>{peer.hostname || peer.host_id}</strong>
+                                                    {" · "}
+                                                    <StatusChip status={peer.status} />
+                                                    {" "}
+                                                    <WorkflowChip
+                                                        workflowState={peer.workflow_state}
+                                                    />
+                                                    <MetaLine>
+                                                        {peer.finding_details_snippet ||
+                                                            peer.comments_snippet ||
+                                                            "(no assessor text)"}
+                                                    </MetaLine>
+                                                </div>
+                                                <Button
+                                                    appearance="secondary"
+                                                    disabled={busy || !selectedEditable}
+                                                    onClick={() => onCopyFromPeer(peer.review_id)}
+                                                    label="Copy"
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <MetaLine>
+                                        No other hosts in this workspace have the same rule on a
+                                        visible checklist.
+                                    </MetaLine>
+                                )}
+                                {peersError ? (
+                                    <Message appearance="warning">{peersError}</Message>
+                                ) : null}
                             </ControlGroup>
                             <ControlGroup label="Review history">
                                 {historyLoading ? (
