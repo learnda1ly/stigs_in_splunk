@@ -649,8 +649,8 @@ Import responses:
 | GET | `/stig_checklists/{id}/export` | Query `format=cklb|ckl` |
 | POST/PUT | `/stig_checklists/export_bulk` | JSON `{checklist_ids?, stig_collection_id?, format, host_id?, baseline_id?}` | Zip of multiple checklists. Either `checklist_ids` **or** `stig_collection_id` (workspace-scoped, optional host/baseline filters). Workspace-scoped calls use the same read ACL as archive export: missing or unreadable workspace → **404** (not **403**). **400** when filters match no checklists. Same zip/filename rules as collection archive. |
 | POST/PUT | `/stig_checklists/{id}/upgrade` | `{baseline_id}` — same `stig_id`, newer revision; merge reviews when `check_content_hash` matches |
-| POST | `/stig_imports` | Query `format=ckl|cklb|zip|xccdf-results`, `source_uri`, `stig_collection_id`; raw body (see §11.4.1) |
-| POST | `/stig_collections/{id}/imports` | JSON `{files: [{source_uri, format?, content\|content_base64}]}` **or** raw zip body (`format=zip` query or PK magic). Batch CKL/CKLB collection import builder; workspace **write** required. |
+| POST | `/stig_imports` | Query `format=ckl\|cklb\|zip\|xccdf-results-zip\|xccdf-results`, `source_uri`, `stig_collection_id`; raw body (see §11.4.1) |
+| POST | `/stig_collections/{id}/imports` | JSON `{files: [{source_uri, format?, content\|content_base64}]}` **or** raw zip body (`format=zip` query or PK magic). Batch CKL/CKLB/XCCDF-results collection import; workspace **write** required. |
 | GET/POST/DELETE | `/stig_collections/{id}/baseline_defaults` | Workspace default `baseline_id` per `stig_id` (`default_baseline_map` on collection) |
 | GET/PATCH | `/stig_collections/{id}/review_requirements` | Workspace review validation policy (`review_requirements` JSON on collection). **GET** returns `{stig_collection_id, review_requirements, defaults}`. **PATCH** body `{review_requirements: {...}}` or flat policy fields; requires workspace **write**. |
 | POST/PUT | `/stig_collections/{id}/upgrade_checklists` | `{baseline_id, from_baseline_id?, stig_id?}` — bulk upgrade matching checklists in workspace |
@@ -663,11 +663,13 @@ POST validates: host belongs to workspace; baseline exists; baseline has rules.
 
 ### 11.4.1 Checklist file import and HEC ingest
 
-`POST /stig_imports` parses one `.ckl`, `.cklb`, zip archive of checklists, or XCCDF `TestResult` scan file. CKL/CKLB use the same shape as [STIG Manager Watcher](https://github.com/NUWCDIVNPT/stigman-watcher) (`reviewsFromCkl` / `reviewsFromCklb`). XCCDF results map `rule-result@result` to Watcher `result` values (`pass`, `fail`, `notapplicable`, `notchecked`), then:
+`POST /stig_imports` parses one `.ckl`, `.cklb`, zip archive (checklists and/or XCCDF results), or a single XCCDF `TestResult` scan file. CKL/CKLB use the same shape as [STIG Manager Watcher](https://github.com/NUWCDIVNPT/stigman-watcher) (`reviewsFromCkl` / `reviewsFromCklb`). XCCDF results map `rule-result@result` to Watcher `result` values (`pass`, `fail`, `notapplicable`, `notchecked`).
 
-**Collection import builder:** `POST /stig_collections/{id}/imports` accepts a JSON `files` array (CKL/CKLB only) and returns `{stig_collection_id, results[], summary}`. Each result row includes `status` (`ok` \| `error`), host/checklist metadata, and `created` when the host or checklist row was new. Duplicate host+baseline imports update existing checklists (same idempotent apply path as single-file import). Zip uploads walk nested archives for `.ckl`/`.cklb` members (max 500 files; total uncompressed cap documented in `checklist_zip.py`). HTTP status: **201** when `summary.created > 0` and `summary.failed == 0`; otherwise **200** (all updates, or any per-file failure). **Gap vs STIG Manager:** no multi-file XCCDF **results** archive ingest — only per-file `format=xccdf-results` or HEC streaming.
+**Zip archives (`format=zip`):** nested zips supported; members are `.ckl`/`.cklb` and/or XCCDF result XML (`*-results.xml`, `*_results.xml`, or XML containing `TestResult` + `rule-result`). Manual STIG benchmark XML, SRG/SCAP source data streams, and OCIL are skipped. Caps: 500 members per archive, per-member and total uncompressed limits in `checklist_zip.py` / `xccdf_results_zip.py`. **`format=xccdf-results-zip`** accepts only XCCDF result members (errors when none). Mixed checklist + results archives are processed in one batch with per-file `ok`/`error` rows.
 
-Then for all formats:
+**Collection import builder:** `POST /stig_collections/{id}/imports` accepts JSON `files[]` (`ckl`, `cklb`, or `xccdf-results` per row) and returns `{stig_collection_id, results[], summary}`. Zip body uses the same walker as `format=zip`. HTTP status: **201** when `summary.created > 0` and `summary.failed == 0`; otherwise **200**. **Not supported:** full SCAP source data stream bundle parsing (only discrete OpenSCAP/Evaluate-STIG `TestResult` XML files in zip).
+
+For all formats:
 
 1. Emits one **fat** `stig:finding` JSON event per rule to **HEC** (`index=stig`, `sourcetype=stig:finding`). Each event includes Watcher review fields **and** asset `target_data`, STIG metadata, and the rule body (title, check content, fix text, CCIs, hashes) so a CKL/CKLB can be synthesized later from the index + KV.
 2. Applies the same events to KV current state (host, baseline, checklist, reviews).

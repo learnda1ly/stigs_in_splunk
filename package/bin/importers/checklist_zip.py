@@ -6,11 +6,10 @@ import io
 import zipfile
 from typing import Iterator, List, Optional, Tuple, Union
 
-from importers.stig_zip import MAX_DEPTH, MAX_MEMBER_BYTES, looks_like_zip, _norm
+from importers.archive_limits import MAX_ARCHIVE_IMPORT_FILES, MAX_TOTAL_UNCOMPRESSED
+from importers.stig_zip import MAX_MEMBER_BYTES, _norm
 
-MAX_CHECKLIST_FILES = 500
-# Total uncompressed bytes across all extracted members (nested zips included).
-MAX_TOTAL_UNCOMPRESSED = 200 * 1024 * 1024
+MAX_CHECKLIST_FILES = MAX_ARCHIVE_IMPORT_FILES
 
 ZipSource = Union[bytes, bytearray]
 
@@ -75,46 +74,20 @@ def iter_checklist_files(
     _count: Optional[List[int]] = None,
     _total_uncompressed: Optional[List[int]] = None,
 ) -> Iterator[Tuple[str, bytes]]:
-    if not looks_like_zip(data):
-        raise ValueError("invalid zip archive")
-    if _count is None:
-        _count = [0]
-    if _total_uncompressed is None:
-        _total_uncompressed = [0]
-    prefix = (source_prefix or "").strip()
-    if prefix and not prefix.endswith("/"):
-        prefix = prefix + "/"
-    try:
-        archive = _open_zip(data)
-    except (zipfile.BadZipFile, OSError) as err:
-        raise ValueError(f"invalid zip: {err}") from err
-    with archive:
-        for info in archive.infolist():
-            if info.is_dir():
-                continue
-            member = info.filename
-            norm = _norm(member)
-            raw = _read_member_bytes(archive, info, total_budget=_total_uncompressed)
-            nested = norm.endswith(".zip") and depth < MAX_DEPTH
-            if nested and looks_like_zip(raw):
-                nested_prefix = prefix + member
-                yield from iter_checklist_files(
-                    raw,
-                    source_prefix=nested_prefix,
-                    depth=depth + 1,
-                    _count=_count,
-                    _total_uncompressed=_total_uncompressed,
-                )
-                continue
-            if not is_checklist_member(member):
-                continue
-            _count[0] += 1
-            if _count[0] > MAX_CHECKLIST_FILES:
-                raise ValueError(
-                    f"zip contains more than {MAX_CHECKLIST_FILES} checklist files"
-                )
-            path = prefix + member
-            yield path, raw
+    from importers.import_archive_zip import iter_archive_import_members
+
+    yield from (
+        (m.path, m.content)
+        for m in iter_archive_import_members(
+            data,
+            source_prefix=source_prefix,
+            include_checklists=True,
+            include_xccdf_results=False,
+            depth=depth,
+            _import_count=_count,
+            _total_uncompressed=_total_uncompressed,
+        )
+    )
 
 
 def list_checklist_files(data: bytes, *, source_prefix: str = "") -> List[Tuple[str, bytes]]:

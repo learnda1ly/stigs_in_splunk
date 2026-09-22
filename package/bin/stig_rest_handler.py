@@ -1192,14 +1192,23 @@ class StigRestHandler(PersistentServerConnectionApplication):
         if not body:
             return _error("empty import body")
         fmt = (query.get("format") or detect_format(source_uri, body)).lower()
-        if fmt == "zip":
+        if fmt in {
+            "zip",
+            "xccdf-results-zip",
+            "xccdf_results_zip",
+            "xccdfresultszip",
+        }:
             try:
                 cid = collection_id
                 if not cid:
                     cid = imports_svc.resolve_import_workspace(
                         service, session, username, ""
                     )
-                rec = imports_svc.import_checklist_zip(
+                if fmt == "zip":
+                    importer = imports_svc.import_checklist_zip
+                else:
+                    importer = imports_svc.import_xccdf_results_zip
+                rec = importer(
                     service,
                     session,
                     username,
@@ -1215,7 +1224,9 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error(str(exc), status=400)
             return _json_response(rec, status=_batch_import_http_status(rec))
         if fmt not in {"ckl", "cklb", "xccdf-results", "xccdf_results", "xccdfresults"}:
-            return _error("format must be ckl, cklb, zip, or xccdf-results")
+            return _error(
+                "format must be ckl, cklb, zip, xccdf-results-zip, or xccdf-results"
+            )
         rec = imports_svc.import_checklist_file(
             service,
             body,

@@ -254,7 +254,9 @@ export default function ChecklistImportPanel() {
                 key: parentKey + ":" + name + ":" + index,
                 file: null,
                 name,
-                format: entry.format || "ckl",
+                format: entry.format || (entry.source_uri || "").endsWith(".cklb")
+                    ? "cklb"
+                    : "ckl",
                 status: ok ? "done" : "error",
                 error: ok ? "" : entry.error || "Import failed",
                 host: ok ? (entry.host && entry.host.hostname) || "—" : "—",
@@ -420,9 +422,11 @@ export default function ChecklistImportPanel() {
                     results overwrite matching checks unless the finding is locked in the
                     editor.
                     <br />
-                    <strong>XCCDF scan results</strong> (single <code>*-results.xml</code>{" "}
-                    file) upload here; multi-file results archives are not supported — use
-                    REST/HEC per README.
+                    <strong>XCCDF scan results</strong>: upload a single{" "}
+                    <code>*-results.xml</code> or a <code>.zip</code> of OpenSCAP /
+                    Evaluate-STIG result XML files (nested zips supported; not full SCAP
+                    source data streams). Matching Manual STIG baselines must exist in the
+                    library or workspace defaults.
                 </p>
                 {banner ? (
                     <Message
