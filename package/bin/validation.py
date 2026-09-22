@@ -46,8 +46,6 @@ def rule_finding_text_required(
     """Legacy default: at least one of finding details or comments is non-empty."""
     if policy.get("require_finding_details") or policy.get("require_comments"):
         return None
-    if policy.get("min_finding_details_length") or policy.get("min_comments_length"):
-        return None
     if _text(review.get("finding_details")) or _text(review.get("comments")):
         return None
     return (

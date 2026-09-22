@@ -92,7 +92,25 @@ export default function ReviewRequirementsApp() {
     };
 
     const patchField = (field, value) => {
-        setPolicy((prev) => ({ ...prev, [field]: value }));
+        setPolicy((prev) => {
+            const next = { ...prev, [field]: value };
+            if (
+                field === "min_finding_details_length" &&
+                (parseInt(value, 10) || 0) > 0
+            ) {
+                next.require_finding_details = true;
+            }
+            if (field === "min_comments_length" && (parseInt(value, 10) || 0) > 0) {
+                next.require_comments = true;
+            }
+            if (field === "require_finding_details" && !value) {
+                next.min_finding_details_length = 0;
+            }
+            if (field === "require_comments" && !value) {
+                next.min_comments_length = 0;
+            }
+            return next;
+        });
         setSaved("");
     };
 
@@ -198,6 +216,7 @@ export default function ReviewRequirementsApp() {
                 <ControlGroup label="Minimum finding details length">
                     <Text
                         value={String(policy.min_finding_details_length || 0)}
+                        disabled={!policy.require_finding_details}
                         onChange={(e, { value }) =>
                             patchField(
                                 "min_finding_details_length",
@@ -225,6 +244,7 @@ export default function ReviewRequirementsApp() {
                 <ControlGroup label="Minimum comments length">
                     <Text
                         value={String(policy.min_comments_length || 0)}
+                        disabled={!policy.require_comments}
                         onChange={(e, { value }) =>
                             patchField(
                                 "min_comments_length",

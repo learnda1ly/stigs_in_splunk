@@ -73,17 +73,17 @@ export function normalizeReviewRequirements(raw) {
               .map((s) => String(s || "").trim().toLowerCase())
               .filter(Boolean)
         : [];
+    const minFinding = Math.max(
+        0,
+        parseInt(src.min_finding_details_length, 10) || 0
+    );
+    const minComments = Math.max(0, parseInt(src.min_comments_length, 10) || 0);
     return {
-        require_finding_details: Boolean(src.require_finding_details),
-        require_comments: Boolean(src.require_comments),
-        min_finding_details_length: Math.max(
-            0,
-            parseInt(src.min_finding_details_length, 10) || 0
-        ),
-        min_comments_length: Math.max(
-            0,
-            parseInt(src.min_comments_length, 10) || 0
-        ),
+        require_finding_details:
+            Boolean(src.require_finding_details) || minFinding > 0,
+        require_comments: Boolean(src.require_comments) || minComments > 0,
+        min_finding_details_length: minFinding,
+        min_comments_length: minComments,
         applies_to_statuses: applies,
     };
 }

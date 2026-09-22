@@ -683,7 +683,7 @@ Updates require workspace **write** access via parent checklist. Content PATCH i
 | `min_comments_length` | int | `0` | Minimum trimmed length when `require_comments` is true (implicit minimum 1). |
 | `applies_to_statuses` | string[] | `[]` | When empty, policy applies to all statuses; when set, only listed assessor statuses are validated. |
 
-When both `require_*` flags are false and both minimums are zero, validation matches legacy behavior: at least one of finding details or comments must be non-empty after trim.
+When both `require_*` flags are false and both minimums are zero, validation matches legacy behavior: at least one of finding details or comments must be non-empty after trim. A non-zero minimum length implicitly sets the corresponding `require_*` flag on persist (PATCH normalizes stored policy).
 
 **Batch updates** apply each row independently (**partial success**). Response: `{updated: [...], errors: [{_key?, error, code?}], summary: {total, succeeded, failed}}`. Rows the caller cannot write return `code: forbidden`; missing keys return `not_found`. Maximum **500** reviews per request.
 

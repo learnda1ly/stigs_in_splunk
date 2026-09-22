@@ -49,6 +49,7 @@ import {
     reviewWorkflowState,
     DEFAULT_REVIEW_REQUIREMENTS,
     normalizeReviewRequirements,
+    reviewValidationIssues,
 } from "../status";
 import VimField from "../vim/VimField";
 import { HelpOverlay, JumpOverlay, VimCommandBar } from "../vim/overlays";
@@ -639,6 +640,21 @@ export default function EditorApp() {
 
     const onWrite = () => {
         if (!selected || busy || !reviewIsEditable(selected.review)) {
+            return;
+        }
+        const issues = reviewValidationIssues(
+            {
+                status: selected.review.status,
+                finding_details: finding,
+                comments,
+            },
+            reviewRequirements
+        );
+        if (issues.length) {
+            setBanner({
+                type: "error",
+                text: issues[0].message || "Review validation failed",
+            });
             return;
         }
         setBusy(true);

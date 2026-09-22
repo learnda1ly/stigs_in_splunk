@@ -61,6 +61,16 @@ class ReviewRequirementsPolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             req_svc.normalize_policy({"applies_to_statuses": ["bogus"]})
 
+    def test_min_length_implies_require_flag(self):
+        policy = req_svc.normalize_policy({"min_comments_length": 10})
+        self.assertTrue(policy["require_comments"])
+        self.assertFalse(
+            validation.is_valid(
+                {"status": "open", "finding_details": "long enough", "comments": ""},
+                policy,
+            )
+        )
+
 
 class ReviewRequirementsRestTests(unittest.TestCase):
     @patch("services.grants.workspace_context")
@@ -75,6 +85,16 @@ class ReviewRequirementsRestTests(unittest.TestCase):
         body = req_svc.get_requirements(MagicMock(), "ws1", {"user": "u"})
         self.assertEqual(body["stig_collection_id"], "ws1")
         self.assertIn("review_requirements", body)
+
+    @patch("services.grants.workspace_context")
+    def test_get_denied_without_read(self, mock_workspace):
+        mock_workspace.return_value = (
+            {"_key": "ws1"},
+            MagicMock(can_read=False),
+            [],
+        )
+        with self.assertRaises(KeyError):
+            req_svc.get_requirements(MagicMock(), "ws1", {"user": "u"})
 
     @patch("services.grants.workspace_context")
     def test_patch_requires_write(self, mock_workspace):
@@ -163,6 +183,68 @@ class ReviewPatchEnforcementTests(unittest.TestCase):
                     "capabilities": {"stig_write": True},
                 },
             )
+
+
+class ReviewSubmitEnforcementTests(unittest.TestCase):
+    def _strict_policy(self):
+        return req_svc.normalize_policy({"require_finding_details": True})
+
+    def _draft_review(self, **kwargs):
+        base = {
+            "_key": "rev1",
+            "checklist_id": "cl1",
+            "workflow_state": "draft",
+            "status": "open",
+            "finding_details": "",
+            "comments": "",
+        }
+        base.update(kwargs)
+        return base
+
+    @patch.object(reviews_svc, "review_requirements_svc")
+    @patch.object(reviews_svc, "kv_client")
+    @patch.object(reviews_svc, "grants_svc")
+    @patch.object(reviews_svc, "checklists_svc")
+    def test_submit_rejects_incomplete(
+        self, mock_checklists, mock_grants, mock_kv, mock_req
+    ):
+        mock_req.get_policy.return_value = self._strict_policy()
+        existing = self._draft_review()
+        coll = MagicMock()
+        mock_kv.get_collection.return_value = coll
+        mock_kv.get_by_key.return_value = dict(existing)
+        mock_checklists.get_checklist.return_value = {
+            "_key": "cl1",
+            "stig_collection_id": "ws1",
+        }
+        mock_grants.workspace_context.return_value = (
+            {"_key": "ws1"},
+            MagicMock(can_write=True),
+            [],
+        )
+
+        with self.assertRaises(ValueError):
+            reviews_svc.submit_review(
+                MagicMock(),
+                "rev1",
+                "writer",
+                {"user": "writer", "capabilities": {"stig_write": True}},
+            )
+
+    @patch.object(reviews_svc, "submit_review")
+    def test_batch_workflow_submit_surfaces_errors(self, mock_submit):
+        mock_submit.side_effect = ValueError(
+            "cannot submit an incomplete review: Finding details are required"
+        )
+        result = reviews_svc.batch_workflow(
+            MagicMock(),
+            "submit",
+            ["rev1"],
+            "writer",
+            {"user": "writer", "capabilities": {"stig_write": True}},
+        )
+        self.assertEqual(result["summary"]["failed"], 1)
+        self.assertEqual(result["errors"][0]["code"], "invalid")
 
 
 if __name__ == "__main__":

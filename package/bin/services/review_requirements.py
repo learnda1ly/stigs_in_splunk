@@ -6,18 +6,13 @@ from typing import Any, Dict, List, Optional
 
 import audit
 import kv_client
+import validation
 from models import KV_STIG_COLLECTIONS, dumps_json, kv_record, now_epoch, parse_json_field
 from services import collections as collections_svc
 
 REVIEW_REQUIREMENTS_FIELD = "review_requirements"
 
-DEFAULT_POLICY: Dict[str, Any] = {
-    "require_finding_details": False,
-    "require_comments": False,
-    "min_finding_details_length": 0,
-    "min_comments_length": 0,
-    "applies_to_statuses": [],
-}
+POLICY_FIELD_NAMES = tuple(validation.DEFAULT_POLICY.keys())
 
 ALLOWED_STATUSES = frozenset(
     {"not_reviewed", "open", "not_a_finding", "not_applicable"}
@@ -25,7 +20,7 @@ ALLOWED_STATUSES = frozenset(
 
 
 def default_policy() -> Dict[str, Any]:
-    return dict(DEFAULT_POLICY)
+    return validation.default_policy()
 
 
 def _as_bool(value: Any, default: bool = False) -> bool:
@@ -86,6 +81,10 @@ def normalize_policy(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         if key not in normalized:
             normalized.append(key)
     out["applies_to_statuses"] = normalized
+    if out["min_finding_details_length"] > 0:
+        out["require_finding_details"] = True
+    if out["min_comments_length"] > 0:
+        out["require_comments"] = True
     return out
 
 
@@ -147,7 +146,7 @@ def patch_requirements(
 ) -> Dict[str, Any]:
     _require_write(service, collection_id, session)
     incoming = body.get("review_requirements")
-    if incoming is None and any(k in body for k in DEFAULT_POLICY):
+    if incoming is None and any(k in body for k in POLICY_FIELD_NAMES):
         incoming = body
     if not isinstance(incoming, dict):
         raise ValueError("review_requirements object is required")
@@ -155,7 +154,7 @@ def patch_requirements(
     if not rec:
         raise KeyError(collection_id)
     merged = parse_policy_from_collection(rec)
-    for key in DEFAULT_POLICY:
+    for key in POLICY_FIELD_NAMES:
         if key in incoming:
             merged[key] = incoming[key]
     policy = normalize_policy(merged)
