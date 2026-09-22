@@ -33,6 +33,10 @@ def _host_with_acl(
             grants_svc.require_workspace_read(service, collection_id, session)
     except KeyError as exc:
         raise KeyError(host_id) from exc
+    except PermissionError as exc:
+        if write:
+            raise
+        raise KeyError(host_id) from exc
     _rec, ctx, _grants = grants_svc.workspace_context(service, collection_id, session)
     if not access.host_allowed(rec, ctx):
         raise KeyError(host_id)

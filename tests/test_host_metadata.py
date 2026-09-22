@@ -63,6 +63,23 @@ class HostMetadataRestTests(unittest.TestCase):
 
     @patch("services.host_metadata.access")
     @patch("services.grants.workspace_context")
+    @patch("services.grants.require_workspace_read")
+    @patch.object(meta_svc, "kv_client")
+    def test_get_denied_workspace_read_maps_to_not_found(
+        self, mock_kv, mock_require_read, mock_workspace, mock_access
+    ):
+        mock_kv.get_collection.return_value = MagicMock()
+        mock_kv.get_by_key.return_value = {
+            "_key": "h1",
+            "stig_collection_id": "ws1",
+        }
+        mock_require_read.side_effect = PermissionError("access denied")
+        with self.assertRaises(KeyError):
+            meta_svc.get_metadata(MagicMock(), "h1", {"user": "u"})
+        mock_access.host_allowed.assert_not_called()
+
+    @patch("services.host_metadata.access")
+    @patch("services.grants.workspace_context")
     @patch("services.grants.require_workspace_write")
     @patch.object(meta_svc, "kv_client")
     def test_patch_requires_write(
@@ -82,6 +99,58 @@ class HostMetadataRestTests(unittest.TestCase):
                 "u",
                 {"user": "u"},
             )
+
+    @patch("services.host_metadata.access")
+    @patch("services.grants.workspace_context")
+    @patch("services.grants.require_workspace_write")
+    @patch.object(meta_svc, "kv_client")
+    def test_patch_denied_host_acl(
+        self, mock_kv, mock_require_write, mock_workspace, mock_access
+    ):
+        mock_kv.get_collection.return_value = MagicMock()
+        mock_kv.get_by_key.return_value = {
+            "_key": "h1",
+            "stig_collection_id": "ws1",
+        }
+        mock_workspace.return_value = ({"_key": "ws1"}, MagicMock(), [])
+        mock_access.host_allowed.return_value = False
+        with self.assertRaises(KeyError):
+            meta_svc.patch_metadata(
+                MagicMock(),
+                "h1",
+                {"metadata": {"k": "v"}},
+                "u",
+                {"user": "u"},
+            )
+        mock_kv.update_record.assert_not_called()
+
+    @patch("services.host_metadata.access")
+    @patch("services.grants.workspace_context")
+    @patch("services.grants.require_workspace_write")
+    @patch.object(meta_svc, "kv_client")
+    def test_patch_merge_removes_null_keys(
+        self, mock_kv, mock_require_write, mock_workspace, mock_access
+    ):
+        mock_kv.get_collection.return_value = MagicMock()
+        mock_kv.get_by_key.return_value = {
+            "_key": "h1",
+            "stig_collection_id": "ws1",
+            "metadata": '{"a": 1, "b": 2}',
+        }
+        mock_workspace.return_value = ({"_key": "ws1"}, MagicMock(), [])
+        mock_access.host_allowed.return_value = True
+        mock_kv.update_record.return_value = {"_key": "h1"}
+        mock_kv.kv_record.side_effect = lambda r: r
+
+        with patch.object(meta_svc, "audit"):
+            out = meta_svc.patch_metadata(
+                MagicMock(),
+                "h1",
+                {"metadata": {"b": None, "c": 3}},
+                "owner",
+                {"user": "owner"},
+            )
+        self.assertEqual(out["metadata"], {"a": 1, "c": 3})
 
     @patch("services.host_metadata.access")
     @patch("services.grants.workspace_context")
@@ -185,14 +254,18 @@ class HostMetadataRestTests(unittest.TestCase):
         }
         mock_workspace.return_value = ({"_key": "ws1"}, MagicMock(), [])
         mock_access.host_allowed.return_value = True
-        with self.assertRaises(ValueError):
-            meta_svc.patch_metadata(
-                MagicMock(),
-                "h1",
-                {"metadata": ["not", "an", "object"]},
-                "owner",
-                {"user": "owner"},
-            )
+        with patch.object(meta_svc, "audit") as mock_audit:
+            mock_audit.log_event = MagicMock()
+            with self.assertRaises(ValueError):
+                meta_svc.patch_metadata(
+                    MagicMock(),
+                    "h1",
+                    {"metadata": ["not", "an", "object"]},
+                    "owner",
+                    {"user": "owner"},
+                )
+        mock_kv.update_record.assert_not_called()
+        mock_audit.log_event.assert_not_called()
 
     @patch("services.host_metadata.access")
     @patch("services.grants.workspace_context")
@@ -208,14 +281,18 @@ class HostMetadataRestTests(unittest.TestCase):
         }
         mock_workspace.return_value = ({"_key": "ws1"}, MagicMock(), [])
         mock_access.host_allowed.return_value = True
-        with self.assertRaises(ValueError):
-            meta_svc.patch_metadata(
-                MagicMock(),
-                "h1",
-                {"metadata": None},
-                "owner",
-                {"user": "owner"},
-            )
+        with patch.object(meta_svc, "audit") as mock_audit:
+            mock_audit.log_event = MagicMock()
+            with self.assertRaises(ValueError):
+                meta_svc.patch_metadata(
+                    MagicMock(),
+                    "h1",
+                    {"metadata": None},
+                    "owner",
+                    {"user": "owner"},
+                )
+        mock_kv.update_record.assert_not_called()
+        mock_audit.log_event.assert_not_called()
 
 
 if __name__ == "__main__":
