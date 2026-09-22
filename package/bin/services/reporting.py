@@ -284,30 +284,49 @@ def _workspace_metrics_row(metrics: Dict[str, Any], collection: Dict[str, Any]) 
     }
 
 
-def meta_collection_metrics(
-    service, session: Dict[str, Any], query: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
-    """Aggregate dashboard metrics across workspaces the session may read."""
-    query = query or {}
-    limit = _parse_int((query or {}).get("limit"), default=500, minimum=1, maximum=500)
-    offset = _parse_int((query or {}).get("offset"), default=0, minimum=0)
-
+def _readable_collections_sorted(
+    service, session: Dict[str, Any]
+) -> List[Dict[str, Any]]:
     collections = collections_svc.list_collections(service, session)
-    collections = sorted(
+    return sorted(
         collections, key=lambda rec: (rec.get("name") or rec.get("_key") or "").lower()
     )
-    total_visible = len(collections)
-    page = collections[offset : offset + limit]
 
+
+def _meta_metrics_workspace_rows(
+    service, session: Dict[str, Any], collections: List[Dict[str, Any]]
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Compute per-workspace metrics for every readable collection (O(N) KV walks)."""
     workspaces: List[Dict[str, Any]] = []
     metric_parts: List[Dict[str, Any]] = []
-    for coll in page:
+    for coll in collections:
         cid = coll.get("_key") or ""
         if not cid:
             continue
         metrics = collection_metrics(service, cid, session)
-        workspaces.append(_workspace_metrics_row(metrics, coll))
         metric_parts.append(metrics)
+        workspaces.append(_workspace_metrics_row(metrics, coll))
+    return workspaces, metric_parts
+
+
+def meta_collection_metrics(
+    service, session: Dict[str, Any], query: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Aggregate dashboard metrics across workspaces the session may read.
+
+    ``summary`` is always rolled up across **all** grant-visible workspaces.
+    ``workspaces`` is paginated via ``offset`` / ``limit`` only.
+    """
+    query = query or {}
+    limit = _parse_int((query or {}).get("limit"), default=500, minimum=1, maximum=500)
+    offset = _parse_int((query or {}).get("offset"), default=0, minimum=0)
+
+    collections = _readable_collections_sorted(service, session)
+    total_visible = len(collections)
+    all_workspaces, metric_parts = _meta_metrics_workspace_rows(
+        service, session, collections
+    )
+    page = all_workspaces[offset : offset + limit]
 
     return {
         "generated_at": now_epoch(),
@@ -315,24 +334,24 @@ def meta_collection_metrics(
         "pagination": {
             "offset": offset,
             "limit": limit,
-            "returned": len(workspaces),
+            "returned": len(page),
             "total": total_visible,
         },
         "summary": rollup_aggregate_metrics(metric_parts),
-        "workspaces": workspaces,
+        "workspaces": page,
     }
 
 
 def meta_collection_metrics_summary(
-    service, session: Dict[str, Any], query: Optional[Dict[str, Any]] = None
+    service, session: Dict[str, Any], _query: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Org-wide rollup without per-workspace rows (same ACL as meta metrics)."""
-    full = meta_collection_metrics(service, session, query)
+    collections = _readable_collections_sorted(service, session)
+    _, metric_parts = _meta_metrics_workspace_rows(service, session, collections)
     return {
-        "generated_at": full["generated_at"],
-        "workspace_count": full["workspace_count"],
-        "pagination": full["pagination"],
-        "summary": full["summary"],
+        "generated_at": now_epoch(),
+        "workspace_count": len(collections),
+        "summary": rollup_aggregate_metrics(metric_parts),
     }
 
 

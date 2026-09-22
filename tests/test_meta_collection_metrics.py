@@ -131,6 +131,14 @@ class TestMetaCollectionMetrics(unittest.TestCase):
         self.assertEqual(result["summary"]["totals"]["hosts"], 1)
         self.assertEqual(result["summary"]["totals"]["reviews"], 1)
 
+    def test_alice_never_sees_hidden_workspace_fields(self) -> None:
+        result = reporting_svc.meta_collection_metrics(self.service, _session("alice"))
+        payload = str(result)
+        self.assertNotIn("ws2", payload)
+        self.assertNotIn("Bravo", payload)
+        ids = {w["stig_collection_id"] for w in result["workspaces"]}
+        self.assertEqual(ids, {"ws1"})
+
     def test_admin_bypass_sees_both_and_rolls_up(self) -> None:
         admin = {
             "user": "admin",
@@ -155,7 +163,26 @@ class TestMetaCollectionMetrics(unittest.TestCase):
         )
         self.assertIn("summary", summary)
         self.assertNotIn("workspaces", summary)
+        self.assertNotIn("pagination", summary)
         self.assertEqual(summary["workspace_count"], 1)
+
+    def test_summary_matches_full_org_when_workspaces_paginated(self) -> None:
+        admin = {
+            "user": "admin",
+            "roles": [],
+            "capabilities": {"stig_read": True, "stig_admin": True},
+        }
+        full = reporting_svc.meta_collection_metrics(self.service, admin)
+        paged = reporting_svc.meta_collection_metrics(
+            self.service, admin, {"limit": 1, "offset": 1}
+        )
+        self.assertEqual(paged["workspace_count"], 2)
+        self.assertEqual(len(paged["workspaces"]), 1)
+        self.assertEqual(paged["summary"]["totals"], full["summary"]["totals"])
+        self.assertNotEqual(
+            paged["workspaces"][0]["stig_collection_id"],
+            full["workspaces"][0]["stig_collection_id"],
+        )
 
 
 if __name__ == "__main__":

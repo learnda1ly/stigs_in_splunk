@@ -5,7 +5,7 @@ import Message from "@splunk/react-ui/Message";
 import Table from "@splunk/react-ui/Table";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
 import styled from "styled-components";
-import { apiFetch, viewUrl } from "../api";
+import { apiFetch, viewUrlWithQuery } from "../api";
 import {
     Brand,
     BrandKicker,
@@ -82,8 +82,9 @@ export default function MetaCollectionDashboardApp() {
                     ) : null}
                     <Message type="info" style={{ marginBottom: 16 }}>
                         Cross-workspace metrics for workspaces you can read (same ACL as{" "}
-                        <code>GET /stig_collections</code>). Open a workspace dashboard from
-                        the table below.
+                        <code>GET /stig_collections</code>). Org totals include every readable
+                        workspace; the table may be paginated on large deployments. Open a
+                        workspace dashboard from the table below.
                     </Message>
                     {loading ? <WaitSpinner size="medium" /> : null}
                     {!loading && data && data.workspace_count === 0 ? (
@@ -172,7 +173,13 @@ export default function MetaCollectionDashboardApp() {
                                                 </Table.Cell>
                                                 <Table.Cell>
                                                     <Link
-                                                        to={viewUrl("stig_collection_dashboard_ui")}
+                                                        to={viewUrlWithQuery(
+                                                            "stig_collection_dashboard_ui",
+                                                            {
+                                                                stig_collection_id:
+                                                                    row.stig_collection_id,
+                                                            }
+                                                        )}
                                                     >
                                                         Open
                                                     </Link>

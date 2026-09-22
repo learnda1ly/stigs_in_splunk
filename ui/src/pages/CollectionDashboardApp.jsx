@@ -137,7 +137,20 @@ export default function CollectionDashboardApp() {
         apiGet("stig_collections")
             .then((rows) => {
                 setCollections(rows);
-                setCollectionId((prev) => prev || defaultWorkspaceId(rows));
+                setCollectionId((prev) => {
+                    if (prev) {
+                        return prev;
+                    }
+                    const params = new URLSearchParams(window.location.search || "");
+                    const fromQuery = params.get("stig_collection_id");
+                    if (
+                        fromQuery &&
+                        rows.some((c) => c && c._key === fromQuery)
+                    ) {
+                        return fromQuery;
+                    }
+                    return defaultWorkspaceId(rows);
+                });
             })
             .catch((err) => setBanner({ type: "error", message: String(err.message || err) }));
     }, []);

@@ -109,7 +109,11 @@ paths:
       description: >
         Aggregates the same per-workspace metrics as `GET /stig_collections/{collectionId}/metrics`
         across every workspace the session may read (same filter as `GET /stig_collections`).
-        Does not include workspaces the user cannot access.
+        Does not include workspaces the user cannot access. The org `summary` always reflects
+        **all** readable workspaces; `offset` / `limit` paginate only `workspaces[]`.
+        Each readable workspace triggers one `collection_metrics` pass (O(N) KV walks); clients
+        with many workspaces should use a modest `limit` for the table and prefer
+        `GET /stig_collections/meta/metrics/summary` when only rollups are needed.
       operationId: getMetaCollectionMetrics
       parameters:
         - $ref: "#/components/parameters/paginationOffset"
@@ -139,10 +143,10 @@ paths:
     get:
       tags: [Collection reporting]
       summary: Cross-workspace metrics rollup only
+      description: >
+        Same org-wide `summary` as `GET /stig_collections/meta/metrics` (all grant-visible
+        workspaces). Does not accept pagination; omits `workspaces[]`.
       operationId: getMetaCollectionMetricsSummary
-      parameters:
-        - $ref: "#/components/parameters/paginationOffset"
-        - $ref: "#/components/parameters/paginationLimit"
       responses:
         "200":
           description: Org-wide totals without per-workspace rows

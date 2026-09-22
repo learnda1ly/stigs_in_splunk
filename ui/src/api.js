@@ -199,6 +199,22 @@ export function viewUrl(name) {
     return localePrefix() + "/app/stigs_in_splunk/" + name;
 }
 
+export function viewUrlWithQuery(name, query) {
+    let url = viewUrl(name);
+    if (query) {
+        const parts = Object.keys(query)
+            .filter((key) => query[key] != null && query[key] !== "")
+            .map(
+                (key) =>
+                    encodeURIComponent(key) + "=" + encodeURIComponent(query[key])
+            );
+        if (parts.length) {
+            url += "?" + parts.join("&");
+        }
+    }
+    return url;
+}
+
 export function isDefaultWorkspace(rec) {
     const value = rec && rec.is_default;
     return value === true || value === 1 || value === "1" || value === "true";

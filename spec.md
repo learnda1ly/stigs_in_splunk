@@ -629,8 +629,8 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 | Method | Path | Body | Response |
 |--------|------|------|----------|
 | GET | `/stig_collections` | — | Array of workspaces user can read. Ensures a Default workspace exists. |
-| GET | `/stig_collections/meta/metrics` | Query `offset?`, `limit?` (max 500) | Cross-workspace metrics: `summary` (rolled-up totals/completion/workflow/status/severity) and `workspaces[]` per readable workspace. Uses the same grant filter as `GET /stig_collections` (never lists hidden workspaces). Requires **stig_read**. |
-| GET | `/stig_collections/meta/metrics/summary` | Same pagination query | Same ACL as meta metrics but omits `workspaces` (rollup only). |
+| GET | `/stig_collections/meta/metrics` | Query `offset?`, `limit?` (max 500) | Cross-workspace metrics: `summary` rolled up across **all** readable workspaces; `workspaces[]` paginated only. Uses the same grant filter as `GET /stig_collections`. Requires **stig_read**. **Performance:** one `collection_metrics` KV pass per readable workspace for `summary` (and the same passes populate paginated rows); large orgs should use a modest `limit` for the table or call `/summary` when only rollups are needed. |
+| GET | `/stig_collections/meta/metrics/summary` | — | Same org-wide `summary` as meta metrics; no pagination; omits `workspaces[]`. |
 | POST | `/stig_collections` | JSON `{name, description?, access_principals?, is_default?}` | **201** created record |
 | GET | `/stig_collections/{id}` | — | Record or **404** |
 | PATCH/PUT | `/stig_collections/{id}` | Partial JSON | Updated record. Setting `is_default` true unsets the previous default. |
