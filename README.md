@@ -95,7 +95,7 @@ Assign `stig_user` or `stig_admin`, or grant capabilities `stig_read`, `stig_wri
 https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 ```
 
-Resources: `stig_collections` (including `/{id}/grants`, `/{id}/baseline_defaults`, `/{id}/review_requirements`, `/{id}/metrics`, `/{id}/findings`), `stig_hosts`, `stig_baselines` (including `/hierarchy`, `/by_stig/{stigId}`, `/rule/{ruleKey}`, `/{id}/rules/{ruleRef}`), `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_assignment_rules`, `stig_settings` (app configuration JSON adapter; see [spec.md §11.7](spec.md#117-stig_settings-app-configuration-adapter)).
+Resources: `stig_collections` (including `/{id}/grants`, `/{id}/baseline_defaults`, `/{id}/review_requirements`, `/{id}/metadata`, `/{id}/metrics`, `/{id}/findings`), `stig_hosts`, `stig_baselines` (including `/hierarchy`, `/by_stig/{stigId}`, `/rule/{ruleKey}`, `/{id}/rules/{ruleRef}`), `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_assignment_rules`, `stig_settings` (app configuration JSON adapter; see [spec.md §11.7](spec.md#117-stig_settings-app-configuration-adapter)).
 
 ### App configuration (`stig_settings`)
 
@@ -244,7 +244,7 @@ export SPLUNK_PASSWORD='your-admin-password'
 
 ## Search
 
-Use `| inputlookup stig_reviews` (and related stanzas in `package/default/transforms.conf`) with app context **stigs_in_splunk**. See spec.md §12.
+Use `| inputlookup stig_reviews` (and related stanzas in `package/default/transforms.conf`, including `stig_collections` for workspace `metadata`) with app context **stigs_in_splunk**. Lookups are **not** grant-filtered—REST `/stig_*` enforces workspace ACL. See [spec.md §12](spec.md#12-splunk-search-reporting).
 
 ## Collection metrics and findings report
 

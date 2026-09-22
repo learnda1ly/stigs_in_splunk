@@ -25,6 +25,7 @@ from services import baseline_jobs as baseline_jobs_svc
 from services import checklists as checklists_svc
 from services import baseline_defaults as baseline_defaults_svc
 from services import review_requirements as review_requirements_svc
+from services import collection_metadata as collection_metadata_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
 from services import labels as labels_svc
@@ -264,6 +265,34 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     return _error("not found", status=404)
                 except PermissionError as exc:
                     return _error(str(exc), status=403)
+            return _error("method not allowed", status=405)
+
+        if len(parts) >= 2 and parts[1] == "metadata":
+            if method == "GET" and len(parts) == 2:
+                try:
+                    return _json_response(
+                        collection_metadata_svc.get_metadata(service, key, session)
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+                except ValueError as exc:
+                    return _error(str(exc), status=400)
+            if method in ("POST", "PUT", "PATCH") and len(parts) == 2:
+                body = _body_json(payload)
+                try:
+                    return _json_response(
+                        collection_metadata_svc.patch_metadata(
+                            service, key, body, username, session
+                        )
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+                except ValueError as exc:
+                    return _error(str(exc), status=400)
             return _error("method not allowed", status=405)
 
         if len(parts) >= 2 and parts[1] == "grants":
