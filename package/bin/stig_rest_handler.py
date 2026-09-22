@@ -39,6 +39,7 @@ from services import imports as imports_svc
 from services import reconcile as reconcile_svc
 from services import reporting as reporting_svc
 from services import review_history as review_history_svc
+from services import review_peers as review_peers_svc
 from services import reviews as reviews_svc
 from services import revision_upgrade as revision_upgrade_svc
 from services import settings as settings_svc
@@ -1408,6 +1409,33 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 )
             except KeyError:
                 return _error("not found", status=404)
+
+        if len(parts) == 2 and parts[1] == "peers":
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            try:
+                return _json_response(
+                    review_peers_svc.list_review_peers(service, key, session)
+                )
+            except KeyError:
+                return _error("not found", status=404)
+
+        if len(parts) == 3 and parts[1] == "copy_from":
+            peer_id = parts[2]
+            if method != "POST":
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            try:
+                result = review_peers_svc.copy_from_peer(
+                    service, key, peer_id, username, session, body
+                )
+                return _json_response(result)
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
 
         if len(parts) == 2 and parts[1] in ("submit", "accept", "reject"):
             action = parts[1]

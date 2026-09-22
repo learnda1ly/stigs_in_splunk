@@ -1899,6 +1899,53 @@ paths:
         "404":
           description: Review not found or not visible under workspace ACL
 
+  /stig_reviews/{reviewId}/peers:
+    parameters:
+      - $ref: "#/components/parameters/reviewId"
+    get:
+      tags: [Reviews]
+      summary: Peer reviews for the same rule on other hosts
+      operationId: listReviewPeers
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewPeersResponse"
+        "404":
+          description: Review not found or not visible under workspace ACL
+
+  /stig_reviews/{reviewId}/copy_from/{peerReviewId}:
+    parameters:
+      - $ref: "#/components/parameters/reviewId"
+      - name: peerReviewId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [Reviews]
+      summary: Copy assessor fields from a peer review
+      operationId: copyReviewFromPeer
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewCopyFromPeerRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewCopyFromPeerResponse"
+        "400":
+          description: Validation error or invalid fields list
+        "403":
+          description: Anchor review is not editable
+        "404":
+          description: Anchor or peer review not found or not visible
+
   /stig_imports:
     post:
       tags: [Imports]
@@ -2768,6 +2815,80 @@ components:
               type: integer
             has_more:
               type: boolean
+      additionalProperties: true
+
+    ReviewPeerEntry:
+      type: object
+      properties:
+        review_id:
+          type: string
+        checklist_id:
+          type: string
+        host_id:
+          type: string
+        hostname:
+          type: string
+        baseline_id:
+          type: string
+        status:
+          type: string
+        workflow_state:
+          type: string
+        finding_details:
+          type: string
+        finding_details_snippet:
+          type: string
+        comments:
+          type: string
+        comments_snippet:
+          type: string
+        updated_at:
+          type: number
+        updated_by:
+          type: string
+        valid:
+          type: boolean
+      additionalProperties: true
+
+    ReviewPeersResponse:
+      type: object
+      properties:
+        review_id:
+          type: string
+        rule_id:
+          type: string
+        group_id:
+          type: string
+        rule_version:
+          type: string
+        stig_collection_id:
+          type: string
+        peers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewPeerEntry"
+      additionalProperties: true
+
+    ReviewCopyFromPeerRequest:
+      type: object
+      properties:
+        fields:
+          type: array
+          items:
+            type: string
+            enum: [status, finding_details, comments]
+
+    ReviewCopyFromPeerResponse:
+      type: object
+      properties:
+        review:
+          $ref: "#/components/schemas/Review"
+        copied_from:
+          type: string
+        copied_fields:
+          type: array
+          items:
+            type: string
       additionalProperties: true
 
     ReviewBatchRequest:
