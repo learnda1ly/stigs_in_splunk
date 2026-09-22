@@ -98,7 +98,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
 |---------|-------------------------|--------|-----------|-----------------------------|-----|------|
 | Asset CRUD | API: `/assets`, `/assets/{assetId}`; bulk `PATCH /assets` delete | **done** | `stig_hosts` CRUD; DELETE needs `stig_admin`. | Documented fields align with CKL target_data. | P0 | — |
-| Asset metadata API | API: `/assets/{id}/metadata/...` | **partial** | `metadata` JSON string on host; no key-level REST. | `GET/PATCH` metadata keys or documented JSON patch pattern. | P2 | S |
+| Asset metadata API | API: `/assets/{id}/metadata/...` | **done** | KV `metadata` JSON on `stig_hosts`; REST `GET/PATCH /stig_hosts/{id}/metadata` (merge, replace, clear — same body semantics as workspace metadata); restricted grant `acl_host_ids` enforced (404 when host out of scope). Audit `stig_host_metadata` on PATCH. Host document PATCH still accepts full `metadata` object for bulk field updates. | `GET/PATCH` metadata keys or documented JSON patch pattern. | P2 | S |
 | Attach STIG to asset (assignment) | UI: Assign STIG on asset. API: `POST /assets/{id}/stigs`, `/collections/{id}/stigs/...` | **done** | **`POST /stig_hosts/{hostId}/stigs`** (idempotent checklist create + review spawn); **`GET .../checklists`**. STIG Editor **Assign STIG** when a host is selected. Duplicate assign returns **200** with `"created": false`. | Explicit “assign baseline to host” UX; idempotent create checklist. | P1 | S |
 | Remove STIG from asset | API: `DELETE .../stigs/{benchmarkId}` | **done** | **`DELETE /stig_hosts/{id}/stigs/{baselineIdOrStigId}`** or delete checklist (cascades reviews). | UI/API delete checklist by host+baseline. | P1 | — |
 | Bulk asset create / import builder | UI: Import CKL/XCCDF builds collection. API: `POST /collections/{id}/assets` | **done** | SplunkUI **Import → Checklists**: workspace picker (default workspace), multi-file queue, per-file status, `.zip` archive ingest. REST: `POST /stig_collections/{id}/imports` (`files[]` batch), `POST /stig_imports?format=zip`. Idempotent host/checklist updates via existing ingest apply. **Gap:** no STIG Manager–style multi-file **XCCDF results** archive (single-file `xccdf-results` + HEC only — see row E). | Collection import wizard parity for CKL/CKLB; document gaps for XCCDF results. | P1 | M |
@@ -226,6 +226,7 @@ OpenAPI **tags** (approximate operation counts from `stig-manager.yaml`): Collec
 | `stig_collections/{id}/baseline_defaults` | Workspace default baseline per STIG id |
 | `stig_collections/{id}/review_requirements` | Workspace review validation policy (GET/PATCH) |
 | `stig_collections/{id}/metadata` | Workspace arbitrary JSON metadata (GET/PATCH) |
+| `stig_hosts/{id}/metadata` | Asset arbitrary JSON metadata (GET/PATCH; grant ACL on host id) |
 | `stig_collections/{id}/poam` | POA&M-style CSV/XLSX/JSON export |
 | `stig_collections/{id}/unreviewed/rules` | Unreviewed rule counts with host coverage |
 | `stig_collections/{id}/unreviewed/assets` | Unreviewed counts per host with per-baseline breakdown |
