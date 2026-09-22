@@ -374,6 +374,56 @@ paths:
               schema:
                 type: object
 
+  /stig_collections/{collectionId}/review_aging:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collections]
+      summary: Get review aging policy
+      operationId: getReviewAging
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      tags: [Collections]
+      summary: Update review aging policy
+      operationId: patchReviewAging
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_collections/{collectionId}/review_aging/stale:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collections, Reviews]
+      summary: List stale reviews for a workspace
+      operationId: listStaleReviews
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 500
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
   /stig_collections/{collectionId}/review-history:
     parameters:
       - $ref: "#/components/parameters/collectionId"

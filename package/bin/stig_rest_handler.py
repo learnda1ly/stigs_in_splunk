@@ -24,6 +24,7 @@ from services import baseline_library as baseline_library_svc
 from services import baseline_jobs as baseline_jobs_svc
 from services import checklists as checklists_svc
 from services import baseline_defaults as baseline_defaults_svc
+from services import review_aging as review_aging_svc
 from services import review_requirements as review_requirements_svc
 from services import collection_metadata as collection_metadata_svc
 from services import collection_clone as collection_clone_svc
@@ -270,6 +271,47 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 except PermissionError as exc:
                     return _error(str(exc), status=403)
             return _error("method not allowed", status=405)
+
+        if len(parts) >= 2 and parts[1] in ("review_aging", "review-aging"):
+            if len(parts) == 2:
+                if method == "GET":
+                    try:
+                        return _json_response(
+                            review_aging_svc.get_config(service, key, session)
+                        )
+                    except KeyError:
+                        return _error("not found", status=404)
+                    except PermissionError as exc:
+                        return _error(str(exc), status=403)
+                if method in ("POST", "PUT", "PATCH"):
+                    body = _body_json(payload)
+                    try:
+                        return _json_response(
+                            review_aging_svc.patch_config(
+                                service, key, body, username, session
+                            )
+                        )
+                    except KeyError:
+                        return _error("not found", status=404)
+                    except PermissionError as exc:
+                        return _error(str(exc), status=403)
+                    except ValueError as exc:
+                        return _error(str(exc), status=400)
+                return _error("method not allowed", status=405)
+            if len(parts) == 3 and parts[2] == "stale":
+                if method != "GET":
+                    return _error("method not allowed", status=405)
+                try:
+                    return _json_response(
+                        review_aging_svc.list_stale_reviews(
+                            service, key, session, query
+                        )
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            return _error("not found", status=404)
 
         if len(parts) >= 2 and parts[1] == "metadata":
             if method == "GET" and len(parts) == 2:
@@ -1415,6 +1457,11 @@ class StigRestHandler(PersistentServerConnectionApplication):
             rec = reconcile_svc.reconcile_from_index(
                 service, session, username, earliest=earliest
             )
+            return _json_response(rec)
+        if parts == ["review_aging_report"]:
+            if method not in ("GET", "POST"):
+                return _error("method not allowed", status=405)
+            rec = review_aging_svc.report_stale_all_workspaces(service)
             return _json_response(rec)
         if parts:
             return _error("not found", status=404)
