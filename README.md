@@ -136,6 +136,23 @@ curl -k -u admin:changeme -X POST \
   -d '{"stig_id":"Example_STIG","baseline_id":"BASELINE_KV_KEY"}'
 ```
 
+Assign a baseline to a host (idempotent — repeats return **200** with `"created": false`):
+
+```bash
+curl -k -u admin:changeme -X POST \
+  "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_hosts/HOST_ID/stigs" \
+  -H "Content-Type: application/json" \
+  -d '{"baseline_id":"BASELINE_KV_KEY"}'
+
+# Or resolve revision from workspace default / catalog:
+curl -k -u admin:changeme -X POST \
+  "https://localhost:8089/servicesNS/nobody/stigs_in_splunk/stig_hosts/HOST_ID/stigs" \
+  -H "Content-Type: application/json" \
+  -d '{"stig_id":"Example_STIG"}'
+```
+
+The **STIG Editor** shows **Assign STIG** when you pick a host (baseline picker or `stig_id`).
+
 After importing a **newer Manual STIG revision** (same `stig_id`), upgrade checklists explicitly so unchanged rules keep assessor state (`check_content_hash` merge):
 
 ```bash

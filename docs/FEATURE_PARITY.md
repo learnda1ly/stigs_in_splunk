@@ -66,8 +66,8 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count (approx.) |
 |--------|-----------------|
-| done | 24 |
-| partial | 14 |
+| done | 25 |
+| partial | 13 |
 | missing | 16 |
 | n/a | 8 |
 
@@ -99,10 +99,10 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 |---------|-------------------------|--------|-----------|-----------------------------|-----|------|
 | Asset CRUD | API: `/assets`, `/assets/{assetId}`; bulk `PATCH /assets` delete | **done** | `stig_hosts` CRUD; DELETE needs `stig_admin`. | Documented fields align with CKL target_data. | P0 | — |
 | Asset metadata API | API: `/assets/{id}/metadata/...` | **partial** | `metadata` JSON string on host; no key-level REST. | `GET/PATCH` metadata keys or documented JSON patch pattern. | P2 | S |
-| Attach STIG to asset (assignment) | UI: Assign STIG on asset. API: `POST /assets/{id}/stigs`, `/collections/{id}/stigs/...` | **partial** | Assignment = create `stig_checklist` (+ reviews). No lightweight “assigned but empty” without rules spawn. | Explicit “assign baseline to host” UX; idempotent create checklist. | P1 | S |
-| Remove STIG from asset | API: `DELETE .../stigs/{benchmarkId}` | **done** | Delete checklist (cascades reviews). | UI/API delete checklist by host+baseline. | P1 | — |
+| Attach STIG to asset (assignment) | UI: Assign STIG on asset. API: `POST /assets/{id}/stigs`, `/collections/{id}/stigs/...` | **done** | **`POST /stig_hosts/{hostId}/stigs`** (idempotent checklist create + review spawn); **`GET .../checklists`**. STIG Editor **Assign STIG** when a host is selected. Duplicate assign returns **200** with `"created": false`. | Explicit “assign baseline to host” UX; idempotent create checklist. | P1 | S |
+| Remove STIG from asset | API: `DELETE .../stigs/{benchmarkId}` | **done** | **`DELETE /stig_hosts/{id}/stigs/{baselineIdOrStigId}`** or delete checklist (cascades reviews). | UI/API delete checklist by host+baseline. | P1 | — |
 | Bulk asset create / import builder | UI: Import CKL/XCCDF builds collection. API: `POST /collections/{id}/assets` | **partial** | `POST /stig_imports` creates host+baseline+checklist from CKL/CKLB; no collection-level XCCDF **results** archive. | Collection import wizard parity for CKL/CKLB; document gaps for XCCDF results. | P1 | M |
-| Asset checklist retrieval | API: `/assets/{id}/checklists`, by STIG | **partial** | `GET /stig_checklists?stig_collection_id=` + editor loads reviews. | `GET /stig_hosts/{id}/checklists` or documented query pattern. | P2 | S |
+| Asset checklist retrieval | API: `/assets/{id}/checklists`, by STIG | **partial** | **`GET /stig_hosts/{id}/checklists`** plus `GET /stig_checklists?stig_collection_id=`. | `GET /stig_hosts/{id}/checklists` or documented query pattern. | P2 | S |
 
 ### C. STIG library (baselines / revisions)
 
@@ -212,7 +212,7 @@ OpenAPI **tags** (approximate operation counts from `stig-manager.yaml`): Collec
 | Resource | Notes |
 |----------|--------|
 | `stig_collections` | Workspace CRUD |
-| `stig_hosts` | Asset CRUD, move workspace |
+| `stig_hosts` | Asset CRUD, move workspace, **assign STIG** (`POST .../stigs`), list host checklists |
 | `stig_baselines` | List, import, rules, delete, `jobs` chunk import |
 | `stig_checklists` | CRUD, export, `export_bulk` |
 | `stig_reviews` | List, get, patch (`ingest_lock`), batch (`/batch`) |

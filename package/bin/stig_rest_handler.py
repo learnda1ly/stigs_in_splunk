@@ -502,6 +502,71 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return _error("method not allowed", status=405)
 
         key = parts[0]
+        if len(parts) >= 2:
+            sub = parts[1]
+            if sub == "checklists" and method == "GET":
+                try:
+                    rows = checklists_svc.list_checklists_for_host(
+                        service, key, session
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                return _json_response(rows)
+            if sub == "stigs":
+                if method == "POST" and len(parts) == 2:
+                    body = _body_json(payload)
+                    try:
+                        checklist, created = checklists_svc.assign_stig_to_host(
+                            service, key, body, username, session
+                        )
+                    except KeyError:
+                        return _error("not found", status=404)
+                    except PermissionError as exc:
+                        return _error(str(exc), status=403)
+                    except ValueError as exc:
+                        return _error(str(exc), status=400)
+                    out = dict(checklist)
+                    out["created"] = created
+                    return _json_response(out, status=201 if created else 200)
+                if method == "DELETE" and len(parts) == 3:
+                    baseline_ref = parts[2]
+                    host = hosts_svc.get_host(service, key, session)
+                    if not host:
+                        return _error("not found", status=404)
+                    collection_id = host.get("stig_collection_id") or ""
+                    baseline_id = (baseline_ref or "").strip()
+                    baseline = baselines_svc.get_baseline(service, baseline_id)
+                    if not baseline:
+                        baseline = baselines_svc.find_baseline_by_stig(
+                            service, baseline_ref
+                        )
+                        baseline_id = (baseline or {}).get("_key") or ""
+                    if not baseline_id:
+                        return _error("baseline not found", status=404)
+                    existing = checklists_svc.find_checklist(
+                        service,
+                        session,
+                        collection_id,
+                        key,
+                        baseline_id,
+                    )
+                    if not existing:
+                        return _error("not found", status=404)
+                    if not access.user_has_stig_admin(session):
+                        try:
+                            grants_svc.require_workspace_write(
+                                service, collection_id, session
+                            )
+                        except PermissionError as exc:
+                            return _error(str(exc), status=403)
+                    checklists_svc.delete_checklist(
+                        service, existing["_key"], username, session
+                    )
+                    return _json_response(
+                        {"deleted": existing["_key"], "baseline_id": baseline_id}
+                    )
+                return _error("method not allowed", status=405)
+
         if method == "GET":
             rec = hosts_svc.get_host(service, key, session)
             if not rec:

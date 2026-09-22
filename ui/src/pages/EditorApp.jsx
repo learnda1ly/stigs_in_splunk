@@ -91,6 +91,8 @@ export default function EditorApp() {
     const [hosts, setHosts] = useState([]);
     const [hostId, setHostId] = useState("");
     const [moveTo, setMoveTo] = useState("");
+    const [assignBaselineId, setAssignBaselineId] = useState("");
+    const [assignStigId, setAssignStigId] = useState("");
     const [checklists, setChecklists] = useState([]);
     const [allBaselines, setAllBaselines] = useState([]);
     const [upgradeChecklistId, setUpgradeChecklistId] = useState("");
@@ -1052,6 +1054,79 @@ export default function EditorApp() {
                                 label="Upgrade"
                             />
                         </>
+                    ) : null}
+                    {hostId ? (
+                        <ControlGroup label="Assign STIG" labelPosition="top">
+                            <Select
+                                value={assignBaselineId}
+                                onChange={(e, { value }) => {
+                                    setAssignBaselineId(value);
+                                    if (value) {
+                                        setAssignStigId("");
+                                    }
+                                }}
+                                placeholder="Baseline revision"
+                                filter
+                                disabled={busy || !allBaselines.length}
+                            >
+                                {allBaselines.map((b) => (
+                                    <Select.Option
+                                        key={b._key}
+                                        label={
+                                            (b.stig_id || b.title || b._key) +
+                                            (b.version ? " " + b.version : "")
+                                        }
+                                        value={b._key}
+                                    />
+                                ))}
+                            </Select>
+                            <Text
+                                value={assignStigId}
+                                onChange={(e, { value }) => {
+                                    setAssignStigId(value);
+                                    if (value) {
+                                        setAssignBaselineId("");
+                                    }
+                                }}
+                                disabled={busy}
+                                placeholder="Or stig_id (uses workspace default)"
+                            />
+                            <Button
+                                appearance="primary"
+                                disabled={
+                                    busy || (!assignBaselineId && !assignStigId.trim())
+                                }
+                                onClick={() => {
+                                    const body = assignBaselineId
+                                        ? { baseline_id: assignBaselineId }
+                                        : { stig_id: assignStigId.trim() };
+                                    setBusy(true);
+                                    apiFetch("stig_hosts/" + hostId + "/stigs", {
+                                        method: "POST",
+                                        body,
+                                    })
+                                        .then((doc) => {
+                                            setBanner({
+                                                type: "success",
+                                                text: doc.created
+                                                    ? "Assigned STIG and created checklist."
+                                                    : "STIG already assigned (existing checklist).",
+                                            });
+                                            onCollection(collectionId);
+                                            setHostId(hostId);
+                                            onHost(hostId);
+                                        })
+                                        .catch((err) =>
+                                            setBanner({
+                                                type: "error",
+                                                text: "Assign failed: " + err.message,
+                                            })
+                                        )
+                                        .finally(() => setBusy(false));
+                                }}
+                                label="Assign to host"
+                            />
+                        </ControlGroup>
                     ) : null}
                     {hostId ? (
                         <ControlGroup label="Move host" labelPosition="top">

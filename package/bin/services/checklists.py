@@ -102,6 +102,197 @@ def find_checklist(
     return None
 
 
+def list_checklists_for_host(
+    service, host_id: str, session: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    host = hosts_svc.get_host(service, host_id, session)
+    if not host:
+        raise KeyError(host_id)
+    collection_id = host.get("stig_collection_id") or ""
+    return [
+        rec
+        for rec in list_checklists(service, session, collection_id)
+        if rec.get("host_id") == host_id
+    ]
+
+
+def _resolve_checklist_baseline_id(
+    service, body: Dict[str, Any], collection_id: str
+) -> str:
+    baseline_id = (body.get("baseline_id") or "").strip()
+    stig_id = (body.get("stig_id") or body.get("benchmark_id") or "").strip()
+    if not baseline_id:
+        if not stig_id:
+            raise ValueError(
+                "baseline_id is required unless stig_id is provided for workspace default resolution"
+            )
+        baseline_id = baseline_defaults_svc.resolve_baseline_id(
+            service,
+            collection_id=collection_id,
+            stig_id=stig_id,
+            xccdf_benchmark_id=body.get("xccdf_benchmark_id") or "",
+            version=str(body.get("version") or ""),
+        )
+        if not baseline_id:
+            raise ValueError(f"no baseline found for stig_id {stig_id}")
+    return baseline_id
+
+
+def _find_existing_checklist_row(
+    service,
+    collection_id: str,
+    host_id: str,
+    baseline_id: str,
+) -> Optional[Dict[str, Any]]:
+    checklist_coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
+    rows = kv_client.query_all(
+        checklist_coll,
+        {
+            "stig_collection_id": collection_id,
+            "host_id": host_id,
+            "baseline_id": baseline_id,
+        },
+    )
+    if not rows:
+        return None
+    return rows[0]
+
+
+def _spawn_checklist_with_reviews(
+    service,
+    *,
+    collection_id: str,
+    host: Dict[str, Any],
+    baseline: Dict[str, Any],
+    baseline_id: str,
+    rules: List[Dict[str, Any]],
+    body: Dict[str, Any],
+    username: str,
+    review_seeds: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    target_data = {
+        "host_name": host.get("hostname") or "",
+        "ip_address": host.get("ip_address") or "",
+        "fqdn": host.get("fqdn") or "",
+        "mac_address": host.get("mac_address") or "",
+        "role": host.get("role") or "None",
+        "asset_type": host.get("asset_type") or "Computing",
+    }
+    if body.get("target_data"):
+        target_data.update(body["target_data"])
+
+    checklist_coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
+    reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
+
+    ts = now_epoch()
+    title = body.get("title") or baseline.get("title") or "Checklist"
+    checklist_record = kv_record(
+        {
+            "stig_collection_id": collection_id,
+            "host_id": host["_key"],
+            "baseline_id": baseline_id,
+            "title": title,
+            "mode": int(body.get("mode") or 1),
+            "target_data": dumps_json(target_data),
+            "created_at": ts,
+            "updated_at": ts,
+            "created_by": username,
+            "updated_by": username,
+        }
+    )
+    stored_checklist = kv_client.insert_record(checklist_coll, checklist_record)
+    checklist_id = stored_checklist["_key"]
+
+    review_records = []
+    for rule in rules:
+        seed = match_review_seed(rule, review_seeds)
+        review = {
+            "checklist_id": checklist_id,
+            "baseline_id": baseline_id,
+            "group_id": rule.get("group_id"),
+            "rule_id": rule.get("rule_id"),
+            "rule_version": rule.get("rule_version"),
+            "check_content_hash": rule.get("check_content_hash"),
+            "status": seed.get("status") or "not_reviewed",
+            "finding_details": seed.get("finding_details") or "",
+            "comments": seed.get("comments") or "",
+            "package_id": str(seed.get("package_id") or ""),
+            "ingest_lock": False,
+            "workflow_state": "draft",
+            "updated_at": ts,
+            "updated_by": username,
+        }
+        review["valid"] = validation.persistable_valid(review)
+        review_records.append(kv_record(review))
+    kv_client.batch_insert(reviews_coll, review_records)
+
+    audit.log_event(
+        "create",
+        "stig_checklist",
+        checklist_id,
+        username,
+        {"reviews": len(review_records), "assign": True},
+    )
+    return stored_checklist
+
+
+def assign_stig_to_host(
+    service,
+    host_id: str,
+    body: Dict[str, Any],
+    username: str,
+    session: Dict[str, Any],
+    review_seeds: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, Any], bool]:
+    """Idempotent assign: create checklist + reviews or return existing row."""
+    host = hosts_svc.get_host(service, host_id, session)
+    if not host:
+        raise KeyError(host_id)
+    collection_id = host.get("stig_collection_id") or ""
+    if not collection_id:
+        raise ValueError("host has no stig_collection_id")
+
+    baseline_id = _resolve_checklist_baseline_id(service, body, collection_id)
+    _require_collection(service, collection_id, session, write=True)
+
+    existing = _find_existing_checklist_row(
+        service, collection_id, host_id, baseline_id
+    )
+    if existing:
+        ctx = _access_context(service, collection_id, session)
+        if not access.checklist_allowed(existing, ctx):
+            raise PermissionError("checklist not accessible for this grant")
+        audit.log_event(
+            "assign",
+            "stig_checklist",
+            existing["_key"],
+            username,
+            {"idempotent": True, "baseline_id": baseline_id},
+        )
+        return existing, False
+
+    baseline = baselines_svc.get_baseline(service, baseline_id)
+    if not baseline:
+        raise KeyError(baseline_id)
+
+    rules = baselines_svc.list_baseline_rules(service, baseline_id)
+    if not rules:
+        raise ValueError("baseline has no rules")
+
+    stored = _spawn_checklist_with_reviews(
+        service,
+        collection_id=collection_id,
+        host=host,
+        baseline=baseline,
+        baseline_id=baseline_id,
+        rules=rules,
+        body=body,
+        username=username,
+        review_seeds=review_seeds,
+    )
+    return stored, True
+
+
 def apply_review_seeds(
     service,
     checklist_id: str,
@@ -150,24 +341,9 @@ def create_checklist(
 ) -> Dict[str, Any]:
     collection_id = body.get("stig_collection_id")
     host_id = body.get("host_id")
-    baseline_id = (body.get("baseline_id") or "").strip()
-    stig_id = (body.get("stig_id") or body.get("benchmark_id") or "").strip()
     if not collection_id or not host_id:
         raise ValueError("stig_collection_id and host_id are required")
-    if not baseline_id:
-        if not stig_id:
-            raise ValueError(
-                "baseline_id is required unless stig_id is provided for workspace default resolution"
-            )
-        baseline_id = baseline_defaults_svc.resolve_baseline_id(
-            service,
-            collection_id=collection_id,
-            stig_id=stig_id,
-            xccdf_benchmark_id=body.get("xccdf_benchmark_id") or "",
-            version=str(body.get("version") or ""),
-        )
-        if not baseline_id:
-            raise ValueError(f"no baseline found for stig_id {stig_id}")
+    baseline_id = _resolve_checklist_baseline_id(service, body, collection_id)
 
     _require_collection(service, collection_id, session, write=True)
     host = hosts_svc.get_host(service, host_id, session)
@@ -181,84 +357,20 @@ def create_checklist(
     if not rules:
         raise ValueError("baseline has no rules")
 
-    checklist_coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
-    duplicates = [
-        c
-        for c in kv_client.query_all(
-            checklist_coll,
-            {
-                "stig_collection_id": collection_id,
-                "host_id": host_id,
-                "baseline_id": baseline_id,
-            },
-        )
-    ]
-    if duplicates:
+    if _find_existing_checklist_row(service, collection_id, host_id, baseline_id):
         raise ValueError("a checklist already exists for this host and baseline")
 
-    target_data = {
-        "host_name": host.get("hostname") or "",
-        "ip_address": host.get("ip_address") or "",
-        "fqdn": host.get("fqdn") or "",
-        "mac_address": host.get("mac_address") or "",
-        "role": host.get("role") or "None",
-        "asset_type": host.get("asset_type") or "Computing",
-    }
-    if body.get("target_data"):
-        target_data.update(body["target_data"])
-
-    reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
-
-    ts = now_epoch()
-    title = body.get("title") or baseline.get("title") or "Checklist"
-    checklist_record = kv_record(
-        {
-            "stig_collection_id": collection_id,
-            "host_id": host_id,
-            "baseline_id": baseline_id,
-            "title": title,
-            "mode": int(body.get("mode") or 1),
-            "target_data": dumps_json(target_data),
-            "created_at": ts,
-            "updated_at": ts,
-            "created_by": username,
-            "updated_by": username,
-        }
+    return _spawn_checklist_with_reviews(
+        service,
+        collection_id=collection_id,
+        host=host,
+        baseline=baseline,
+        baseline_id=baseline_id,
+        rules=rules,
+        body=body,
+        username=username,
+        review_seeds=review_seeds,
     )
-    stored_checklist = kv_client.insert_record(checklist_coll, checklist_record)
-    checklist_id = stored_checklist["_key"]
-
-    review_records = []
-    for rule in rules:
-        seed = match_review_seed(rule, review_seeds)
-        review = {
-            "checklist_id": checklist_id,
-            "baseline_id": baseline_id,
-            "group_id": rule.get("group_id"),
-            "rule_id": rule.get("rule_id"),
-            "rule_version": rule.get("rule_version"),
-            "check_content_hash": rule.get("check_content_hash"),
-            "status": seed.get("status") or "not_reviewed",
-            "finding_details": seed.get("finding_details") or "",
-            "comments": seed.get("comments") or "",
-            "package_id": str(seed.get("package_id") or ""),
-            "ingest_lock": False,
-            "workflow_state": "draft",
-            "updated_at": ts,
-            "updated_by": username,
-        }
-        review["valid"] = validation.persistable_valid(review)
-        review_records.append(kv_record(review))
-    kv_client.batch_insert(reviews_coll, review_records)
-
-    audit.log_event(
-        "create",
-        "stig_checklist",
-        checklist_id,
-        username,
-        {"reviews": len(review_records)},
-    )
-    return stored_checklist
 
 
 def ensure_review(
