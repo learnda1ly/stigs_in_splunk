@@ -69,9 +69,9 @@ This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manag
 
 | Status | Count (approx.) |
 |--------|-----------------|
-| done | 40 |
-| partial | 6 |
-| missing | 9 |
+| done | 57 |
+| partial | 0 |
+| missing | 1 |
 | n/a | 8 |
 
 Priorities are suggestions for **this** Splunk port; adjust per your deployment (e.g. heavy automation → bump XCCDF results).
@@ -148,7 +148,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Collection archive export XCCDF | API: `POST .../archive/xccdf` | **done** | `POST /stig_collections/{id}/archive/xccdf` (optional `host_id` / `baseline_id` filters); per-checklist `GET .../export?format=xccdf`. Zip of OpenSCAP-shaped `TestResult` XML from KV reviews (not full SCAP data stream bundles). SplunkUI Export adds **XCCDF results** format. | Round-trip ingest via `format=xccdf-results`; document gaps vs Manual STIG benchmark XML. | P2 | — |
 | STIGMan Watcher integration | [stigman-watcher](https://github.com/NUWCDIVNPT/stigman-watcher) | **done** | HEC + `events.py` fat events; reconcile every 5m. Event schema and Watcher POST field parity documented in [watcher-hec.md](watcher-hec.md). | Document event schema; parity with Watcher POST fields. | P1 | S |
 | Async import/export jobs | API: `/jobs`, `/jobs/{jobId}/runs`, tasks | **done** | **Splunk-shaped:** `POST /stig_baselines/jobs` (chunked DISA library zip upload + finalize/import); `POST /stig_collections/{id}/jobs` with `operation=archive_export` and `format=ckl\|cklb\|xccdf` returns `job_id` → poll `GET .../jobs/{jobId}` (`pending\|running\|succeeded\|failed`) → `GET .../jobs/{jobId}/download` for zip JSON (`content_base64`). Job dirs under `$SPLUNK_HOME/var/run/stigs_in_splunk/{baseline_jobs,collection_jobs}/` with **6h TTL** (see `spec.md`). Creator-only read/delete (same as baseline jobs); workspace export read ACL on create. **Gap:** collection zip **import** remains synchronous (`POST .../imports`); no STIG Manager `/jobs/{id}/runs` task list or SSE. | Pollable jobs for large collection archive export; baseline chunk upload unchanged. | P2 | M |
-| Evaluate-STIG / API automation | OpenAPI entire surface | **partial** | Splunk-shaped [docs/openapi.yaml](openapi.yaml) documents persist `/stig_*` routes (auth, capabilities, imports including `xccdf-results-zip`). **Gap:** not STIG Manager URL/schema parity; no generated client SDK; field-level schemas are indicative — see `spec.md` and KV records for full shapes. | Optional `docs/openapi.yaml` for Splunk REST; versioning policy. | P2 | M |
+| Evaluate-STIG / API automation | OpenAPI entire surface | **done** | [docs/openapi.yaml](openapi.yaml) + [docs/api.md](api.md) (versioning policy); [docs/automation.md](automation.md) for Evaluate-STIG / OpenSCAP → `POST /stig_imports` (`xccdf-results`, `xccdf-results-zip`) and HEC `stig:finding` ([watcher-hec.md](watcher-hec.md)). **Remaining gaps (documented):** not STIG Manager URL/schema parity; no generated client SDK; OpenAPI field schemas are indicative — see `spec.md` and KV records for full shapes. | Optional `docs/openapi.yaml` for Splunk REST; versioning policy. | P2 | M |
 
 ### F. Findings, metrics, POA&M, reporting
 
@@ -157,7 +157,7 @@ Priorities are suggestions for **this** Splunk port; adjust per your deployment 
 | Collection dashboard metrics | UI: completion, severity, CORA. API: `/collections/{id}/metrics/summary|detail` (+ aggregations) | **done** | SplunkUI **Collection dashboard** + `GET /stig_collections/{id}/metrics`; optional lookup dashboard `stig_collection_metrics_lookup`. No CORA scoring. | SPL dashboard or `GET /stig_collections/{id}/metrics` with counts by status/severity. | P0 | L |
 | Findings report (open reviews) | UI: Findings report. API: `GET .../findings` | **done** | SplunkUI findings tab + CSV export; `GET /stig_collections/{id}/findings` and `GET /stig_findings?stig_collection_id=` with pagination. | Dedicated findings endpoint or saved report + CSV export in UI. | P0 | M |
 | POA&M spreadsheet generation | UI: Generate POA&M. API: `GET .../poam` | **done** | SplunkUI **POA&M CSV/XLSX** on Collection dashboard; `GET /stig_collections/{id}/poam?format=json\|csv\|xlsx` from governance-open findings; JSON includes SPL `outputcsv` alternative (spec §11.6 / README). eMASS template reference only. | Export CSV/XLSX template from open findings; Splunk `outputcsv` alternative documented. | P1 | M |
-| CORA risk scoring | README / dashboard screenshots | **missing** | — | **n/a** unless product requests; else P2 calculator from severity weights in SPL. | P2 | L |
+| CORA risk scoring | README / dashboard screenshots | **n/a** | No product requirement for CORA in this Splunk port. Severity breakdowns are available via `GET /stig_collections/{id}/metrics` and findings reports; teams can weight severities in SPL/`inputlookup` if needed. STIG Manager CORA UI is reference-only. | **n/a** unless product requests; else P2 calculator from severity weights in SPL. | P2 | L |
 | Aggregated findings by rule/group/CCI | UI: Aggregated Findings panel | **done** | SplunkUI **Aggregated findings** tab; `GET /stig_collections/{id}/findings/aggregate` with `group_by=group_id,rule_id,cci` (governance-open counts; CCI from `stig_baseline_rules`). | `stats` SPL or REST aggregation by `group_id`, `rule_id`, CCI from rules lookup. | P1 | M |
 | Unreviewed rules/assets reports | API: `/collections/{id}/unreviewed/rules`, `.../assets` | **done** | SplunkUI **Unreviewed** tab on Collection dashboard; REST `GET /stig_collections/{id}/unreviewed/rules` and `.../assets` with `status=not_reviewed` definition and grant ACL filtering (same as metrics/findings). | REST or saved search returning unreviewed counts per host/baseline. | P1 | M |
 | Splunk search / lookups | SM: API-only for reports | **done** | `transforms.conf` + `inputlookup`; spec §12. | Document example SPL in README. | P1 | — |
