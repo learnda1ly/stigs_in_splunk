@@ -51,6 +51,16 @@ def _error(message: str, status: int = 400) -> Dict[str, Any]:
     return _json_response({"error": message}, status=status)
 
 
+def _batch_import_http_status(rec: Dict[str, Any]) -> int:
+    """Batch/zip import status aligned with single-file POST /stig_imports."""
+    summary = rec.get("summary") or {}
+    if int(summary.get("failed") or 0):
+        return 200
+    if int(summary.get("created") or 0):
+        return 201
+    return 200
+
+
 def _parse_path(rest_path: str) -> Tuple[str, List[str]]:
     path = (rest_path or "").strip("/")
     parts = [p for p in path.split("/") if p]
@@ -345,6 +355,44 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error("not found", status=404)
             except ValueError as exc:
                 return _error(str(exc), status=400)
+
+        if len(parts) == 2 and parts[1] == "imports":
+            if method != "POST":
+                return _error("method not allowed", status=405)
+            body = _body_json(payload)
+            entries = body.get("files") or body.get("entries")
+            zip_body = _body_bytes(payload)
+            try:
+                if entries is not None:
+                    rec = imports_svc.import_checklist_batch(
+                        service, session, username, key, entries
+                    )
+                elif zip_body and (
+                    (body.get("format") or "").lower() == "zip"
+                    or zip_body[:2] == b"PK"
+                ):
+                    rec = imports_svc.import_checklist_zip(
+                        service,
+                        session,
+                        username,
+                        key,
+                        zip_body,
+                        source_uri=body.get("source_uri")
+                        or query.get("source_uri")
+                        or "archive.zip",
+                    )
+                else:
+                    return _error(
+                        "JSON body requires files[] or a zip payload with format=zip",
+                        status=400,
+                    )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+            return _json_response(rec, status=_batch_import_http_status(rec))
 
         if len(parts) == 3 and parts[1] == "archive" and parts[2] in ("ckl", "cklb"):
             if method not in ("POST", "PUT"):
@@ -1144,8 +1192,30 @@ class StigRestHandler(PersistentServerConnectionApplication):
         if not body:
             return _error("empty import body")
         fmt = (query.get("format") or detect_format(source_uri, body)).lower()
+        if fmt == "zip":
+            try:
+                cid = collection_id
+                if not cid:
+                    cid = imports_svc.resolve_import_workspace(
+                        service, session, username, ""
+                    )
+                rec = imports_svc.import_checklist_zip(
+                    service,
+                    session,
+                    username,
+                    cid,
+                    body,
+                    source_uri=source_uri or "archive.zip",
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+            return _json_response(rec, status=_batch_import_http_status(rec))
         if fmt not in {"ckl", "cklb", "xccdf-results", "xccdf_results", "xccdfresults"}:
-            return _error("format must be ckl, cklb, or xccdf-results")
+            return _error("format must be ckl, cklb, zip, or xccdf-results")
         rec = imports_svc.import_checklist_file(
             service,
             body,
