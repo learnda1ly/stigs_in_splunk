@@ -1188,6 +1188,80 @@ paths:
               schema:
                 type: object
 
+  /stig_baselines/gc_orphan_rules:
+    get:
+      tags: [Baselines]
+      summary: Dry-run report of orphan baseline rules (admin)
+      description: |
+        Lists `stig_baseline_rules` rows whose `baseline_id` is missing from
+        `stig_baselines`. Always dry-run; does not delete. Handler requires
+        `stig_admin` (Splunk `restmap.conf` admits GET with `stig_read`; without
+        admin capability the handler returns **403**).
+      operationId: reportOrphanBaselineRules
+      x-splunk-capability: stig_admin
+      responses:
+        "200":
+          description: Orphan rule report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrphanBaselineRulesGcResult"
+        "403":
+          description: stig_admin required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [Baselines]
+      summary: Report or delete orphan baseline rules (admin)
+      description: |
+        Default is dry-run (same shape as GET). Set query or JSON `dry_run=false`
+        or `confirm=true` to delete orphan rules only. Does not cascade to
+        checklists or reviews. Audit runs only when at least one row is deleted.
+        Orphans without a KV `_key` are counted in `orphan_count` but skipped
+        (`skipped_no_key_count`); handler requires `stig_admin` while Splunk
+        `restmap.conf` admits POST with `stig_write`.
+      operationId: gcOrphanBaselineRules
+      x-splunk-capability: stig_admin
+      parameters:
+        - name: dry_run
+          in: query
+          schema:
+            type: boolean
+            default: true
+        - name: confirm
+          in: query
+          schema:
+            type: boolean
+            default: false
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dry_run:
+                  type: boolean
+                  default: true
+                confirm:
+                  type: boolean
+                  default: false
+      responses:
+        "200":
+          description: Dry-run report or delete result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrphanBaselineRulesGcResult"
+        "403":
+          description: stig_admin required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /stig_baselines/jobs:
     post:
       tags: [Baseline jobs]
@@ -2264,6 +2338,33 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Baseline"
+
+    OrphanBaselineRulesGcResult:
+      type: object
+      required: [dry_run, orphan_count, orphans, deleted_count, skipped_no_key_count]
+      properties:
+        dry_run:
+          type: boolean
+        orphan_count:
+          type: integer
+        deleted_count:
+          type: integer
+        skipped_no_key_count:
+          type: integer
+          description: Orphans lacking KV `_key`; reported on dry-run and execute, not deleted
+        orphans:
+          type: array
+          items:
+            type: object
+            properties:
+              _key:
+                type: string
+              baseline_id:
+                type: string
+              rule_id:
+                type: string
+              group_id:
+                type: string
 
     BaselineJobChunk:
       type: object

@@ -968,6 +968,20 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 method, parts[1:], query, payload, service, username
             )
 
+        if parts == ["gc_orphan_rules"]:
+            if method not in ("GET", "POST"):
+                return _error("method not allowed", status=405)
+            if not access.user_has_stig_admin(session):
+                return _error("stig_admin required", status=403)
+            body = _body_json(payload)
+            execute = False
+            if method == "POST":
+                execute = baselines_svc.parse_orphan_gc_execute_flag(query, body)
+            report = baselines_svc.gc_orphan_baseline_rules(
+                service, username, execute=execute
+            )
+            return _json_response(report)
+
         if parts == ["hierarchy"]:
             if method != "GET":
                 return _error("method not allowed", status=405)
