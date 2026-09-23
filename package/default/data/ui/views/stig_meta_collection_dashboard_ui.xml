@@ -1,10 +1,10 @@
-<dashboard version="1.1" script="stig_meta_collection_dashboard_ui.js" hideEdit="true" hideExport="true" hideTitle="true">
+<dashboard version="1.1" theme="dark" script="stig_splunk_ui_boot.js" hideEdit="true" hideExport="true" hideTitle="true">
   <label>All workspaces</label>
   <description>Cross-workspace metrics for workspaces you can read.</description>
   <row>
     <panel>
       <html>
-        <div id="stig-ui-root"></div>
+        <div id="stig-ui-root" data-ui-bundle="meta_collection_dashboard"></div>
       </html>
     </panel>
   </row>

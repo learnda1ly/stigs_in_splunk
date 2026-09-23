@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { SplunkThemeProvider, getUserTheme } from "@splunk/themes";
+import { SplunkThemeProvider } from "@splunk/themes";
+import { applyThemeDocument, resolveAppTheme } from "./theme";
 
 function hideSplunkChrome() {
     document.body.classList.add("stig-ui-page");
@@ -42,15 +43,35 @@ function hideSplunkChrome() {
         height: calc(100vh - 48px);
         min-height: 0;
       }
+      /* Dashboard bootstrap styles input[type=search|text] with its own
+         border, background, height, and margin. SplunkUI Text/Search already
+         draws that chrome on the outer box, so the inner input looks nested. */
+      #stig-ui-root input[type="search"],
+      #stig-ui-root input[type="text"],
+      #stig-ui-root input[type="password"],
+      #stig-ui-root input[type="email"],
+      #stig-ui-root input[type="number"],
+      #stig-ui-root input[type="tel"],
+      #stig-ui-root input[type="url"],
+      #stig-ui-root textarea {
+        background-color: transparent;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        box-sizing: border-box;
+        height: auto;
+        line-height: inherit;
+        margin: 0;
+        padding: 0;
+      }
+      html[data-stig-color-scheme="dark"]:has(#stig-ui-root),
+      body.stig-ui-dark:has(#stig-ui-root) {
+        background: #171d21;
+        color-scheme: dark;
+      }
     `;
     document.head.appendChild(style);
 }
-
-const FALLBACK = {
-    family: "prisma",
-    colorScheme: "light",
-    density: "comfortable",
-};
 
 export function mountPage(App) {
     const start = () => {
@@ -60,25 +81,34 @@ export function mountPage(App) {
             return;
         }
         hideSplunkChrome();
-        const render = (theme) => {
-            const root = createRoot(el);
-            root.render(
-                <SplunkThemeProvider
-                    family={theme.family || "prisma"}
-                    colorScheme={theme.colorScheme || "light"}
-                    density={theme.density || "comfortable"}
-                >
-                    <App />
-                </SplunkThemeProvider>
-            );
-        };
-        if (typeof getUserTheme === "function") {
-            Promise.resolve(getUserTheme())
-                .then(render)
-                .catch(() => render(FALLBACK));
-            return;
-        }
-        render(FALLBACK);
+        resolveAppTheme()
+            .then((theme) => {
+                const colorScheme = theme.colorScheme === "light" ? "light" : "dark";
+                applyThemeDocument(colorScheme);
+                const root = createRoot(el);
+                root.render(
+                    <SplunkThemeProvider
+                        family={theme.family || "prisma"}
+                        colorScheme={colorScheme}
+                        density={theme.density || "comfortable"}
+                    >
+                        <App />
+                    </SplunkThemeProvider>
+                );
+            })
+            .catch(() => {
+                applyThemeDocument("dark");
+                const root = createRoot(el);
+                root.render(
+                    <SplunkThemeProvider
+                        family="prisma"
+                        colorScheme="dark"
+                        density="comfortable"
+                    >
+                        <App />
+                    </SplunkThemeProvider>
+                );
+            });
     };
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", start);

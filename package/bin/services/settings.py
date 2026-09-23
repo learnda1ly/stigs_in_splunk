@@ -16,6 +16,8 @@ from models import (
     DEFAULT_INGEST_INDEX,
     DEFAULT_INGEST_SOURCETYPE,
     DEFAULT_RECONCILE_EARLIEST,
+    DEFAULT_UI_COLOR_SCHEME,
+    VALID_UI_COLOR_SCHEMES,
     KV_STIG_EDITOR_SETTINGS,
     as_bool,
     kv_record,
@@ -30,6 +32,13 @@ def _text(value: Any, default: str = "") -> str:
     if value is None:
         return default
     return str(value)
+
+
+def _normalize_ui_color_scheme(value: Any) -> str:
+    scheme = _text(value, DEFAULT_UI_COLOR_SCHEME).lower()
+    if scheme in VALID_UI_COLOR_SCHEMES:
+        return scheme
+    return DEFAULT_UI_COLOR_SCHEME
 
 
 def _pick(body: Dict[str, Any], existing: Dict[str, Any], key: str, default: str) -> str:
@@ -47,6 +56,9 @@ def _public(rec: Dict[str, Any], username: str = "") -> Dict[str, Any]:
         "ingest_sourcetype": rec.get("ingest_sourcetype") or DEFAULT_INGEST_SOURCETYPE,
         "hec_url": rec.get("hec_url") or DEFAULT_HEC_URL,
         "reconcile_earliest": rec.get("reconcile_earliest") or DEFAULT_RECONCILE_EARLIEST,
+        "ui_color_scheme": _normalize_ui_color_scheme(
+            rec.get("ui_color_scheme")
+        ),
         "updated_at": rec.get("updated_at") or 0,
         "updated_by": rec.get("updated_by") or username or "",
     }
@@ -118,6 +130,7 @@ def _write_ucc(session_key: str, record: Dict[str, Any]) -> bool:
         "ingest_sourcetype": record.get("ingest_sourcetype") or DEFAULT_INGEST_SOURCETYPE,
         "hec_url": record.get("hec_url") or DEFAULT_HEC_URL,
         "reconcile_earliest": record.get("reconcile_earliest") or DEFAULT_RECONCILE_EARLIEST,
+        "ui_color_scheme": _normalize_ui_color_scheme(record.get("ui_color_scheme")),
     }
     existing = _read_ucc(session_key)
     if existing:
@@ -179,6 +192,11 @@ def save_settings(service, body: Dict[str, Any], username: str) -> Dict[str, Any
         "hec_url": _pick(body, existing, "hec_url", DEFAULT_HEC_URL),
         "reconcile_earliest": _pick(
             body, existing, "reconcile_earliest", DEFAULT_RECONCILE_EARLIEST
+        ),
+        "ui_color_scheme": _normalize_ui_color_scheme(
+            body.get("ui_color_scheme")
+            if "ui_color_scheme" in body
+            else existing.get("ui_color_scheme")
         ),
         "updated_at": now_epoch(),
         "updated_by": username or "",

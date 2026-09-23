@@ -49,6 +49,7 @@ export default function LabelsApp() {
     const [selectedHostIds, setSelectedHostIds] = useState({});
     const [bulkLabelId, setBulkLabelId] = useState("");
     const [hostFilterLabelId, setHostFilterLabelId] = useState("");
+    const [showAddLabel, setShowAddLabel] = useState(false);
 
     const labelById = useMemo(() => {
         const map = {};
@@ -156,6 +157,7 @@ export default function LabelsApp() {
             });
             setNewName("");
             setNewColor("");
+            setShowAddLabel(false);
             setInfo("Label created.");
             await loadWorkspaceData(collectionId);
         } catch (err) {
@@ -402,7 +404,25 @@ export default function LabelsApp() {
                     <WaitSpinner />
                 ) : (
                     <>
-                        <Heading level={3}>Workspace labels</Heading>
+                        <div
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                flexWrap: "wrap",
+                                gap: 8,
+                                marginBottom: 8,
+                            }}
+                        >
+                            <Heading level={3} style={{ margin: 0 }}>
+                                Workspace labels
+                            </Heading>
+                            <Button
+                                label={showAddLabel ? "Cancel" : "Add label"}
+                                appearance="primary"
+                                onClick={() => setShowAddLabel((open) => !open)}
+                            />
+                        </div>
                         <p>
                             Labels scope restricted grants and filter hosts in the
                             STIG Editor. Create labels here instead of REST-only
@@ -458,29 +478,40 @@ export default function LabelsApp() {
                                 ))}
                             </Table.Body>
                         </Table>
-                        <Heading level={4} style={{ marginTop: 24 }}>
-                            New label
-                        </Heading>
-                        <ControlGroup label="Name" required>
-                            <Text
-                                value={newName}
-                                onChange={(e, { value }) => setNewName(value)}
-                            />
-                        </ControlGroup>
-                        <ControlGroup
-                            label="Color (optional)"
-                            help="Free text (e.g. #336699) for display in future UI."
-                        >
-                            <Text
-                                value={newColor}
-                                onChange={(e, { value }) => setNewColor(value)}
-                            />
-                        </ControlGroup>
-                        <Button
-                            label="Create label"
-                            appearance="primary"
-                            onClick={createLabel}
-                        />
+                        {showAddLabel ? (
+                            <div
+                                style={{
+                                    marginTop: 16,
+                                    padding: 16,
+                                    border: "1px solid var(--splunk-color-border, #ccc)",
+                                    borderRadius: 8,
+                                }}
+                            >
+                                <Heading level={4} style={{ marginTop: 0 }}>
+                                    New label
+                                </Heading>
+                                <ControlGroup label="Name" required>
+                                    <Text
+                                        value={newName}
+                                        onChange={(e, { value }) => setNewName(value)}
+                                    />
+                                </ControlGroup>
+                                <ControlGroup
+                                    label="Color (optional)"
+                                    help="Free text (e.g. #336699) for display in future UI."
+                                >
+                                    <Text
+                                        value={newColor}
+                                        onChange={(e, { value }) => setNewColor(value)}
+                                    />
+                                </ControlGroup>
+                                <Button
+                                    label="Create label"
+                                    appearance="primary"
+                                    onClick={createLabel}
+                                />
+                            </div>
+                        ) : null}
 
                         <Heading level={3} style={{ marginTop: 32 }}>
                             Assign labels to hosts

@@ -410,23 +410,19 @@ export default function ChecklistImportPanel() {
             </div>
             <PagePad>
                 <p style={{ maxWidth: 760, marginTop: 0 }}>
-                    Drop STIG Viewer <code>.ckl</code>, <code>.cklb</code>, or a{" "}
-                    <code>.zip</code> archive of checklists into a workspace. Each
-                    finding is indexed through HEC as <code>stig:finding</code>. DISA
-                    XCCDF benchmarks are imported in the{" "}
-                    <Link onClick={() => document.getElementById("baselines")?.scrollIntoView()}>
+                    Drop <code>.ckl</code>, <code>.cklb</code>, checklist <code>.zip</code>,
+                    or XCCDF <code>*-results.xml</code> (nested zips OK) into the workspace
+                    above; findings index as <code>stig:finding</code> and update unlocked
+                    checks. XCCDF results need matching baselines on the{" "}
+                    <Link
+                        onClick={() => {
+                            window.location.hash = "baselines";
+                        }}
+                    >
                         Baselines
                     </Link>{" "}
-                    section below. Create workspaces under{" "}
-                    <Link to={viewUrl("configuration")}>Configuration</Link>. Incoming
-                    results overwrite matching checks unless the finding is locked in the
-                    editor.
-                    <br />
-                    <strong>XCCDF scan results</strong>: upload a single{" "}
-                    <code>*-results.xml</code> or a <code>.zip</code> of OpenSCAP /
-                    Evaluate-STIG result XML files (nested zips supported; not full SCAP
-                    source data streams). Matching Manual STIG baselines must exist in the
-                    library or workspace defaults.
+                    tab. Manage workspaces in{" "}
+                    <Link to={viewUrl("configuration")}>Configuration</Link>.
                 </p>
                 {banner ? (
                     <Message

@@ -34,6 +34,7 @@ export default function TransferApp() {
     const [cloneCopyGrants, setCloneCopyGrants] = useState(false);
     // Clone UI always uses API defaults (full host/checklist copy).
     const cloneIncludesHostsAndLabels = true;
+    const [showCloneForm, setShowCloneForm] = useState(false);
 
     const destOptions = useMemo(
         () => (workspaces || []).filter((ws) => ws && ws._key !== sourceId),
@@ -158,6 +159,7 @@ export default function TransferApp() {
                     " reviews."
             );
             setCloneName("");
+            setShowCloneForm(false);
         } catch (err) {
             setError(String(err.message || err));
         } finally {
@@ -273,49 +275,72 @@ export default function TransferApp() {
                         </Table>
                     </>
                 ) : null}
-                <Heading level={3}>Clone workspace</Heading>
-                <p>
-                    Create a new workspace from the source. Requires read access on
-                    the source and stig_write. Global STIG baselines are shared,
-                    not duplicated.
-                </p>
-                <Toolbar>
-                    <ControlGroup label="New workspace name">
-                        <Text
-                            value={cloneName}
-                            onChange={(e, { value }) => setCloneName(value)}
-                            placeholder="Defaults to “(source name) (clone)”"
-                        />
-                    </ControlGroup>
-                    <ControlGroup label="Copy reviews">
-                        <Switch
-                            selected={cloneCopyReviews}
-                            onClick={() =>
-                                setCloneCopyReviews((v) => !v)
-                            }
-                        />
-                    </ControlGroup>
-                    <ControlGroup
-                        label="Copy grants"
-                        help={
-                            cloneIncludesHostsAndLabels
-                                ? "Remaps host and label ACL scopes in copied grants."
-                                : "Requires copying hosts and labels (full workspace clone)."
-                        }
-                    >
-                        <Switch
-                            selected={cloneCopyGrants}
-                            disabled={!cloneIncludesHostsAndLabels || busy}
-                            onClick={() => setCloneCopyGrants((v) => !v)}
-                        />
-                    </ControlGroup>
+                <div
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: 8,
+                        marginBottom: 8,
+                    }}
+                >
+                    <Heading level={3} style={{ margin: 0 }}>
+                        Clone workspace
+                    </Heading>
                     <Button
-                        label="Clone workspace"
+                        label={showCloneForm ? "Cancel" : "Clone workspace…"}
                         appearance="secondary"
                         disabled={busy || !sourceId}
-                        onClick={runClone}
+                        onClick={() => setShowCloneForm((open) => !open)}
                     />
-                </Toolbar>
+                </div>
+                {showCloneForm ? (
+                    <>
+                        <p>
+                            Create a new workspace from the source. Requires read access on
+                            the source and stig_write. Global STIG baselines are shared,
+                            not duplicated.
+                        </p>
+                        <Toolbar>
+                            <ControlGroup label="New workspace name">
+                                <Text
+                                    value={cloneName}
+                                    onChange={(e, { value }) => setCloneName(value)}
+                                    placeholder="Defaults to “(source name) (clone)”"
+                                />
+                            </ControlGroup>
+                            <ControlGroup label="Copy reviews">
+                                <Switch
+                                    selected={cloneCopyReviews}
+                                    onClick={() =>
+                                        setCloneCopyReviews((v) => !v)
+                                    }
+                                />
+                            </ControlGroup>
+                            <ControlGroup
+                                label="Copy grants"
+                                help={
+                                    cloneIncludesHostsAndLabels
+                                        ? "Remaps host and label ACL scopes in copied grants."
+                                        : "Requires copying hosts and labels (full workspace clone)."
+                                }
+                            >
+                                <Switch
+                                    selected={cloneCopyGrants}
+                                    disabled={!cloneIncludesHostsAndLabels || busy}
+                                    onClick={() => setCloneCopyGrants((v) => !v)}
+                                />
+                            </ControlGroup>
+                            <Button
+                                label="Run clone"
+                                appearance="secondary"
+                                disabled={busy || !sourceId}
+                                onClick={runClone}
+                            />
+                        </Toolbar>
+                    </>
+                ) : null}
                 <Heading level={3}>Transfer hosts</Heading>
                 <p>
                     Move hosts and their checklists to another workspace. You need

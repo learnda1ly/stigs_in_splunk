@@ -38,6 +38,7 @@ export default function WorkspaceDefaultsApp() {
     const [draftBaselineId, setDraftBaselineId] = useState("");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [showAddDefault, setShowAddDefault] = useState(false);
 
     const stigOptions = useMemo(() => {
         const seen = {};
@@ -122,6 +123,7 @@ export default function WorkspaceDefaultsApp() {
             );
             setDraftStigId("");
             setDraftBaselineId("");
+            setShowAddDefault(false);
             await loadDefaults(collectionId);
         } catch (err) {
             setError(String(err.message || err));
@@ -177,39 +179,26 @@ export default function WorkspaceDefaultsApp() {
                         </Select>
                     </ControlGroup>
                 </Toolbar>
-                <Heading level={3}>Set default</Heading>
-                <Toolbar>
-                    <ControlGroup label="STIG id" labelPosition="top">
-                        <Select
-                            value={draftStigId}
-                            onChange={(_, { value }) => {
-                                setDraftStigId(value);
-                                setDraftBaselineId("");
-                            }}
-                        >
-                            {stigOptions.map((opt) => (
-                                <Select.Option key={opt.value} label={opt.label} value={opt.value} />
-                            ))}
-                        </Select>
-                    </ControlGroup>
-                    <ControlGroup label="Baseline revision" labelPosition="top">
-                        <Select
-                            value={draftBaselineId}
-                            onChange={(_, { value }) => setDraftBaselineId(value)}
-                            disabled={!draftStigId}
-                        >
-                            {baselineOptions.map((opt) => (
-                                <Select.Option key={opt.value} label={opt.label} value={opt.value} />
-                            ))}
-                        </Select>
-                    </ControlGroup>
+                <div
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: 8,
+                        marginBottom: 8,
+                    }}
+                >
+                    <Heading level={3} style={{ margin: 0 }}>
+                        Current defaults
+                    </Heading>
                     <Button
-                        label="Save default"
-                        onClick={saveDefault}
-                        disabled={!collectionId || !draftStigId || !draftBaselineId}
+                        label={showAddDefault ? "Cancel" : "Add default"}
+                        appearance="primary"
+                        onClick={() => setShowAddDefault((open) => !open)}
+                        disabled={!collectionId}
                     />
-                </Toolbar>
-                <Heading level={3}>Current defaults</Heading>
+                </div>
                 <Table>
                     <Table.Head>
                         <Table.HeadCell>STIG id</Table.HeadCell>
@@ -239,6 +228,51 @@ export default function WorkspaceDefaultsApp() {
                 </Table>
                 {!defaults.length && !loading ? (
                     <Text as="p">No defaults configured for this workspace.</Text>
+                ) : null}
+                {showAddDefault ? (
+                    <div
+                        style={{
+                            marginTop: 16,
+                            padding: 16,
+                            border: "1px solid var(--splunk-color-border, #ccc)",
+                            borderRadius: 8,
+                        }}
+                    >
+                        <Heading level={4} style={{ marginTop: 0 }}>
+                            Set default
+                        </Heading>
+                        <Toolbar>
+                            <ControlGroup label="STIG id" labelPosition="top">
+                                <Select
+                                    value={draftStigId}
+                                    onChange={(_, { value }) => {
+                                        setDraftStigId(value);
+                                        setDraftBaselineId("");
+                                    }}
+                                >
+                                    {stigOptions.map((opt) => (
+                                        <Select.Option key={opt.value} label={opt.label} value={opt.value} />
+                                    ))}
+                                </Select>
+                            </ControlGroup>
+                            <ControlGroup label="Baseline revision" labelPosition="top">
+                                <Select
+                                    value={draftBaselineId}
+                                    onChange={(_, { value }) => setDraftBaselineId(value)}
+                                    disabled={!draftStigId}
+                                >
+                                    {baselineOptions.map((opt) => (
+                                        <Select.Option key={opt.value} label={opt.label} value={opt.value} />
+                                    ))}
+                                </Select>
+                            </ControlGroup>
+                            <Button
+                                label="Save default"
+                                onClick={saveDefault}
+                                disabled={!collectionId || !draftStigId || !draftBaselineId}
+                            />
+                        </Toolbar>
+                    </div>
                 ) : null}
             </PagePad>
         </Shell>

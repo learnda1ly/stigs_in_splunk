@@ -7,8 +7,6 @@ import os
 import shutil
 from os.path import dirname, join
 
-import yaml
-
 _LAST_OUTPUT_PATH = "output"
 
 # UCC generates these, then copies package/default/restmap.conf with a merge.
@@ -93,22 +91,19 @@ def _restore_nav_and_views(app_root: str) -> None:
 
 
 def _write_ucc_global_config_json(app_root: str) -> None:
-    """UCC UI fetches js/build/globalConfig.json; ucc-gen dumps YAML with Python tags."""
+    """UCC UI fetches js/build/globalConfig.json; normalize from repo source."""
     repo = dirname(os.path.abspath(__file__))
-    src = join(repo, "globalConfig.yaml")
-    if not os.path.isfile(src):
+    src_json = join(repo, "globalConfig.json")
+    if not os.path.isfile(src_json):
         return
-    with open(src, encoding="utf-8") as handle:
-        data = yaml.safe_load(handle)
+    with open(src_json, encoding="utf-8") as handle:
+        data = json.load(handle)
     build_dir = join(app_root, "appserver", "static", "js", "build")
     os.makedirs(build_dir, exist_ok=True)
     dst_json = join(build_dir, "globalConfig.json")
     with open(dst_json, "w", encoding="utf-8") as handle:
         json.dump(data, handle, indent=4, ensure_ascii=False)
         handle.write("\n")
-    dst_yaml = join(build_dir, "globalConfig.yaml")
-    with open(dst_yaml, "w", encoding="utf-8") as handle:
-        yaml.safe_dump(data, handle, sort_keys=False)
 
 
 def _ensure_ucc_restmap(app_root: str) -> None:

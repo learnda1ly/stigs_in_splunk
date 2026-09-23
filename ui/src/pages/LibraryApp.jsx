@@ -7,7 +7,15 @@ import Table from "@splunk/react-ui/Table";
 import Text from "@splunk/react-ui/Text";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
 import { apiGet } from "../api";
+import CreateChecklistModal from "../components/CreateChecklistModal";
 import { Brand, BrandKicker, Header, PagePad, Shell } from "../layout";
+
+const textBlockStyle = {
+    whiteSpace: "pre-wrap",
+    fontSize: "13px",
+    lineHeight: 1.45,
+    margin: 0,
+};
 
 function revisionLabel(rev) {
     const parts = [
@@ -16,6 +24,41 @@ function revisionLabel(rev) {
         rev.rule_count != null ? rev.rule_count + " rules" : "",
     ].filter(Boolean);
     return parts.join(" · ");
+}
+
+function RuleDetailPanel({ detail }) {
+    if (!detail) {
+        return null;
+    }
+    const ruleId = detail.rule_id || detail.group_id || "—";
+    const title = detail.rule_title || detail.title || "";
+    const optionalSections = [
+        { label: "Description", value: detail.description },
+        { label: "Check content", value: detail.check_content },
+        { label: "Fix text", value: detail.fix_text },
+        { label: "Discussion", value: detail.discussion },
+    ].filter((section) => section.value);
+
+    return (
+        <div style={{ marginTop: "1rem" }}>
+            <Heading level={3}>Rule detail</Heading>
+            <div style={{ marginBottom: "0.5rem" }}>
+                <strong>{ruleId}</strong>
+                {title ? <span> — {title}</span> : null}
+            </div>
+            {detail.severity ? (
+                <div style={{ marginBottom: "0.75rem" }}>
+                    <strong>Severity:</strong> {detail.severity}
+                </div>
+            ) : null}
+            {optionalSections.map((section) => (
+                <div key={section.label} style={{ marginBottom: "1rem" }}>
+                    <Heading level={4}>{section.label}</Heading>
+                    <pre style={textBlockStyle}>{section.value}</pre>
+                </div>
+            ))}
+        </div>
+    );
 }
 
 export default function LibraryApp() {
@@ -30,6 +73,7 @@ export default function LibraryApp() {
     const [loading, setLoading] = useState(true);
     const [rulesLoading, setRulesLoading] = useState(false);
     const [error, setError] = useState("");
+    const [checklistModal, setChecklistModal] = useState(null);
 
     const benchmarks = hierarchy?.benchmarks || [];
 
@@ -114,6 +158,17 @@ export default function LibraryApp() {
         setRuleDetail(null);
     }
 
+    function openCreateChecklist(rev, bench) {
+        const label =
+            (bench && bench.stig_id) +
+            (rev.version ? " " + rev.version : "") +
+            (rev.release_info ? " · " + rev.release_info : "");
+        setChecklistModal({
+            baselineId: rev.baseline_id,
+            label: label.trim(),
+        });
+    }
+
     async function openRule(rule) {
         setError("");
         try {
@@ -138,12 +193,18 @@ export default function LibraryApp() {
                 <Button label="Refresh" onClick={loadHierarchy} />
             </Header>
             <PagePad>
-                {error ? <Message type="error">{error}</Message> : null}
+                {error ? <Message appearance="error">{error}</Message> : null}
                 {loading ? (
                     <WaitSpinner size="large" />
                 ) : (
                     <>
-                        <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
+                        <div
+                            style={{
+                                display: "flex",
+                                gap: "1rem",
+                                marginBottom: "1rem",
+                            }}
+                        >
                             <Text
                                 placeholder="Filter benchmarks…"
                                 value={filter}
@@ -151,9 +212,14 @@ export default function LibraryApp() {
                             />
                             <Select
                                 value={workspaceFilter}
-                                onChange={(_, { value }) => setWorkspaceFilter(value)}
+                                onChange={(_, { value }) =>
+                                    setWorkspaceFilter(value)
+                                }
                             >
-                                <Select.Option label="All visible catalogs" value="" />
+                                <Select.Option
+                                    label="All visible catalogs"
+                                    value=""
+                                />
                                 {workspaces.map((ws) => (
                                     <Select.Option
                                         key={ws._key}
@@ -163,144 +229,245 @@ export default function LibraryApp() {
                                 ))}
                             </Select>
                         </div>
-                        <Table>
-                            <Table.Head>
-                                <Table.HeadCell>STIG / benchmark</Table.HeadCell>
-                                <Table.HeadCell>Revisions</Table.HeadCell>
-                                <Table.HeadCell>Latest</Table.HeadCell>
-                            </Table.Head>
-                            <Table.Body>
-                                {filteredBenchmarks.map((row) => (
-                                    <Table.Row
-                                        key={row.stig_id}
-                                        onClick={() => selectBenchmark(row)}
-                                        data-test-selected={
-                                            selectedStig === row.stig_id
-                                                ? "yes"
-                                                : "no"
-                                        }
-                                    >
-                                        <Table.Cell>
-                                            <div>
-                                                <strong>{row.stig_id}</strong>
-                                            </div>
-                                            <div>{row.title}</div>
-                                        </Table.Cell>
-                                        <Table.Cell>{row.revision_count}</Table.Cell>
-                                        <Table.Cell>
-                                            {row.latest_version || "—"}
-                                        </Table.Cell>
-                                    </Table.Row>
-                                ))}
-                            </Table.Body>
-                        </Table>
-                        {activeBench ? (
-                            <>
-                                <Heading level={3}>
-                                    Revisions — {activeBench.stig_id}
-                                </Heading>
+                        <div
+                            style={{
+                                display: "flex",
+                                gap: "1.5rem",
+                                alignItems: "flex-start",
+                            }}
+                        >
+                            <div style={{ flex: "1 1 42%", minWidth: 0 }}>
+                                <Heading level={3}>Benchmarks</Heading>
                                 <Table>
                                     <Table.Head>
-                                        <Table.HeadCell>Version</Table.HeadCell>
-                                        <Table.HeadCell>Scope</Table.HeadCell>
-                                        <Table.HeadCell>Rules</Table.HeadCell>
-                                        <Table.HeadCell>Fingerprint</Table.HeadCell>
+                                        <Table.HeadCell>
+                                            STIG / benchmark
+                                        </Table.HeadCell>
+                                        <Table.HeadCell>Revs</Table.HeadCell>
+                                        <Table.HeadCell>Latest</Table.HeadCell>
                                     </Table.Head>
                                     <Table.Body>
-                                        {activeBench.revisions.map((rev) => (
+                                        {filteredBenchmarks.map((row) => (
                                             <Table.Row
-                                                key={rev.baseline_id}
-                                                onClick={() => selectRevision(rev)}
+                                                key={row.stig_id}
+                                                onClick={() =>
+                                                    selectBenchmark(row)
+                                                }
+                                                data-test-selected={
+                                                    selectedStig === row.stig_id
+                                                        ? "yes"
+                                                        : "no"
+                                                }
                                             >
                                                 <Table.Cell>
-                                                    {revisionLabel(rev)}
+                                                    <div>
+                                                        <strong>
+                                                            {row.stig_id}
+                                                        </strong>
+                                                    </div>
+                                                    <div>{row.title}</div>
                                                 </Table.Cell>
                                                 <Table.Cell>
-                                                    {rev.scope === "workspace"
-                                                        ? "workspace"
-                                                        : "global"}
+                                                    {row.revision_count}
                                                 </Table.Cell>
                                                 <Table.Cell>
-                                                    {rev.rule_count}
-                                                </Table.Cell>
-                                                <Table.Cell>
-                                                    <code>
-                                                        {(
-                                                            rev.content_fingerprint ||
-                                                            ""
-                                                        ).slice(0, 12)}
-                                                        …
-                                                    </code>
+                                                    {row.latest_version || "—"}
                                                 </Table.Cell>
                                             </Table.Row>
                                         ))}
                                     </Table.Body>
                                 </Table>
-                            </>
-                        ) : null}
-                        {selectedBaseline ? (
-                            <>
-                                <Heading level={3}>
-                                    Rules
-                                    {selectedBenchmark
-                                        ? " — " + revisionLabel(selectedBenchmark)
-                                        : ""}
-                                </Heading>
-                                {rulesLoading ? (
-                                    <WaitSpinner />
-                                ) : (
-                                    <Table>
-                                        <Table.Head>
-                                            <Table.HeadCell>Rule</Table.HeadCell>
-                                            <Table.HeadCell>Title</Table.HeadCell>
-                                            <Table.HeadCell>Severity</Table.HeadCell>
-                                        </Table.Head>
-                                        <Table.Body>
-                                            {rules.slice(0, 200).map((rule) => (
-                                                <Table.Row
-                                                    key={rule._key}
-                                                    onClick={() => openRule(rule)}
+                            </div>
+                            <div style={{ flex: "1 1 58%", minWidth: 0 }}>
+                                {activeBench ? (
+                                    <>
+                                        <Heading level={3}>
+                                            Revisions — {activeBench.stig_id}
+                                        </Heading>
+                                        <Table>
+                                            <Table.Head>
+                                                <Table.HeadCell>
+                                                    Version
+                                                </Table.HeadCell>
+                                                <Table.HeadCell>
+                                                    Scope
+                                                </Table.HeadCell>
+                                                <Table.HeadCell>
+                                                    Rules
+                                                </Table.HeadCell>
+                                                <Table.HeadCell>
+                                                    Fingerprint
+                                                </Table.HeadCell>
+                                                <Table.HeadCell width={160}>
+                                                    Checklist
+                                                </Table.HeadCell>
+                                            </Table.Head>
+                                            <Table.Body>
+                                                {activeBench.revisions.map(
+                                                    (rev) => (
+                                                        <Table.Row
+                                                            key={
+                                                                rev.baseline_id
+                                                            }
+                                                            onClick={() =>
+                                                                selectRevision(
+                                                                    rev
+                                                                )
+                                                            }
+                                                            data-test-selected={
+                                                                selectedBaseline ===
+                                                                rev.baseline_id
+                                                                    ? "yes"
+                                                                    : "no"
+                                                            }
+                                                        >
+                                                            <Table.Cell>
+                                                                {revisionLabel(
+                                                                    rev
+                                                                )}
+                                                            </Table.Cell>
+                                                            <Table.Cell>
+                                                                {rev.scope ===
+                                                                "workspace"
+                                                                    ? "workspace"
+                                                                    : "global"}
+                                                            </Table.Cell>
+                                                            <Table.Cell>
+                                                                {rev.rule_count}
+                                                            </Table.Cell>
+                                                            <Table.Cell>
+                                                                <code>
+                                                                    {(
+                                                                        rev.content_fingerprint ||
+                                                                        ""
+                                                                    ).slice(
+                                                                        0,
+                                                                        12
+                                                                    )}
+                                                                    …
+                                                                </code>
+                                                            </Table.Cell>
+                                                            <Table.Cell>
+                                                                <Button
+                                                                    appearance="primary"
+                                                                    label="Create checklist"
+                                                                    onClick={(
+                                                                        e
+                                                                    ) => {
+                                                                        e.stopPropagation();
+                                                                        openCreateChecklist(
+                                                                            rev,
+                                                                            activeBench
+                                                                        );
+                                                                    }}
+                                                                />
+                                                            </Table.Cell>
+                                                        </Table.Row>
+                                                    )
+                                                )}
+                                            </Table.Body>
+                                        </Table>
+                                        {selectedBaseline ? (
+                                            <>
+                                                <Heading
+                                                    level={3}
+                                                    style={{ marginTop: "1rem" }}
                                                 >
-                                                    <Table.Cell>
-                                                        {rule.rule_id ||
-                                                            rule.group_id}
-                                                    </Table.Cell>
-                                                    <Table.Cell>
-                                                        {rule.rule_title}
-                                                    </Table.Cell>
-                                                    <Table.Cell>
-                                                        {rule.severity}
-                                                    </Table.Cell>
-                                                </Table.Row>
-                                            ))}
-                                        </Table.Body>
-                                    </Table>
-                                )}
-                                {rules.length > 200 ? (
-                                    <Message type="info">
-                                        Showing first 200 rules. Use REST for full
-                                        export.
+                                                    Rules
+                                                    {selectedBenchmark
+                                                        ? " — " +
+                                                          revisionLabel(
+                                                              selectedBenchmark
+                                                          )
+                                                        : ""}
+                                                </Heading>
+                                                {rulesLoading ? (
+                                                    <WaitSpinner />
+                                                ) : (
+                                                    <Table>
+                                                        <Table.Head>
+                                                            <Table.HeadCell>
+                                                                Rule
+                                                            </Table.HeadCell>
+                                                            <Table.HeadCell>
+                                                                Title
+                                                            </Table.HeadCell>
+                                                            <Table.HeadCell>
+                                                                Severity
+                                                            </Table.HeadCell>
+                                                        </Table.Head>
+                                                        <Table.Body>
+                                                            {rules
+                                                                .slice(0, 200)
+                                                                .map((rule) => (
+                                                                    <Table.Row
+                                                                        key={
+                                                                            rule._key
+                                                                        }
+                                                                        onClick={() =>
+                                                                            openRule(
+                                                                                rule
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        <Table.Cell>
+                                                                            {rule.rule_id ||
+                                                                                rule.group_id}
+                                                                        </Table.Cell>
+                                                                        <Table.Cell>
+                                                                            {
+                                                                                rule.rule_title
+                                                                            }
+                                                                        </Table.Cell>
+                                                                        <Table.Cell>
+                                                                            {
+                                                                                rule.severity
+                                                                            }
+                                                                        </Table.Cell>
+                                                                    </Table.Row>
+                                                                ))}
+                                                        </Table.Body>
+                                                    </Table>
+                                                )}
+                                                {rules.length > 200 ? (
+                                                    <Message appearance="info">
+                                                        Showing first 200 rules.
+                                                        Use REST for full
+                                                        export.
+                                                    </Message>
+                                                ) : null}
+                                                <RuleDetailPanel
+                                                    detail={ruleDetail}
+                                                />
+                                            </>
+                                        ) : (
+                                            <Message
+                                                appearance="info"
+                                                style={{ marginTop: "1rem" }}
+                                            >
+                                                Select a revision to browse
+                                                rules.
+                                            </Message>
+                                        )}
+                                    </>
+                                ) : (
+                                    <Message appearance="info">
+                                        Select a benchmark to view revisions
+                                        and rules.
                                     </Message>
-                                ) : null}
-                            </>
-                        ) : null}
-                        {ruleDetail ? (
-                            <>
-                                <Heading level={3}>Rule detail</Heading>
-                                <pre
-                                    style={{
-                                        maxHeight: "240px",
-                                        overflow: "auto",
-                                        fontSize: "12px",
-                                    }}
-                                >
-                                    {JSON.stringify(ruleDetail, null, 2)}
-                                </pre>
-                            </>
-                        ) : null}
+                                )}
+                            </div>
+                        </div>
                     </>
                 )}
             </PagePad>
+            <CreateChecklistModal
+                open={!!checklistModal}
+                onClose={() => setChecklistModal(null)}
+                baselineId={checklistModal && checklistModal.baselineId}
+                baselineLabel={checklistModal && checklistModal.label}
+                defaultCollectionId={workspaceFilter}
+            />
         </Shell>
     );
 }

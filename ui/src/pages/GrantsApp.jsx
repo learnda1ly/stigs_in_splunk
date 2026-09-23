@@ -60,6 +60,7 @@ export default function GrantsApp() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [info, setInfo] = useState("");
+    const [showAddGrant, setShowAddGrant] = useState(false);
 
     const hostOptions = useMemo(
         () =>
@@ -169,6 +170,7 @@ export default function GrantsApp() {
                 },
             });
             setInfo("Grant saved.");
+            setShowAddGrant(false);
             await loadGrants(collectionId);
         } catch (err) {
             setError(String(err.message || err));
@@ -219,7 +221,25 @@ export default function GrantsApp() {
                     <WaitSpinner />
                 ) : (
                     <>
-                        <Heading level={3}>Grants</Heading>
+                        <div
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                flexWrap: "wrap",
+                                gap: 8,
+                                marginBottom: 8,
+                            }}
+                        >
+                            <Heading level={3} style={{ margin: 0 }}>
+                                Grants
+                            </Heading>
+                            <Button
+                                label={showAddGrant ? "Cancel" : "Add grant"}
+                                appearance="primary"
+                                onClick={() => setShowAddGrant((open) => !open)}
+                            />
+                        </div>
                         <Table>
                             <Table.Head>
                                 <Table.HeadCell>Principal</Table.HeadCell>
@@ -256,86 +276,97 @@ export default function GrantsApp() {
                                 ))}
                             </Table.Body>
                         </Table>
-                        <Heading level={3} style={{ marginTop: 24 }}>
-                            New grant
-                        </Heading>
-                        <ControlGroup label="Principal" help="user:login or role:rolename">
-                            <Text value={draftPrincipal} onChange={(e, { value }) => setDraftPrincipal(value)} />
-                        </ControlGroup>
-                        <ControlGroup label="Grant role">
-                            <Select value={draftRole} onChange={(e, { value }) => setDraftRole(value)}>
-                                {ROLE_OPTIONS.map((opt) => (
-                                    <Select.Option key={opt.value} label={opt.label} value={opt.value} />
-                                ))}
-                            </Select>
-                        </ControlGroup>
-                        <ControlGroup
-                            label="Host ACL (restricted)"
-                            help="Comma-separated host _key values, or pick from workspace hosts."
-                        >
-                            <Text value={draftHosts} onChange={(e, { value }) => setDraftHosts(value)} />
-                        </ControlGroup>
-                        {hostOptions.length ? (
-                            <ControlGroup label="Quick add host">
-                                <Select
-                                    placeholder="Select host id"
-                                    onChange={(e, { value }) =>
-                                        setDraftHosts((prev) =>
-                                            prev ? prev + "," + value : value
-                                        )
-                                    }
+                        {showAddGrant ? (
+                            <div
+                                style={{
+                                    marginTop: 16,
+                                    padding: 16,
+                                    border: "1px solid var(--splunk-color-border, #ccc)",
+                                    borderRadius: 8,
+                                }}
+                            >
+                                <Heading level={4} style={{ marginTop: 0 }}>
+                                    New grant
+                                </Heading>
+                                <ControlGroup label="Principal" help="user:login or role:rolename">
+                                    <Text value={draftPrincipal} onChange={(e, { value }) => setDraftPrincipal(value)} />
+                                </ControlGroup>
+                                <ControlGroup label="Grant role">
+                                    <Select value={draftRole} onChange={(e, { value }) => setDraftRole(value)}>
+                                        {ROLE_OPTIONS.map((opt) => (
+                                            <Select.Option key={opt.value} label={opt.label} value={opt.value} />
+                                        ))}
+                                    </Select>
+                                </ControlGroup>
+                                <ControlGroup
+                                    label="Host ACL (restricted)"
+                                    help="Comma-separated host _key values, or pick from workspace hosts."
                                 >
-                                    {hostOptions.map((opt) => (
-                                        <Select.Option key={opt.value} label={opt.label} value={opt.value} />
-                                    ))}
-                                </Select>
-                            </ControlGroup>
-                        ) : null}
-                        <ControlGroup label="Baseline ACL (restricted)">
-                            <Text
-                                value={draftBaselines}
-                                onChange={(e, { value }) => setDraftBaselines(value)}
-                            />
-                        </ControlGroup>
-                        {baselineOptions.length ? (
-                            <ControlGroup label="Quick add baseline">
-                                <Select
-                                    placeholder="Select baseline id"
-                                    onChange={(e, { value }) =>
-                                        setDraftBaselines((prev) =>
-                                            prev ? prev + "," + value : value
-                                        )
-                                    }
+                                    <Text value={draftHosts} onChange={(e, { value }) => setDraftHosts(value)} />
+                                </ControlGroup>
+                                {hostOptions.length ? (
+                                    <ControlGroup label="Quick add host">
+                                        <Select
+                                            placeholder="Select host id"
+                                            onChange={(e, { value }) =>
+                                                setDraftHosts((prev) =>
+                                                    prev ? prev + "," + value : value
+                                                )
+                                            }
+                                        >
+                                            {hostOptions.map((opt) => (
+                                                <Select.Option key={opt.value} label={opt.label} value={opt.value} />
+                                            ))}
+                                        </Select>
+                                    </ControlGroup>
+                                ) : null}
+                                <ControlGroup label="Baseline ACL (restricted)">
+                                    <Text
+                                        value={draftBaselines}
+                                        onChange={(e, { value }) => setDraftBaselines(value)}
+                                    />
+                                </ControlGroup>
+                                {baselineOptions.length ? (
+                                    <ControlGroup label="Quick add baseline">
+                                        <Select
+                                            placeholder="Select baseline id"
+                                            onChange={(e, { value }) =>
+                                                setDraftBaselines((prev) =>
+                                                    prev ? prev + "," + value : value
+                                                )
+                                            }
+                                        >
+                                            {baselineOptions.map((opt) => (
+                                                <Select.Option key={opt.value} label={opt.label} value={opt.value} />
+                                            ))}
+                                        </Select>
+                                    </ControlGroup>
+                                ) : null}
+                                <ControlGroup
+                                    label="Label ACL (restricted)"
+                                    help="Comma-separated stig_labels._key values; host must have at least one matching label."
                                 >
-                                    {baselineOptions.map((opt) => (
-                                        <Select.Option key={opt.value} label={opt.label} value={opt.value} />
-                                    ))}
-                                </Select>
-                            </ControlGroup>
+                                    <Text value={draftLabels} onChange={(e, { value }) => setDraftLabels(value)} />
+                                </ControlGroup>
+                                {labelOptions.length ? (
+                                    <ControlGroup label="Quick add label">
+                                        <Select
+                                            placeholder="Select label id"
+                                            onChange={(e, { value }) =>
+                                                setDraftLabels((prev) =>
+                                                    prev ? prev + "," + value : value
+                                                )
+                                            }
+                                        >
+                                            {labelOptions.map((opt) => (
+                                                <Select.Option key={opt.value} label={opt.label} value={opt.value} />
+                                            ))}
+                                        </Select>
+                                    </ControlGroup>
+                                ) : null}
+                                <Button label="Save grant" appearance="primary" onClick={createGrant} />
+                            </div>
                         ) : null}
-                        <ControlGroup
-                            label="Label ACL (restricted)"
-                            help="Comma-separated stig_labels._key values; host must have at least one matching label."
-                        >
-                            <Text value={draftLabels} onChange={(e, { value }) => setDraftLabels(value)} />
-                        </ControlGroup>
-                        {labelOptions.length ? (
-                            <ControlGroup label="Quick add label">
-                                <Select
-                                    placeholder="Select label id"
-                                    onChange={(e, { value }) =>
-                                        setDraftLabels((prev) =>
-                                            prev ? prev + "," + value : value
-                                        )
-                                    }
-                                >
-                                    {labelOptions.map((opt) => (
-                                        <Select.Option key={opt.value} label={opt.label} value={opt.value} />
-                                    ))}
-                                </Select>
-                            </ControlGroup>
-                        ) : null}
-                        <Button label="Save grant" appearance="primary" onClick={createGrant} />
                     </>
                 )}
             </PagePad>

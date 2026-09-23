@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import Button from "@splunk/react-ui/Button";
 import ControlGroup from "@splunk/react-ui/ControlGroup";
 import Heading from "@splunk/react-ui/Heading";
-import Link from "@splunk/react-ui/Link";
 import Message from "@splunk/react-ui/Message";
 import Select from "@splunk/react-ui/Select";
 import Switch from "@splunk/react-ui/Switch";
@@ -14,7 +13,6 @@ import {
     downloadBase64,
     downloadText,
     unwrap,
-    viewUrl,
     workspaceLabel,
 } from "../api";
 import {
@@ -265,10 +263,6 @@ export default function ExportApp() {
                     <span>
                         {rows.length} checklist{rows.length === 1 ? "" : "s"}
                     </span>
-                    <Link to={viewUrl("stig_editor_ui")}>Editor</Link>
-                    <Link to={viewUrl("stig_import_ui")}>Import</Link>
-                    <Link to={viewUrl("configuration")}>Configuration</Link>
-                    <Link to={viewUrl("stig_export")}>Classic</Link>
                 </HeaderMeta>
             </Header>
             <PagePad>

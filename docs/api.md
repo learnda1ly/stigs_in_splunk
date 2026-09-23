@@ -34,7 +34,7 @@ Grant-based workspace ACLs further restrict which collections, hosts, and review
 
 ## Versioning
 
-- **App / contract version** follows `package/app.manifest` → `info.id.version` and `globalConfig.yaml` → `meta.version` (currently **0.1.0**).
+- **App / contract version** follows `package/app.manifest` → `info.id.version` and `globalConfig.json` → `meta.version` (currently **0.1.0**).
 - **`docs/openapi.yaml`** is updated in the same PR when persist routes change in `package/bin/stig_rest_handler.py`. There is no separate API version prefix in URLs.
 - Breaking REST changes should bump the app minor version and be called out in release notes.
 

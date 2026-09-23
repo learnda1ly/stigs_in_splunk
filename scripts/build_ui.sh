@@ -8,3 +8,7 @@ if [[ ! -d node_modules ]]; then
 fi
 npm run build
 echo "Built SplunkUI bundles into package/appserver/static/ui/"
+if rg -l '\.\./appserver/static/ui' "$ROOT/package/appserver/static"/stig_*_ui.js 2>/dev/null; then
+  echo "ERROR: legacy stig_*_ui.js loaders must not use ../appserver paths; use stig_splunk_ui_boot.js in views." >&2
+  exit 1
+fi

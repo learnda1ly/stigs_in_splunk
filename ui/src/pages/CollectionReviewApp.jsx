@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import Button from "@splunk/react-ui/Button";
 import ControlGroup from "@splunk/react-ui/ControlGroup";
 import Heading from "@splunk/react-ui/Heading";
-import Link from "@splunk/react-ui/Link";
 import Message from "@splunk/react-ui/Message";
 import Select from "@splunk/react-ui/Select";
 import Switch from "@splunk/react-ui/Switch";
@@ -15,7 +14,6 @@ import {
     apiGet,
     apiPatch,
     defaultWorkspaceId,
-    viewUrl,
     workspaceLabel,
 } from "../api";
 import {
@@ -640,56 +638,50 @@ export default function CollectionReviewApp() {
                         </Select>
                     </ControlGroup>
                     <ControlGroup label="Rule" labelPosition="top">
-                        <Select
-                            value={ruleKey}
-                            onChange={(e, { value }) => loadRuleRows(value)}
-                            disabled={!baselineId}
-                            placeholder="Select rule"
-                            filter
+                        <div
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10,
+                                flexWrap: "wrap",
+                            }}
                         >
-                            {rules.map((r) => {
-                                const key =
-                                    (r.rule_id || "") + "|" + (r.group_id || "");
-                                return (
-                                    <Select.Option
-                                        key={key}
-                                        label={ruleLabel(r)}
-                                        value={key}
-                                    />
-                                );
-                            })}
-                        </Select>
+                            <Select
+                                value={ruleKey}
+                                onChange={(e, { value }) => loadRuleRows(value)}
+                                disabled={!baselineId}
+                                placeholder="Select rule"
+                                filter
+                            >
+                                {rules.map((r) => {
+                                    const key =
+                                        (r.rule_id || "") +
+                                        "|" +
+                                        (r.group_id || "");
+                                    return (
+                                        <Select.Option
+                                            key={key}
+                                            label={ruleLabel(r)}
+                                            value={key}
+                                        />
+                                    );
+                                })}
+                            </Select>
+                            {selectedRule ? (
+                                <span
+                                    style={{
+                                        fontSize: 12,
+                                        color: "#555",
+                                        maxWidth: 360,
+                                    }}
+                                >
+                                    {selectedRule.rule_title ||
+                                        selectedRule.title ||
+                                        ""}
+                                </span>
+                            ) : null}
+                        </div>
                     </ControlGroup>
-                    <Actions>
-                        <Button
-                            appearance="secondary"
-                            disabled={busy || !rows.length}
-                            onClick={() => onBatchWorkflow("submit")}
-                        >
-                            Submit
-                        </Button>
-                        <Button
-                            appearance="secondary"
-                            disabled={busy || !rows.length}
-                            onClick={() => onBatchWorkflow("accept")}
-                        >
-                            Accept
-                        </Button>
-                        <Button
-                            appearance="secondary"
-                            disabled={busy || !rows.length}
-                            onClick={() => onBatchWorkflow("reject")}
-                        >
-                            Reject
-                        </Button>
-                        <Button
-                            appearance="primary"
-                            disabled={busy || !dirtyCount}
-                            onClick={onSave}
-                        >
-                            Save {dirtyCount ? "(" + dirtyCount + ")" : "changes"}
-                        </Button>
-                    </Actions>
                 </Toolbar>
                 <HeaderMeta>
                     {loading ? <WaitSpinner /> : null}
@@ -702,33 +694,57 @@ export default function CollectionReviewApp() {
                                 : ""}
                         </span>
                     ) : null}
-                    <Link to={viewUrl("stig_editor_ui")}>Editor</Link>
-                    <Link to={viewUrl("stig_import_ui")}>Import</Link>
-                    <Link to={viewUrl("stig_export_ui")}>Export</Link>
-                    <Link to={viewUrl("configuration")}>Configuration</Link>
                 </HeaderMeta>
             </Header>
             <PagePad>
                 {banner ? (
-                    <Message type={banner.type} onRequestRemove={() => setBanner(null)}>
+                    <Message
+                        appearance={banner.type}
+                        onRequestRemove={() => setBanner(null)}
+                    >
                         {banner.text}
                     </Message>
                 ) : null}
-                {selectedRule ? (
-                    <p style={{ margin: "0 0 12px", fontSize: 13, color: "#555" }}>
-                        {selectedRule.rule_title || selectedRule.title || ""}
-                    </p>
-                ) : null}
                 {ruleKey ? (
-                    <div
+                    <Toolbar
                         style={{
-                            display: "flex",
-                            gap: 12,
-                            alignItems: "flex-end",
                             marginBottom: 12,
                             flexWrap: "wrap",
+                            alignItems: "flex-end",
+                            gap: 12,
                         }}
                     >
+                        <Actions>
+                            <Button
+                                appearance="secondary"
+                                disabled={busy || !rows.length}
+                                onClick={() => onBatchWorkflow("submit")}
+                            >
+                                Submit
+                            </Button>
+                            <Button
+                                appearance="secondary"
+                                disabled={busy || !rows.length}
+                                onClick={() => onBatchWorkflow("accept")}
+                            >
+                                Accept
+                            </Button>
+                            <Button
+                                appearance="secondary"
+                                disabled={busy || !rows.length}
+                                onClick={() => onBatchWorkflow("reject")}
+                            >
+                                Reject
+                            </Button>
+                            <Button
+                                appearance="primary"
+                                disabled={busy || !dirtyCount}
+                                onClick={onSave}
+                            >
+                                Save{" "}
+                                {dirtyCount ? "(" + dirtyCount + ")" : "changes"}
+                            </Button>
+                        </Actions>
                         <ControlGroup
                             label="Reject feedback (optional)"
                             labelPosition="top"
@@ -736,20 +752,29 @@ export default function CollectionReviewApp() {
                         >
                             <Text
                                 value={rejectFeedback}
-                                onChange={(e, { value }) => setRejectFeedback(value)}
+                                onChange={(e, { value }) =>
+                                    setRejectFeedback(value)
+                                }
                                 disabled={busy}
                                 placeholder="Shown when rejecting submitted reviews"
                             />
                         </ControlGroup>
-                        <p style={{ margin: 0, fontSize: 12, color: "#666", maxWidth: 420 }}>
-                            Governance applies to checked rows, or all eligible hosts for this
-                            rule when none are checked. Accept/reject require server-side
-                            authorization.
+                        <p
+                            style={{
+                                margin: 0,
+                                fontSize: 12,
+                                color: "#666",
+                                maxWidth: 420,
+                            }}
+                        >
+                            Governance applies to checked rows, or all eligible hosts
+                            for this rule when none are checked. Accept/reject require
+                            server-side authorization.
                         </p>
-                    </div>
+                    </Toolbar>
                 ) : null}
                 {!ruleKey ? (
-                    <Message type="info">
+                    <Message appearance="info">
                         Choose a workspace, baseline, and rule to review that check across
                         all hosts with that checklist assigned.
                     </Message>

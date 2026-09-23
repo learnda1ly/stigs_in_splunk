@@ -1,10 +1,10 @@
-<dashboard version="1.1" script="stig_assignment_ui.js" hideEdit="true" hideExport="true" hideTitle="true">
+<dashboard version="1.1" theme="dark" script="stig_splunk_ui_boot.js" hideEdit="true" hideExport="true" hideTitle="true">
   <label>Workspace assignment</label>
   <description>Route ingested findings to workspaces using rules and host×baseline overrides.</description>
   <row>
     <panel>
       <html>
-        <div id="stig-ui-root"></div>
+        <div id="stig-ui-root" data-ui-bundle="assignment"></div>
       </html>
     </panel>
   </row>

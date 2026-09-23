@@ -1,3 +1,4 @@
+// Legacy view: canonical baseline import UI is Import → Baselines tab (stig_import_ui).
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Button from "@splunk/react-ui/Button";
 import Heading from "@splunk/react-ui/Heading";
@@ -23,7 +24,9 @@ import {
 } from "../layout";
 
 const CHUNK = 4 * 1024 * 1024;
-const ACCEPT = ".zip,.xml,.xccdf,application/zip,text/xml,application/xml";
+const ACCEPT_ZIP = ".zip,application/zip,application/x-zip-compressed,application/octet-stream";
+const ACCEPT_XML = ".xml,.xccdf";
+const ACCEPT = ACCEPT_ZIP + "," + ACCEPT_XML;
 
 function detectKind(name) {
     const lower = String(name || "").toLowerCase();
@@ -595,9 +598,6 @@ export default function BaselinesApp() {
                     <ProgressTrack title={importPct + "%"}>
                         <ProgressFill $pct={importPct} />
                     </ProgressTrack>
-                    <Link to={viewUrl("stig_import_ui")}>Import checklists</Link>
-                    <Link to={viewUrl("stig_editor_ui")}>Editor</Link>
-                    <Link to={viewUrl("configuration")}>Configuration</Link>
                 </HeaderMeta>
             </Header>
             <PagePad>

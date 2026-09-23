@@ -1,10 +1,10 @@
-<dashboard version="1.1" script="stig_collection_dashboard_ui.js" hideEdit="true" hideExport="true" hideTitle="true">
+<dashboard version="1.1" theme="dark" script="stig_splunk_ui_boot.js" hideEdit="true" hideExport="true" hideTitle="true">
   <label>Collection dashboard</label>
   <description>Workspace metrics and open findings report.</description>
   <row>
     <panel>
       <html>
-        <div id="stig-ui-root"></div>
+        <div id="stig-ui-root" data-ui-bundle="collection_dashboard"></div>
       </html>
     </panel>
   </row>

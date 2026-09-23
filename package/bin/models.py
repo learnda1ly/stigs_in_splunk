@@ -32,6 +32,8 @@ AUDIT_HEC_INPUT_NAME = "stig_audit"
 AUDIT_HEC_STANZA = "http://stig_audit"
 DEFAULT_HEC_URL = "https://localhost:8088/services/collector/event"
 DEFAULT_RECONCILE_EARLIEST = "-15m"
+DEFAULT_UI_COLOR_SCHEME = "dark"
+VALID_UI_COLOR_SCHEMES = frozenset({"dark", "light", "follow_splunk"})
 
 STATUSES = frozenset(
     {"not_reviewed", "open", "not_a_finding", "not_applicable"}

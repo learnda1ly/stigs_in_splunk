@@ -108,7 +108,7 @@ Client (curl / SDK / Splunk Web)
 **Source of truth** is `package/` plus repo-root UCC files. **Installable artifact** is `output/stigs_in_splunk/` (or `output/stigs_in_splunk-<version>.tar.gz`).
 
 ```text
-globalConfig.yaml          # UCC meta + pages.configuration (workspaces, baselines, settings)
+globalConfig.json          # UCC meta + pages.configuration (workspaces, baselines, settings)
 additional_packaging.py    # post-build hooks (KV reload trigger, prune unused UCC stubs)
 package/
   app.manifest
@@ -140,11 +140,11 @@ README.md
 spec.md
 ```
 
-**App identity:** `package.id = stigs_in_splunk`, label “STIG in Splunk”, version from `globalConfig.yaml` / `--ta-version` (default `0.1.0`).
+**App identity:** `package.id = stigs_in_splunk`, label “STIG in Splunk”, version from `globalConfig.json` / `--ta-version` (default `0.1.0`).
 
 ### 4.1 UCC packaging pattern
 
-- **`globalConfig.yaml`** defines `meta` and **`pages.configuration`** (no `pages.inputs`). This is a REST + KV app with a UCC Configuration UI, not a modular-input TA.
+- **`globalConfig.json`** defines `meta` and **`pages.configuration`** (no `pages.inputs`). This is a REST + KV app with a UCC Configuration UI, not a modular-input TA.
 - UCC **generates** `default/app.conf`, `app.manifest` version fields, `VERSION`, the **Configuration** view (`configuration.xml`), REST handlers for configuration tabs, and copies `package/**` into `output/<app>/`.
 - Hand-written `restmap.conf` / `web.conf` in `package/default/` stay for persist-conn `/stig_*` APIs. UCC **merges** additional restmap/web stanzas for Configuration endpoints (`[admin:stigs_in_splunk]` / `admin_external`). Never replace the built `restmap.conf` with the persist-only package file; `additional_packaging.py` restores the UCC stanzas if they are missing. Without them the Configuration page 404s.
 - **`package/lib/requirements.txt`** must list `splunktaucclib>=6.6.0,<8` and `solnlib>=5.5.0,<8`. UCC pip-installs them into `output/<app>/lib`. Without `splunktaucclib`, Configuration REST handlers crash and Splunk Web shows `Unable to xml-parse the following data: %s`. Do not use solnlib 8.x (grpcio/OpenTelemetry wheels do not match Splunk's Python).
@@ -183,7 +183,7 @@ STIG Manager’s `/op/configuration` maps to Splunk **UCC Configuration → Edit
 |-------|----------------|
 | `hec_token` | Splunk HTTP Event Collector input stanza **`[http://stig_findings]`** in `inputs.conf` (read server-side by `services/hec.py::lookup_hec_token`). Never returned from `/stig_settings`, never written from REST bodies (stripped in `save_settings`). |
 
-**UCC admin REST (Configuration UI backend):** `GET|POST /servicesNS/nobody/stigs_in_splunk/stigs_in_splunk_settings/general` (Splunk Web proxies `stigs_in_splunk_settings` per `web.conf`). Field definitions and help text are authored in **`globalConfig.yaml`** tab `general`.
+**UCC admin REST (Configuration UI backend):** `GET|POST /servicesNS/nobody/stigs_in_splunk/stigs_in_splunk_settings/general` (Splunk Web proxies `stigs_in_splunk_settings` per `web.conf`). Field definitions and help text are authored in **`globalConfig.json`** tab `general`.
 
 **Workspace names** are unique (case-insensitive). The UCC table row id is the workspace `name`. Baseline table row id is `ucc_name` (set on import; falls back to `_key` for legacy rows).
 

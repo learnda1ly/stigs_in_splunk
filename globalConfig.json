@@ -1,0 +1,212 @@
+{
+    "meta": {
+        "name": "stigs_in_splunk",
+        "restRoot": "stigs_in_splunk",
+        "displayName": "STIG in Splunk",
+        "version": "0.1.0",
+        "schemaVersion": "0.0.10",
+        "checkForUpdates": false,
+        "isVisible": true,
+        "hideUCCVersion": true,
+        "supportedThemes": [
+            "light",
+            "dark"
+        ]
+    },
+    "pages": {
+        "configuration": {
+            "title": "Configuration",
+            "description": "Workspaces and editor/ingest settings. Import STIG baselines and checklists from the Import page. The HEC token stays on the Splunk stig_findings input and is never shown here.",
+            "tabs": [
+                {
+                    "name": "workspace",
+                    "title": "Workspaces",
+                    "formTitle": "workspace",
+                    "restHandlerModule": "stig_ucc_workspace_rh",
+                    "restHandlerClass": "WorkspaceRestHandler",
+                    "table": {
+                        "actions": [
+                            "edit",
+                            "delete"
+                        ],
+                        "header": [
+                            {
+                                "field": "name",
+                                "label": "Name"
+                            },
+                            {
+                                "field": "is_default",
+                                "label": "Default"
+                            },
+                            {
+                                "field": "description",
+                                "label": "Description"
+                            },
+                            {
+                                "field": "access_principals",
+                                "label": "Access principals"
+                            }
+                        ],
+                        "moreInfo": [
+                            {
+                                "field": "name",
+                                "label": "Name"
+                            },
+                            {
+                                "field": "is_default",
+                                "label": "Default import workspace"
+                            },
+                            {
+                                "field": "description",
+                                "label": "Description"
+                            },
+                            {
+                                "field": "access_principals",
+                                "label": "Access principals"
+                            }
+                        ]
+                    },
+                    "entity": [
+                        {
+                            "field": "name",
+                            "label": "Name",
+                            "type": "text",
+                            "required": true,
+                            "help": "Unique workspace name. Hosts and checklists belong to one workspace.",
+                            "options": {
+                                "disableonEdit": true
+                            }
+                        },
+                        {
+                            "field": "description",
+                            "label": "Description",
+                            "type": "textarea",
+                            "required": false
+                        },
+                        {
+                            "field": "access_principals",
+                            "label": "Access principals",
+                            "type": "textarea",
+                            "required": false,
+                            "help": "JSON array of user:<name> or role:<name>. Empty means any user with STIG capabilities can read this workspace.",
+                            "defaultValue": ""
+                        },
+                        {
+                            "field": "is_default",
+                            "label": "Default import workspace",
+                            "type": "checkbox",
+                            "defaultValue": false,
+                            "help": "Checklist imports with no workspace go here until you move the host. Only one workspace is default."
+                        }
+                    ],
+                    "warning": {
+                        "config": {
+                            "message": "Empty workspaces can be deleted here (Splunk shows a confirm dialog). Workspaces that still have hosts, checklists, grants, or assignment rows must be removed with REST DELETE and ?cascade=true (stig_admin only); global baselines are never deleted."
+                        }
+                    }
+                },
+                {
+                    "name": "general",
+                    "title": "Editor & ingest",
+                    "entity": [
+                        {
+                            "field": "ui_color_scheme",
+                            "label": "UI color scheme",
+                            "type": "singleSelect",
+                            "required": true,
+                            "defaultValue": "dark",
+                            "help": "SplunkUI pages (STIG Editor, Import, dashboards). follow_splunk uses the signed-in user's Splunk theme.",
+                            "options": {
+                                "disableSearch": true,
+                                "items": [
+                                    {
+                                        "label": "Dark",
+                                        "value": "dark"
+                                    },
+                                    {
+                                        "label": "Light",
+                                        "value": "light"
+                                    },
+                                    {
+                                        "label": "Follow Splunk user theme",
+                                        "value": "follow_splunk"
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "field": "vim_mode",
+                            "label": "Enable vim-style keyboard shortcuts",
+                            "type": "checkbox",
+                            "defaultValue": false,
+                            "help": "Three layers in the editor — INSERT, field NORMAL, and NAV. The editor badge can also toggle this per browser."
+                        },
+                        {
+                            "field": "trust_event_collection_id",
+                            "label": "Trust collectionId on HEC events",
+                            "type": "checkbox",
+                            "defaultValue": false,
+                            "help": "When off (default), workspace routing uses assignment rules and overrides only. Enable only for legacy senders that always set collectionId correctly."
+                        },
+                        {
+                            "field": "ingest_index",
+                            "label": "Index",
+                            "type": "text",
+                            "required": true,
+                            "defaultValue": "stig",
+                            "help": "Index for stig:finding events posted to HEC."
+                        },
+                        {
+                            "field": "ingest_sourcetype",
+                            "label": "Sourcetype",
+                            "type": "text",
+                            "required": true,
+                            "defaultValue": "stig:finding",
+                            "help": "Sourcetype for stig:finding events (must match HEC input and the scheduled reconcile search)."
+                        },
+                        {
+                            "field": "hec_url",
+                            "label": "HEC URL",
+                            "type": "text",
+                            "required": true,
+                            "defaultValue": "https://localhost:8088/services/collector/event",
+                            "help": "Server-side HEC endpoint. The token is read from the stig_findings HTTP Event Collector input and is never stored or returned to the browser."
+                        },
+                        {
+                            "field": "reconcile_earliest",
+                            "label": "Reconcile window",
+                            "type": "text",
+                            "required": true,
+                            "defaultValue": "-15m",
+                            "help": "Earliest time for the scheduled index-to-KV reconcile search."
+                        }
+                    ],
+                    "groups": [
+                        {
+                            "label": "Editor",
+                            "fields": [
+                                "ui_color_scheme",
+                                "vim_mode"
+                            ]
+                        },
+                        {
+                            "label": "Finding ingest (HEC)",
+                            "fields": [
+                                "trust_event_collection_id",
+                                "ingest_index",
+                                "ingest_sourcetype",
+                                "hec_url",
+                                "reconcile_earliest"
+                            ]
+                        }
+                    ],
+                    "warning": {
+                        "config": {
+                            "message": "Stored in local stigs_in_splunk_settings.conf stanza [general]. Splunk admins edit here (app conf write per metadata/default.meta). The HEC token is never a field on this form; it lives on the stig_findings HEC input only."
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}

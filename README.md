@@ -19,8 +19,13 @@ This app is packaged with the [Splunk UCC framework](https://splunk.github.io/ad
 ### One-time setup
 
 ```bash
+# SplunkUI bundles (webpack): Node.js 18+ and npm on PATH
+node --version   # e.g. 20.x from NodeSource on RHEL
+
 python3 -m venv .venv-ucc
 .venv-ucc/bin/pip install -r requirements-ucc.txt
+
+cd ui && npm install && cd ..
 ```
 
 Install from PyPI, not GitHub. The git checkout does not ship `entry_page.js`, so the Configuration page is a blank white screen.
@@ -51,11 +56,13 @@ sudo systemctl restart Splunkd
 
 `STIG_APP_SOURCE` defaults to `output/stigs_in_splunk`. After `./scripts/build_ucc.sh`, remount if that directory is bind-mounted (`./scripts/link-splunk-app.sh umount && ./scripts/link-splunk-app.sh`) so Splunk is not left on a deleted folder. Then restart Splunk. Edit Python under `package/bin/` and re-run `./scripts/build_ucc.sh` before restarting Splunk.
 
+For UI work, install the optional **`dev-settings`** technical add-on (`dev-settings/`) on the dev Splunk instance only. It sets `js_no_cache`, `cacheEntriesLimit=0`, and `cacheBytesLimit=0` in `web.conf` so splunkd does not cache `appserver/static` assets (see `dev-settings/README.md` and Splunk’s [asset caching](https://dev.splunk.com/enterprise/docs/developapps/manageknowledge/assetcaching/) docs). Disable or remove that app in production.
+
 ### UCC layout
 
 | Path | Role |
 |------|------|
-| `globalConfig.yaml` | UCC meta plus Configuration tabs (workspaces, editor/ingest) |
+| `globalConfig.json` | UCC meta plus Configuration tabs (workspaces, editor/ingest) |
 | `package/` | App source copied into the build (`bin/`, `default/*.conf`, `metadata/`, `app.manifest`) |
 | `package/lib/requirements.txt` | `splunktaucclib` for UCC Configuration REST (pip-installed into `output/.../lib`) |
 | `additional_packaging.py` | Post-build: KV reload trigger, keep UCC Configuration view, restore custom nav |

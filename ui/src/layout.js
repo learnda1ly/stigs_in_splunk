@@ -89,11 +89,69 @@ export const PagePad = styled.div`
     padding: 20px 24px 32px;
 `;
 
+export const PageIntro = styled.div`
+    max-width: 960px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    line-height: 1.55;
+    color: ${variables.contentColorMuted};
+
+    p {
+        margin: 0 0 10px;
+    }
+    ol {
+        margin: 0;
+        padding-left: 1.25rem;
+    }
+    li {
+        margin-bottom: 6px;
+    }
+    code {
+        font-size: 12px;
+    }
+`;
+
+export const TwoColGrid = styled.div`
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr));
+    gap: 28px 36px;
+    align-items: start;
+    width: 100%;
+    max-width: 1440px;
+`;
+
+export const SectionBlock = styled.section`
+    min-width: 0;
+`;
+
+export const FormCard = styled.div`
+    margin-top: 12px;
+    padding: 16px 18px;
+    border: 1px solid ${variables.borderColor};
+    border-radius: 8px;
+    background: ${variables.backgroundColorSection};
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+`;
+
+export const FormRow = styled.div`
+    display: grid;
+    grid-template-columns: ${(p) => p.$columns || "1fr"};
+    gap: 12px 16px;
+    align-items: end;
+
+    @media (max-width: 640px) {
+        grid-template-columns: 1fr;
+    }
+`;
+
 export const FilterRow = styled.div`
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 10px 16px;
+    align-items: flex-end;
+    gap: 6px 8px;
+    padding: 6px 16px;
     border-bottom: 1px solid ${variables.borderColor};
 `;
 
@@ -108,8 +166,12 @@ export const FindingList = styled.div`
 
 export const FindingRow = styled.button`
     display: grid;
-    grid-template-columns: 22px 118px 108px minmax(0, 1fr);
-    gap: 10px;
+    grid-template-columns: ${(p) =>
+        p.$showHostname
+            ? "22px minmax(68px, 84px) minmax(60px, 72px) minmax(72px, 110px) minmax(0, 1fr)"
+            : "22px minmax(68px, 84px) minmax(60px, 72px) minmax(0, 1fr)"};
+    gap: 8px;
+    align-items: center;
     width: 100%;
     text-align: left;
     border: 0;
@@ -119,6 +181,9 @@ export const FindingRow = styled.button`
     cursor: pointer;
     color: inherit;
     font: inherit;
+    & > * {
+        min-width: 0;
+    }
     &:hover {
         background: ${variables.interactiveColorOverlayHover};
     }
@@ -182,11 +247,14 @@ export const Empty = styled.div`
 `;
 
 export const ProgressTrack = styled.div`
+    display: block;
+    box-sizing: border-box;
     height: 6px;
     border-radius: 99px;
     background: ${variables.neutral200};
     overflow: hidden;
     min-width: 120px;
+    width: 100%;
 `;
 
 export const DropZone = styled.div`
@@ -222,10 +290,29 @@ export const DropHint = styled.div`
     font-size: 13px;
 `;
 
-export const ProgressFill = styled.div`
+function clampPct(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) {
+        return 0;
+    }
+    return Math.min(100, Math.max(0, Math.round(n)));
+}
+
+/** Inline width: dashboard CSS can override styled width rules; tooltip uses title on track. */
+export const ProgressFill = styled.div.attrs((props) => ({
+    style: {
+        width: clampPct(props.$pct) + "%",
+    },
+}))`
+    display: block;
+    box-sizing: border-box;
     height: 100%;
-    width: ${(p) => p.$pct || 0}%;
+    min-width: 0;
+    max-width: 100%;
     background: ${variables.accentColorDefault};
+    background-color: var(--splunk-color-accent, #65a637);
+    border-radius: inherit;
+    transition: width 0.12s ease-out;
 `;
 
 export const VimBadge = styled.button`

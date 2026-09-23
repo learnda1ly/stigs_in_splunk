@@ -9,7 +9,7 @@ info:
 
     **Not** the STIG Manager OpenAPI (`stig-manager.yaml`). Resource names are Splunk-shaped (`stig_*`).
 
-    **Versioning:** `info.version` tracks the app release (`package/app.manifest`, `globalConfig.yaml`).
+    **Versioning:** `info.version` tracks the app release (`package/app.manifest`, `globalConfig.json`).
     URL paths are not version-prefixed. Update this file when `package/bin/stig_rest_handler.py` changes.
 
     **Auth:** Splunk session or HTTP Basic on the management port; Splunk Web uses session + CSRF form key.

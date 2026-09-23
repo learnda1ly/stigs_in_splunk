@@ -25,7 +25,7 @@ fi
 
 "$UCC_GEN" build \
   --source "$ROOT/package" \
-  --config "$ROOT/globalConfig.yaml" \
+  --config "$ROOT/globalConfig.json" \
   --output "$OUTPUT" \
   --ta-version "$TA_VERSION" \
   --python-binary-name "$UCC_PYTHON" \

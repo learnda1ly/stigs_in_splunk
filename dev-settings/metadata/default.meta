@@ -1,0 +1,19 @@
+[]
+access = read : [ * ], write : [ admin ]
+export = system
+
+[dev-settings]
+access = read : [ * ], write : [ admin ]
+export = system
+
+[dev-settings/default]
+access = read : [ * ], write : [ admin ]
+export = system
+
+[dev-settings/default/app.conf]
+access = read : [ * ], write : [ admin ]
+export = system
+
+[dev-settings/default/web.conf]
+access = read : [ * ], write : [ admin ]
+export = system

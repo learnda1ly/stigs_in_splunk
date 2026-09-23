@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Button from "@splunk/react-ui/Button";
 import ControlGroup from "@splunk/react-ui/ControlGroup";
 import Heading from "@splunk/react-ui/Heading";
-import Link from "@splunk/react-ui/Link";
 import Message from "@splunk/react-ui/Message";
 import Search from "@splunk/react-ui/Search";
 import Select from "@splunk/react-ui/Select";
@@ -130,10 +129,24 @@ export default function EditorApp() {
     const [cmdOpen, setCmdOpen] = useState(false);
     const [jump, setJump] = useState(null);
     const [fieldRequest, setFieldRequest] = useState(null);
+    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [hostActionsOpen, setHostActionsOpen] = useState(false);
     const listRef = useRef(null);
     const searchWrapRef = useRef(null);
     const ctxRef = useRef({});
     const skipLeaveRef = useRef(false);
+    const deepLinkRef = useRef(null);
+    if (deepLinkRef.current === null) {
+        const params = new URLSearchParams(window.location.search);
+        deepLinkRef.current = {
+            cid: params.get("stig_collection_id") || "",
+            hostId: params.get("host_id") || "",
+            checklistId: params.get("checklist_id") || "",
+        };
+    }
+    const [pendingChecklistSelect, setPendingChecklistSelect] = useState(
+        () => deepLinkRef.current.checklistId || ""
+    );
 
     const hostsById = useMemo(() => {
         const map = {};
@@ -277,9 +290,13 @@ export default function EditorApp() {
         setSelectedKey(next[0] ? next[0].review._key : "");
     };
 
-    const onCollection = (id) => {
+    const onCollection = (id, deepLink = {}) => {
         setCollectionId(id);
-        setHostId("");
+        if (deepLink.hostId) {
+            setHostId(deepLink.hostId);
+        } else {
+            setHostId("");
+        }
         setLabelFilter("");
         setMoveTo("");
         setItems([]);
@@ -316,7 +333,17 @@ export default function EditorApp() {
                 ]);
             })
             .then(([cls, reviews]) => {
-                loadFindings(cls, Array.isArray(reviews) ? reviews : []);
+                let useCls = cls;
+                let useReviews = Array.isArray(reviews) ? reviews : [];
+                if (deepLink.hostId) {
+                    useCls = cls.filter((c) => c.host_id === deepLink.hostId);
+                    const ids = new Set(useCls.map((c) => c._key));
+                    useReviews = useReviews.filter((r) => ids.has(r.checklist_id));
+                }
+                loadFindings(useCls, useReviews);
+                if (deepLink.checklistId) {
+                    setPendingChecklistSelect(deepLink.checklistId);
+                }
             })
             .catch((err) =>
                 setBanner({ type: "error", text: "Failed to load workspace: " + err.message })
@@ -325,12 +352,29 @@ export default function EditorApp() {
     };
 
     useEffect(() => {
+        if (!pendingChecklistSelect || !items.length) {
+            return;
+        }
+        const match = items.find(
+            (row) => row.review.checklist_id === pendingChecklistSelect
+        );
+        if (match) {
+            setSelectedKey(match.review._key);
+            setPendingChecklistSelect("");
+        }
+    }, [items, pendingChecklistSelect]);
+
+    useEffect(() => {
         if (collectionId || !collections.length) {
             return;
         }
-        const id = defaultWorkspaceId(collections);
+        const dl = deepLinkRef.current || {};
+        const id = dl.cid || defaultWorkspaceId(collections);
         if (id) {
-            onCollection(id);
+            onCollection(id, {
+                hostId: dl.hostId || "",
+                checklistId: dl.checklistId || "",
+            });
         }
     }, [collections, collectionId]);
 
@@ -1113,7 +1157,82 @@ export default function EditorApp() {
                             ))}
                         </Select>
                     </ControlGroup>
-                    <ControlGroup label="Label filter" labelPosition="top">
+                    <ControlGroup label="Search" labelPosition="top">
+                        <div ref={searchWrapRef}>
+                            <Search
+                                value={query}
+                                onChange={(e, { value }) => setQuery(value)}
+                                placeholder="Rule, host, details…"
+                            />
+                        </div>
+                    </ControlGroup>
+                    <ControlGroup label=" " labelPosition="top">
+                        <Button
+                            appearance={filtersOpen ? "primary" : "secondary"}
+                            onClick={() => setFiltersOpen((open) => !open)}
+                            label={filtersOpen ? "Filters ▴" : "Filters ▾"}
+                            aria-expanded={filtersOpen}
+                        />
+                    </ControlGroup>
+                    <ControlGroup label=" " labelPosition="top">
+                        <Button
+                            appearance={hostActionsOpen ? "primary" : "secondary"}
+                            onClick={() => setHostActionsOpen((open) => !open)}
+                            label={hostActionsOpen ? "Host actions ▴" : "Host actions ▾"}
+                            aria-expanded={hostActionsOpen}
+                        />
+                    </ControlGroup>
+                </Toolbar>
+                <HeaderMeta>
+                    <div>
+                        {doneCount} completed · {items.length - doneCount} incomplete ·{" "}
+                        {workflowCounts.submitted} submitted · {workflowCounts.accepted}{" "}
+                        accepted
+                    </div>
+                    <ProgressTrack title={pct + "% complete"}>
+                        <ProgressFill $pct={pct} />
+                    </ProgressTrack>
+                    <VimBadge
+                        type="button"
+                        className={
+                            !vimEnabled
+                                ? "is-off"
+                                : vimLayer === "insert"
+                                  ? "insert"
+                                  : vimLayer === "nav"
+                                    ? "nav"
+                                    : ""
+                        }
+                        onClick={toggleVim}
+                        title={
+                            vimEnabled
+                                ? "Vim is on. Click to disable."
+                                : "Vim keys are off. Click to enable."
+                        }
+                    >
+                        {!vimEnabled
+                            ? "VIM OFF"
+                            : vimLayer === "insert"
+                              ? "INSERT"
+                              : vimLayer === "text"
+                                ? "NORMAL"
+                                : "NAV"}
+                    </VimBadge>
+                </HeaderMeta>
+            </Header>
+            {banner ? (
+                <div style={{ padding: "8px 20px 0" }}>
+                    <Message
+                        appearance={banner.type}
+                        onRequestRemove={() => setBanner(null)}
+                    >
+                        {banner.text}
+                    </Message>
+                </div>
+            ) : null}
+            {filtersOpen ? (
+                <FilterRow>
+                    <ControlGroup label="Label" labelPosition="left">
                         <Select
                             value={labelFilter}
                             onChange={(e, { value }) => {
@@ -1139,6 +1258,43 @@ export default function EditorApp() {
                             ))}
                         </Select>
                     </ControlGroup>
+                    <Button
+                        inline
+                        appearance={!statusFilter ? "primary" : "default"}
+                        label="All statuses"
+                        onClick={() => setStatusFilter("")}
+                    />
+                    {Object.keys(STATUS_LABELS).map((st) => (
+                        <Button
+                            key={st}
+                            inline
+                            appearance={statusFilter === st ? "primary" : "default"}
+                            label={STATUS_LABELS[st]}
+                            onClick={() => setStatusFilter(st)}
+                        />
+                    ))}
+                    <Button
+                        inline
+                        appearance={!validityFilter ? "primary" : "default"}
+                        label="All"
+                        onClick={() => setValidityFilter("")}
+                    />
+                    <Button
+                        inline
+                        appearance={validityFilter === "complete" ? "primary" : "default"}
+                        label="Completed"
+                        onClick={() => setValidityFilter("complete")}
+                    />
+                    <Button
+                        inline
+                        appearance={validityFilter === "incomplete" ? "primary" : "default"}
+                        label="Incomplete"
+                        onClick={() => setValidityFilter("incomplete")}
+                    />
+                </FilterRow>
+            ) : null}
+            {hostActionsOpen ? (
+                <FilterRow>
                     {hostChecklists.length ? (
                         <>
                             {hostChecklists.length > 1 ? (
@@ -1374,15 +1530,6 @@ export default function EditorApp() {
                             label="Move"
                         />
                     ) : null}
-                    <ControlGroup label="Filter" labelPosition="top">
-                        <div ref={searchWrapRef}>
-                            <Search
-                                value={query}
-                                onChange={(e, { value }) => setQuery(value)}
-                                placeholder="Rule, host, details…"
-                            />
-                        </div>
-                    </ControlGroup>
                     <Button
                         appearance="secondary"
                         disabled={busy || !checklists.length}
@@ -1414,88 +1561,8 @@ export default function EditorApp() {
                         }}
                         label="Import baselines"
                     />
-                </Toolbar>
-                <HeaderMeta>
-                    <div>
-                        {doneCount} completed · {items.length - doneCount} incomplete ·{" "}
-                        {workflowCounts.submitted} submitted · {workflowCounts.accepted}{" "}
-                        accepted
-                    </div>
-                    <ProgressTrack title={pct + "% complete"}>
-                        <ProgressFill $pct={pct} />
-                    </ProgressTrack>
-                    <VimBadge
-                        type="button"
-                        className={
-                            !vimEnabled
-                                ? "is-off"
-                                : vimLayer === "insert"
-                                  ? "insert"
-                                  : vimLayer === "nav"
-                                    ? "nav"
-                                    : ""
-                        }
-                        onClick={toggleVim}
-                        title={
-                            vimEnabled
-                                ? "Vim is on. Click to disable."
-                                : "Vim keys are off. Click to enable."
-                        }
-                    >
-                        {!vimEnabled
-                            ? "VIM OFF"
-                            : vimLayer === "insert"
-                              ? "INSERT"
-                              : vimLayer === "text"
-                                ? "NORMAL"
-                                : "NAV"}
-                    </VimBadge>
-                    <Link to={viewUrl("stig_collection_review_ui")}>Collection review</Link>
-                    <Link to={viewUrl("stig_import_ui")}>Import</Link>
-                    <Link to={viewUrl("configuration")}>Configuration</Link>
-                    <Link to={viewUrl("stig_editor")}>Classic</Link>
-                </HeaderMeta>
-            </Header>
-            {banner ? (
-                <div style={{ padding: "8px 20px 0" }}>
-                    <Message
-                        appearance={banner.type}
-                        onRequestRemove={() => setBanner(null)}
-                    >
-                        {banner.text}
-                    </Message>
-                </div>
+                </FilterRow>
             ) : null}
-            <FilterRow>
-                <Button
-                    appearance={!statusFilter ? "primary" : "default"}
-                    label="All statuses"
-                    onClick={() => setStatusFilter("")}
-                />
-                {Object.keys(STATUS_LABELS).map((st) => (
-                    <Button
-                        key={st}
-                        appearance={statusFilter === st ? "primary" : "default"}
-                        label={STATUS_LABELS[st]}
-                        onClick={() => setStatusFilter(st)}
-                    />
-                ))}
-                <Button
-                    appearance={!validityFilter ? "primary" : "default"}
-                    label="All"
-                    onClick={() => setValidityFilter("")}
-                />
-                <Button
-                    appearance={validityFilter === "complete" ? "primary" : "default"}
-                    label="Completed"
-                    onClick={() => setValidityFilter("complete")}
-                />
-                <Button
-                    appearance={validityFilter === "incomplete" ? "primary" : "default"}
-                    label="Incomplete"
-                    onClick={() => setValidityFilter("incomplete")}
-                />
-            </FilterRow>
             <Body>
                 <ListPane>
                     {loading ? (
@@ -1517,20 +1584,31 @@ export default function EditorApp() {
                                     hostsById[checklistById(rev.checklist_id).host_id] || {};
                                 const complete = reviewIsValid(rev, reviewRequirements);
                                 const isSel = selected && selected.review._key === rev._key;
+                                const showHostname = !hostId;
                                 return (
                                     <FindingRow
                                         key={rev._key}
                                         data-key={rev._key}
                                         $selected={isSel}
+                                        $showHostname={showHostname}
                                         type="button"
                                         onClick={() => setSelectedKey(rev._key)}
                                     >
                                         <span>{complete ? "✓" : ""}</span>
                                         <StatusChip status={rev.status} />
                                         <WorkflowChip workflowState={rev.workflow_state} />
-                                        <span>
-                                            {host.hostname || host._key || "—"}
-                                        </span>
+                                        {showHostname ? (
+                                            <span
+                                                style={{
+                                                    overflow: "hidden",
+                                                    textOverflow: "ellipsis",
+                                                    whiteSpace: "nowrap",
+                                                    fontSize: "12px",
+                                                }}
+                                            >
+                                                {host.hostname || host._key || "—"}
+                                            </span>
+                                        ) : null}
                                         <FindingTitle>
                                             {rule.rule_version ||
                                                 rev.rule_version ||

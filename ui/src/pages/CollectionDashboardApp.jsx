@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import Button from "@splunk/react-ui/Button";
 import ControlGroup from "@splunk/react-ui/ControlGroup";
 import Heading from "@splunk/react-ui/Heading";
-import Link from "@splunk/react-ui/Link";
 import Message from "@splunk/react-ui/Message";
 import Select from "@splunk/react-ui/Select";
 import Table from "@splunk/react-ui/Table";
@@ -15,7 +14,6 @@ import {
     defaultWorkspaceId,
     downloadBase64,
     downloadText,
-    viewUrl,
     workspaceLabel,
 } from "../api";
 import {
@@ -24,7 +22,6 @@ import {
     BrandKicker,
     Body,
     Header,
-    HeaderMeta,
     PagePad,
     Shell,
     Toolbar,
@@ -476,7 +473,7 @@ export default function CollectionDashboardApp() {
         opts = opts || {};
         if (!rows || !rows.length) {
             return (
-                <Message type="info" style={{ marginTop: 12 }}>
+                <Message appearance="info" style={{ marginTop: 12 }}>
                     No rows for {title}.
                 </Message>
             );
@@ -543,17 +540,11 @@ export default function CollectionDashboardApp() {
                         </Select>
                     </ControlGroup>
                 </Toolbar>
-                <HeaderMeta>
-                    <Link to={viewUrl("stig_collection_review_ui")}>
-                        Collection review
-                    </Link>
-                    <Link to={viewUrl("stig_editor_ui")}>STIG Editor</Link>
-                </HeaderMeta>
             </Header>
             <Body>
                 <PagePad>
                     {banner ? (
-                        <Message type={banner.type || "info"}>{banner.message}</Message>
+                        <Message appearance={banner.type || "info"}>{banner.message}</Message>
                     ) : null}
                     <TabBar activeTabId={tab} onChange={(e, { selectedTabId }) => setTab(selectedTabId)}>
                         <TabBar.Tab label="Metrics" tabId="metrics" />
@@ -611,7 +602,7 @@ export default function CollectionDashboardApp() {
                                     {reviewAging ? (
                                         <>
                                             <Heading level={4}>Review aging</Heading>
-                                            <Message type="info">
+                                            <Message appearance="info">
                                                 {reviewAging.enabled
                                                     ? "Enabled — stale after " +
                                                       (reviewAging.stale_after_hours
@@ -714,7 +705,7 @@ export default function CollectionDashboardApp() {
                                     </Table>
                                 </>
                             ) : !loading ? (
-                                <Message type="info">Select a workspace to load metrics.</Message>
+                                <Message appearance="info">Select a workspace to load metrics.</Message>
                             ) : null}
                         </>
                     ) : null}
@@ -745,7 +736,7 @@ export default function CollectionDashboardApp() {
                             )}
                             {findingsLoading ? <WaitSpinner /> : null}
                             {pagination ? (
-                                <Message type="info">
+                                <Message appearance="info">
                                     Showing {findings.length} of {pagination.total} matching
                                     rows
                                     {pagination.has_more ? " (increase limit via REST for more)" : ""}
@@ -793,7 +784,7 @@ export default function CollectionDashboardApp() {
                                 </Table.Body>
                             </Table>
                             {!findingsLoading && !findings.length ? (
-                                <Message type="info">No findings match the current filters.</Message>
+                                <Message appearance="info">No findings match the current filters.</Message>
                             ) : null}
                         </>
                     ) : null}
@@ -808,7 +799,7 @@ export default function CollectionDashboardApp() {
                             {aggregateLoading ? <WaitSpinner /> : null}
                             {aggregate ? (
                                 <>
-                                    <Message type="info">
+                                    <Message appearance="info">
                                         Matching findings after filters (governance applies when
                                         status includes open): {aggregate.open_findings_total || 0}
                                     </Message>
@@ -831,7 +822,7 @@ export default function CollectionDashboardApp() {
                                     )}
                                 </>
                             ) : !aggregateLoading ? (
-                                <Message type="info">
+                                <Message appearance="info">
                                     Select a workspace to load aggregated open findings.
                                 </Message>
                             ) : null}
@@ -848,7 +839,7 @@ export default function CollectionDashboardApp() {
                             {unreviewedLoading ? <WaitSpinner /> : null}
                             {unreviewedAssets ? (
                                 <>
-                                    <Message type="info">
+                                    <Message appearance="info">
                                         Counts only assessor status{" "}
                                         <strong>not_reviewed</strong> (not affected by the
                                         findings Status filter on other tabs).{" "}
@@ -954,7 +945,7 @@ export default function CollectionDashboardApp() {
                                     </Table>
                                 </>
                             ) : !unreviewedLoading ? (
-                                <Message type="info">
+                                <Message appearance="info">
                                     Select a workspace to load unreviewed reports.
                                 </Message>
                             ) : null}
