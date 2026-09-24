@@ -13,7 +13,11 @@ class GrantsPage {
   }
 
   async open() {
-    await this.page.goto(appPath('stig_grants_ui'), { timeout: NAV_TIMEOUT_MS });
+    await this.page.goto(appPath('stig_grants_ui'), {
+      timeout: NAV_TIMEOUT_MS,
+      waitUntil: 'domcontentloaded',
+    });
+    await expect(this.page.locator('#stig-ui-root')).toBeVisible({ timeout: NAV_TIMEOUT_MS });
     await expect(this.page.getByRole('heading', { name: /Workspace grants/i })).toBeVisible({
       timeout: NAV_TIMEOUT_MS,
     });
