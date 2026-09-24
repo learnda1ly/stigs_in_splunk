@@ -52,6 +52,7 @@ import {
 } from "../status";
 import VimField from "../vim/VimField";
 import { HelpOverlay, JumpOverlay, VimCommandBar } from "../vim/overlays";
+import EditorThemeSelect from "../components/EditorThemeSelect";
 import { loadVimSetting, persistVimSetting } from "../vim/settings";
 import { VimGlobalStyle } from "../vim/styles";
 import { useEditorKeys } from "../vim/useEditorKeys";
@@ -1166,6 +1167,7 @@ export default function EditorApp() {
                             />
                         </div>
                     </ControlGroup>
+                    <EditorThemeSelect />
                     <ControlGroup label=" " labelPosition="top">
                         <Button
                             appearance={filtersOpen ? "primary" : "secondary"}

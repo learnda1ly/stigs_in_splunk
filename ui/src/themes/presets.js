@@ -111,6 +111,16 @@ export function getBuiltinPreset(id) {
     return PRESET_MAP[key] || TOKYO_NIGHT;
 }
 
+/** In-app theme picker (editor toolbar). Custom JSON still lives under Workspaces → Editor & ingest. */
+export const EDITOR_THEME_CHOICES = [
+    { value: "tokyo_night", label: "Tokyo Night" },
+    { value: "catppuccin", label: "Catppuccin Mocha" },
+    { value: "rose_pine", label: "Rosé Pine" },
+    { value: "light", label: "Light" },
+    { value: "follow_splunk", label: "Follow Splunk" },
+    { value: "custom", label: "Custom (JSON in Workspaces)" },
+];
+
 export const COLOR_KEY_MAP = {
     bgPage: "--stig-bg-page",
     bgSection: "--stig-bg-section",
