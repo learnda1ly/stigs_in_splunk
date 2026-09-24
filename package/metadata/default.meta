@@ -1,4 +1,16 @@
+
+# Application-level permissions
+
 []
+owner = admin
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+[stigs_in_splunk_settings]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+[stigs_in_splunk_workspace]
 access = read : [ * ], write : [ admin, sc_admin ]
 export = system
 

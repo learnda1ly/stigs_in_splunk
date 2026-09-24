@@ -54,7 +54,7 @@ After a build, bind-mount the **built** app (not the repo root):
 sudo systemctl restart Splunkd
 ```
 
-`STIG_APP_SOURCE` defaults to `output/stigs_in_splunk`. After `./scripts/build_ucc.sh`, remount if that directory is bind-mounted (`./scripts/link-splunk-app.sh umount && ./scripts/link-splunk-app.sh`) so Splunk is not left on a deleted folder. Then restart Splunk. Edit Python under `package/bin/` and re-run `./scripts/build_ucc.sh` before restarting Splunk.
+`STIG_APP_SOURCE` defaults to `output/stigs_in_splunk`. After `./scripts/build_ucc.sh`, remount if that directory is bind-mounted (`./scripts/link-splunk-app.sh umount && ./scripts/link-splunk-app.sh`) so Splunk is not left on a deleted folder. Then restart Splunk. The link script sets `local/` and `metadata/local.meta` ownership to the `splunk` user so **Workspaces → Editor & ingest** can save (without that, UCC shows `Could not find writer for ... stigs_in_splunk_settings/general`). If you install by copying or extracting the app as root, run `chown -R splunk:splunk $SPLUNK_HOME/etc/apps/stigs_in_splunk` once. Edit Python under `package/bin/` and re-run `./scripts/build_ucc.sh` before restarting Splunk.
 
 For UI work, install the optional **`dev-settings`** technical add-on (`dev-settings/`) on the dev Splunk instance only. It sets `js_no_cache`, `cacheEntriesLimit=0`, and `cacheBytesLimit=0` in `web.conf` so splunkd does not cache `appserver/static` assets (see `dev-settings/README.md` and Splunk’s [asset caching](https://dev.splunk.com/enterprise/docs/developapps/manageknowledge/assetcaching/) docs). Disable or remove that app in production.
 

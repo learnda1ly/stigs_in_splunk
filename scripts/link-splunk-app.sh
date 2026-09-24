@@ -55,5 +55,21 @@ fi
 
 sudo mkdir -p "${TARGET}"
 sudo mount --bind "${APP_SRC}" "${TARGET}"
+
+# Splunk (splunk user) must write local/*.conf and metadata/local.meta for UCC
+# Configuration saves. A root-owned bind mount breaks that unless these paths
+# are owned by splunk.
+SPLUNK_USER="${SPLUNK_USER:-splunk}"
+if id "${SPLUNK_USER}" &>/dev/null; then
+  sudo mkdir -p "${TARGET}/local" "${TARGET}/metadata"
+  if [[ ! -f "${TARGET}/metadata/local.meta" ]]; then
+    printf '%s\n' '[]' | sudo tee "${TARGET}/metadata/local.meta" >/dev/null
+  fi
+  sudo chown "${SPLUNK_USER}:${SPLUNK_USER}" \
+    "${TARGET}/local" \
+    "${TARGET}/metadata" \
+    "${TARGET}/metadata/local.meta"
+fi
+
 echo "Bind-mounted ${APP_SRC} -> ${TARGET}"
 echo "Restart Splunk after handler or config changes."
