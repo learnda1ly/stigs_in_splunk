@@ -118,7 +118,7 @@
                             "help": "Palette for SplunkUI pages (STIG Editor, Import, dashboards). Tokyo Night is the default. follow_splunk maps Splunk light/dark to the light palette or Tokyo Night.",
                             "options": {
                                 "disableSearch": true,
-                                "items": [
+                                "autoCompleteFields": [
                                     {
                                         "label": "Tokyo Night (default)",
                                         "value": "tokyo_night"
@@ -128,7 +128,7 @@
                                         "value": "catppuccin"
                                     },
                                     {
-                                        "label": "Rosé Pine",
+                                        "label": "Rose Pine",
                                         "value": "rose_pine"
                                     },
                                     {
