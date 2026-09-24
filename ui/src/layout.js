@@ -9,8 +9,8 @@ export const Shell = styled.div`
     min-height: 0;
     display: flex;
     flex-direction: column;
-    background: ${variables.backgroundColorPage};
-    color: ${variables.contentColorDefault};
+    background: var(--stig-bg-page, ${variables.backgroundColorPage});
+    color: var(--stig-fg, ${variables.contentColorDefault});
     font-family: ${variables.fontFamily};
 `;
 
@@ -21,8 +21,8 @@ export const Header = styled.header`
     align-items: center;
     gap: 12px 16px;
     padding: 16px 20px 12px;
-    border-bottom: 1px solid ${variables.borderColor};
-    background: ${variables.backgroundColorSection};
+    border-bottom: 1px solid var(--stig-border, ${variables.borderColor});
+    background: var(--stig-bg-section, ${variables.backgroundColorSection});
 `;
 
 export const Brand = styled.div`
@@ -33,7 +33,7 @@ export const BrandKicker = styled.div`
     font-size: 11px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: ${variables.contentColorMuted};
+    color: var(--stig-fg-muted, ${variables.contentColorMuted});
     font-weight: 600;
 `;
 
@@ -50,7 +50,7 @@ export const HeaderMeta = styled.div`
     display: flex;
     align-items: center;
     gap: 12px;
-    color: ${variables.contentColorMuted};
+    color: var(--stig-fg-muted, ${variables.contentColorMuted});
     font-size: 12px;
 `;
 
@@ -72,8 +72,8 @@ export const ListPane = styled(Pane)`
     width: 46%;
     min-width: 420px;
     max-width: 720px;
-    border-right: 1px solid ${variables.borderColor};
-    background: ${variables.backgroundColorSection};
+    border-right: 1px solid var(--stig-border, ${variables.borderColor});
+    background: var(--stig-bg-section, ${variables.backgroundColorSection});
 `;
 
 export const DetailPane = styled(Pane)`
@@ -94,7 +94,7 @@ export const PageIntro = styled.div`
     margin-bottom: 20px;
     font-size: 14px;
     line-height: 1.55;
-    color: ${variables.contentColorMuted};
+    color: var(--stig-fg-muted, ${variables.contentColorMuted});
 
     p {
         margin: 0 0 10px;
@@ -127,9 +127,9 @@ export const SectionBlock = styled.section`
 export const FormCard = styled.div`
     margin-top: 12px;
     padding: 16px 18px;
-    border: 1px solid ${variables.borderColor};
+    border: 1px solid var(--stig-border, ${variables.borderColor});
     border-radius: 8px;
-    background: ${variables.backgroundColorSection};
+    background: var(--stig-bg-elevated, ${variables.backgroundColorSection});
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -152,7 +152,7 @@ export const FilterRow = styled.div`
     align-items: flex-end;
     gap: 6px 8px;
     padding: 6px 16px;
-    border-bottom: 1px solid ${variables.borderColor};
+    border-bottom: 1px solid var(--stig-border, ${variables.borderColor});
 `;
 
 export const FindingList = styled.div`
@@ -185,13 +185,13 @@ export const FindingRow = styled.button`
         min-width: 0;
     }
     &:hover {
-        background: ${variables.interactiveColorOverlayHover};
+        background: var(--stig-row-hover, ${variables.interactiveColorOverlayHover});
     }
     ${(p) =>
         p.$selected &&
         css`
-            background: ${variables.interactiveColorOverlayHover};
-            box-shadow: inset 3px 0 0 ${variables.accentColorDefault};
+            background: var(--stig-row-selected, ${variables.interactiveColorOverlayHover});
+            box-shadow: inset 3px 0 0 var(--stig-accent, ${variables.accentColorDefault});
         `}
 `;
 
@@ -207,7 +207,7 @@ export const MetaLine = styled.div`
     flex-wrap: wrap;
     gap: 8px 16px;
     margin: 8px 0 14px;
-    color: ${variables.contentColorMuted};
+    color: var(--stig-fg-muted, ${variables.contentColorMuted});
     font-size: 12px;
 `;
 
@@ -216,9 +216,10 @@ export const PreBlock = styled.pre`
     word-break: break-word;
     margin: 0;
     padding: 12px 14px;
-    border: 1px solid ${variables.borderColor};
+    border: 1px solid var(--stig-border, ${variables.borderColor});
     border-radius: 4px;
-    background: ${variables.backgroundColorPage};
+    background: var(--stig-bg-elevated, ${variables.backgroundColorPage});
+    color: var(--stig-fg, inherit);
     font-size: 12px;
     line-height: 1.45;
     max-height: 180px;

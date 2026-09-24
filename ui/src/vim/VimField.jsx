@@ -10,15 +10,16 @@ const Area = styled.textarea`
     min-height: ${(p) => p.$minHeight || 120}px;
     resize: vertical;
     padding: 8px;
-    border: 1px solid ${variables.borderColor};
+    border: 1px solid var(--stig-border, ${variables.borderColor});
     border-radius: 3px;
     font-family: ui-monospace, "Splunk Platform Mono", monospace;
     font-size: 12px;
     line-height: 1.45;
-    background: transparent;
-    color: inherit;
+    background-color: var(--stig-bg-input, ${variables.backgroundColorPage});
+    color: var(--stig-fg, inherit);
+    caret-color: var(--stig-fg, inherit);
     &:focus {
-        outline: 2px solid ${variables.focusColor};
+        outline: 2px solid var(--stig-focus, ${variables.focusColor});
         outline-offset: -1px;
     }
     &.stig-vim-normal {
@@ -89,6 +90,7 @@ export default function VimField({
     return (
         <Area
             id={id}
+            className="stig-vim-area"
             ref={ref}
             defaultValue={value}
             $minHeight={minHeight}

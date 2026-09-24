@@ -17,7 +17,9 @@ from models import (
     DEFAULT_INGEST_SOURCETYPE,
     DEFAULT_RECONCILE_EARLIEST,
     DEFAULT_UI_COLOR_SCHEME,
+    DEFAULT_UI_THEME_PRESET,
     VALID_UI_COLOR_SCHEMES,
+    VALID_UI_THEME_PRESETS,
     KV_STIG_EDITOR_SETTINGS,
     as_bool,
     kv_record,
@@ -41,6 +43,35 @@ def _normalize_ui_color_scheme(value: Any) -> str:
     return DEFAULT_UI_COLOR_SCHEME
 
 
+def _normalize_ui_theme_preset(value: Any) -> str:
+    preset = _text(value, DEFAULT_UI_THEME_PRESET).lower()
+    if preset in VALID_UI_THEME_PRESETS:
+        return preset
+    return DEFAULT_UI_THEME_PRESET
+
+
+def _legacy_scheme_to_preset(scheme: Any) -> str:
+    s = _text(scheme, DEFAULT_UI_COLOR_SCHEME).lower()
+    if s == "light":
+        return "light"
+    if s == "follow_splunk":
+        return "follow_splunk"
+    return DEFAULT_UI_THEME_PRESET
+
+
+def _resolve_ui_theme_preset(rec: Dict[str, Any]) -> str:
+    raw = rec.get("ui_theme_preset")
+    if raw is not None and str(raw).strip():
+        return _normalize_ui_theme_preset(raw)
+    return _legacy_scheme_to_preset(rec.get("ui_color_scheme"))
+
+
+def _normalize_ui_theme_custom(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value)
+
+
 def _pick(body: Dict[str, Any], existing: Dict[str, Any], key: str, default: str) -> str:
     if key in body:
         return _text(body.get(key), default)
@@ -59,6 +90,8 @@ def _public(rec: Dict[str, Any], username: str = "") -> Dict[str, Any]:
         "ui_color_scheme": _normalize_ui_color_scheme(
             rec.get("ui_color_scheme")
         ),
+        "ui_theme_preset": _resolve_ui_theme_preset(rec),
+        "ui_theme_custom": _normalize_ui_theme_custom(rec.get("ui_theme_custom")),
         "updated_at": rec.get("updated_at") or 0,
         "updated_by": rec.get("updated_by") or username or "",
     }
@@ -131,6 +164,8 @@ def _write_ucc(session_key: str, record: Dict[str, Any]) -> bool:
         "hec_url": record.get("hec_url") or DEFAULT_HEC_URL,
         "reconcile_earliest": record.get("reconcile_earliest") or DEFAULT_RECONCILE_EARLIEST,
         "ui_color_scheme": _normalize_ui_color_scheme(record.get("ui_color_scheme")),
+        "ui_theme_preset": _normalize_ui_theme_preset(record.get("ui_theme_preset")),
+        "ui_theme_custom": _normalize_ui_theme_custom(record.get("ui_theme_custom")),
     }
     existing = _read_ucc(session_key)
     if existing:
@@ -197,6 +232,16 @@ def save_settings(service, body: Dict[str, Any], username: str) -> Dict[str, Any
             body.get("ui_color_scheme")
             if "ui_color_scheme" in body
             else existing.get("ui_color_scheme")
+        ),
+        "ui_theme_preset": _normalize_ui_theme_preset(
+            body.get("ui_theme_preset")
+            if "ui_theme_preset" in body
+            else existing.get("ui_theme_preset")
+        ),
+        "ui_theme_custom": _normalize_ui_theme_custom(
+            body.get("ui_theme_custom")
+            if "ui_theme_custom" in body
+            else existing.get("ui_theme_custom")
         ),
         "updated_at": now_epoch(),
         "updated_by": username or "",

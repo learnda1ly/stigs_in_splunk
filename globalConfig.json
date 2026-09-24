@@ -110,29 +110,49 @@
                     "title": "Editor & ingest",
                     "entity": [
                         {
-                            "field": "ui_color_scheme",
-                            "label": "UI color scheme",
+                            "field": "ui_theme_preset",
+                            "label": "Editor theme",
                             "type": "singleSelect",
                             "required": true,
-                            "defaultValue": "dark",
-                            "help": "SplunkUI pages (STIG Editor, Import, dashboards). follow_splunk uses the signed-in user's Splunk theme.",
+                            "defaultValue": "tokyo_night",
+                            "help": "Palette for SplunkUI pages (STIG Editor, Import, dashboards). Tokyo Night is the default. follow_splunk maps Splunk light/dark to the light palette or Tokyo Night.",
                             "options": {
                                 "disableSearch": true,
                                 "items": [
                                     {
-                                        "label": "Dark",
-                                        "value": "dark"
+                                        "label": "Tokyo Night (default)",
+                                        "value": "tokyo_night"
                                     },
                                     {
-                                        "label": "Light",
+                                        "label": "Catppuccin Mocha",
+                                        "value": "catppuccin"
+                                    },
+                                    {
+                                        "label": "Rosé Pine",
+                                        "value": "rose_pine"
+                                    },
+                                    {
+                                        "label": "Light (Splunk Prisma)",
                                         "value": "light"
                                     },
                                     {
                                         "label": "Follow Splunk user theme",
                                         "value": "follow_splunk"
+                                    },
+                                    {
+                                        "label": "Custom (JSON below)",
+                                        "value": "custom"
                                     }
                                 ]
                             }
+                        },
+                        {
+                            "field": "ui_theme_custom",
+                            "label": "Custom theme JSON",
+                            "type": "textarea",
+                            "required": false,
+                            "defaultValue": "",
+                            "help": "Optional. When preset is Custom, this object defines colors. Otherwise it merges onto the selected preset. Example: {\"basePreset\":\"tokyo_night\",\"colors\":{\"bgInput\":\"#1a1b26\",\"fg\":\"#c0caf5\"}} or {\"cssVars\":{\"--stig-bg-page\":\"#000\"}}."
                         },
                         {
                             "field": "vim_mode",
@@ -185,7 +205,8 @@
                         {
                             "label": "Editor",
                             "fields": [
-                                "ui_color_scheme",
+                                "ui_theme_preset",
+                                "ui_theme_custom",
                                 "vim_mode"
                             ]
                         },

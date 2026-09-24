@@ -176,6 +176,9 @@ STIG Manager’s `/op/configuration` maps to Splunk **UCC Configuration → Edit
 | `ingest_sourcetype` | string | `stig:finding` | UCC or **`stig_write`** | Sourcetype for those events; must match the `stig_findings` HEC input and the scheduled reconcile search. |
 | `hec_url` | string | `https://localhost:8088/services/collector/event` | UCC or **`stig_write`** | Server-side HEC collector URL used when applying imports (not exposed to browsers as a secret channel). |
 | `reconcile_earliest` | string | `-15m` | UCC or **`stig_write`** | SPL earliest time for `| stigkvreconcile` and `GET|POST /stig_imports/reconcile` (relative or absolute). Saved search **STIG reconcile findings to KV** also sets `dispatch.earliest_time = -15m`; align both when changing the window. |
+| `ui_theme_preset` | string | `tokyo_night` | UCC or **`stig_write`** | Editor palette: `tokyo_night`, `catppuccin`, `rose_pine`, `light`, `follow_splunk`, or `custom`. Legacy installs with only `ui_color_scheme` map `light` / `follow_splunk` / `dark` → `light` / `follow_splunk` / `tokyo_night` on read. |
+| `ui_theme_custom` | string (JSON) | `""` | UCC or **`stig_write`** | Optional theme overrides. With preset **custom**, full palette JSON; otherwise merges `colors` / `cssVars` onto the preset (see `ui/src/themes/customTheme.js`). |
+| `ui_color_scheme` | string | `dark` | *(legacy)* | Deprecated; still returned when present in conf. Prefer `ui_theme_preset`. Values: `dark`, `light`, `follow_splunk`. |
 
 **Intentionally excluded (never stored in app settings):**
 

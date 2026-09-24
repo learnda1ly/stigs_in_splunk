@@ -34,6 +34,17 @@ DEFAULT_HEC_URL = "https://localhost:8088/services/collector/event"
 DEFAULT_RECONCILE_EARLIEST = "-15m"
 DEFAULT_UI_COLOR_SCHEME = "dark"
 VALID_UI_COLOR_SCHEMES = frozenset({"dark", "light", "follow_splunk"})
+DEFAULT_UI_THEME_PRESET = "tokyo_night"
+VALID_UI_THEME_PRESETS = frozenset(
+    {
+        "tokyo_night",
+        "catppuccin",
+        "rose_pine",
+        "light",
+        "follow_splunk",
+        "custom",
+    }
+)
 
 STATUSES = frozenset(
     {"not_reviewed", "open", "not_a_finding", "not_applicable"}

@@ -20,11 +20,19 @@ DOCUMENTED_SETTING_FIELDS = frozenset(
         "hec_url",
         "reconcile_earliest",
         "ui_color_scheme",
+        "ui_theme_preset",
+        "ui_theme_custom",
     }
 )
 
 
 class TestSettingsNeverExposeHecToken(unittest.TestCase):
+    def test_legacy_ui_color_scheme_maps_to_theme_preset(self):
+        public = settings_svc._public({"ui_color_scheme": "light"})
+        self.assertEqual(public["ui_theme_preset"], "light")
+        public_dark = settings_svc._public({"ui_color_scheme": "dark"})
+        self.assertEqual(public_dark["ui_theme_preset"], "tokyo_night")
+
     def test_public_payload_matches_documented_catalog(self):
         rec = {
             "vim_mode": True,
@@ -34,6 +42,8 @@ class TestSettingsNeverExposeHecToken(unittest.TestCase):
             "hec_url": "https://localhost:8088/services/collector/event",
             "reconcile_earliest": "-15m",
             "ui_color_scheme": "dark",
+            "ui_theme_preset": "tokyo_night",
+            "ui_theme_custom": "",
         }
         public = settings_svc._public(rec, "admin")
         for key in DOCUMENTED_SETTING_FIELDS:
