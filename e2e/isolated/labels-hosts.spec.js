@@ -19,6 +19,29 @@ function restAuthHeader() {
   };
 }
 
+async function waitForCollectionsApi(request, maxWaitMs = 120_000) {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    const headers = restAuthHeader();
+    if (!headers) {
+      throw new Error('SPLUNK_ADMIN_USER and SPLUNK_ADMIN_PASSWORD are required');
+    }
+    try {
+      const response = await request.get(
+        `${REST_BASE}/servicesNS/nobody/stigs_in_splunk/stig_collections?output_mode=json`,
+        { headers, ignoreHTTPSErrors: true },
+      );
+      if (response.ok()) {
+        return;
+      }
+    } catch {
+      // Splunk may still be starting; retry until deadline.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  throw new Error('stig_collections REST API did not become ready');
+}
+
 async function listCollections(request) {
   const headers = restAuthHeader();
   if (!headers) {
@@ -61,27 +84,33 @@ async function deleteWorkspaceByKey(request, key) {
   if (!headers || !key) {
     return false;
   }
-  const response = await request.delete(
-    `${REST_BASE}/servicesNS/nobody/stigs_in_splunk/stig_collections/${encodeURIComponent(key)}?output_mode=json&cascade=true`,
-    { headers, ignoreHTTPSErrors: true },
-  );
-  return response.ok();
+  try {
+    const response = await request.delete(
+      `${REST_BASE}/servicesNS/nobody/stigs_in_splunk/stig_collections/${encodeURIComponent(key)}?output_mode=json&cascade=true`,
+      { headers, ignoreHTTPSErrors: true },
+    );
+    return response.ok();
+  } catch {
+    return false;
+  }
 }
 
 test.describe('Asset labels and hosts', () => {
   test.setTimeout(180_000);
 
   test('admin assigns a label to a host and filters by label', async ({ page, request }) => {
-    const workspaceName = `pw-labels-${Date.now()}`;
-    const hostName = 'web-01';
-    const otherHostName = 'app-02';
-    const labelName = 'web';
+    const suffix = Date.now();
+    const workspaceName = `pw-labels-${suffix}`;
+    const hostName = `web-01-${suffix}`;
+    const otherHostName = `app-02-${suffix}`;
+    const labelName = `web-${suffix}`;
     let workspaceKey = '';
 
     const hosts = new HostsPage(page);
     const labels = new LabelsPage(page);
 
     try {
+      await waitForCollectionsApi(request);
       workspaceKey = await createWorkspaceByRest(request, workspaceName);
 
       await hosts.open();
