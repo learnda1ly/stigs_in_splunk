@@ -24,5 +24,11 @@ module.exports = defineConfig({
         storageState: ADMIN_STORAGE_STATE_PATH,
       },
     },
+    {
+      name: 'org',
+      testMatch: '**/org/**/*.spec.js',
+      fullyParallel: false,
+      workers: 1,
+    },
   ],
 });

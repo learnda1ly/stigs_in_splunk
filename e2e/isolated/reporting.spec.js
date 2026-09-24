@@ -174,6 +174,7 @@ test.describe('STIG reporting and export', () => {
       await exportPage.selectFormat('cklb');
       const download = await exportPage.downloadAllInView();
       expect(download.suggestedFilename().length).toBeGreaterThan(0);
+      await exportPage.expectDownloadContainsHost(download, seed.hostname);
     } finally {
       if (collectionId) {
         const removed = await deleteWorkspaceCascade(request, collectionId);

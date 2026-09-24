@@ -34,6 +34,13 @@ npm run test:smoke    # smoke only
 npm test              # full suite
 ```
 
+Organization journey (serial, multiple Splunk users; no admin storage state):
+
+```bash
+SPLUNK_BASE_URL=https://127.0.0.1:8000 SPLUNK_ADMIN_USER=admin SPLUNK_ADMIN_PASSWORD='your-password' \
+  npx playwright test --project=org
+```
+
 ## Artifacts
 
 On failure, Playwright keeps traces, screenshots, and video under:
