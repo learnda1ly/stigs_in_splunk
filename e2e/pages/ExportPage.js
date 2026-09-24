@@ -72,6 +72,18 @@ class ExportPage {
     expect(suggested && suggested.length > 0).toBeTruthy();
     return download;
   }
+
+  /**
+   * @param {import('@playwright/test').Download} download
+   * @param {string} hostname
+   */
+  async expectDownloadContainsHost(download, hostname) {
+    const filePath = await download.path();
+    expect(filePath).toBeTruthy();
+    const fs = require('fs');
+    const raw = fs.readFileSync(filePath, 'utf8');
+    expect(raw).toContain(hostname);
+  }
 }
 
 function escapeRegExp(value) {
