@@ -1,4 +1,14 @@
 const STYLE_ID = "stig-ui-theme-vars";
+const ROOT_ID = "stig-ui-root";
+
+function applyCssVarsToElement(el, cssVars) {
+    if (!el || !cssVars) {
+        return;
+    }
+    Object.entries(cssVars).forEach(([name, value]) => {
+        el.style.setProperty(name, value);
+    });
+}
 
 export function applyPaletteToDocument(palette) {
     const scheme = palette.colorScheme === "light" ? "light" : "dark";
@@ -8,6 +18,10 @@ export function applyPaletteToDocument(palette) {
     document.body.classList.toggle("stig-ui-dark", scheme === "dark");
     document.body.classList.toggle("stig-ui-light", scheme === "light");
 
+    const cssVars = palette.cssVars || {};
+    applyCssVarsToElement(root, cssVars);
+    applyCssVarsToElement(document.getElementById(ROOT_ID), cssVars);
+
     let style = document.getElementById(STYLE_ID);
     if (!style) {
         style = document.createElement("style");
@@ -15,21 +29,39 @@ export function applyPaletteToDocument(palette) {
         document.head.appendChild(style);
     }
 
-    const vars = Object.entries(palette.cssVars || {})
+    const vars = Object.entries(cssVars)
         .map(([k, v]) => `  ${k}: ${v};`)
         .join("\n");
 
     style.textContent = `
-      html:has(#stig-ui-root),
-      html:has(#stig-ui-root) body {
-        background: var(--stig-bg-page);
-        color: var(--stig-fg);
+      html[data-stig-theme],
+      html[data-stig-theme] body,
+      #${ROOT_ID} {
+        ${vars}
         color-scheme: ${scheme};
       }
-      #stig-ui-root {
-        ${vars}
-        background: var(--stig-bg-page);
+      html[data-stig-theme],
+      html[data-stig-theme] body {
+        background: var(--stig-bg-page) !important;
         color: var(--stig-fg);
+      }
+      #${ROOT_ID} {
+        background: var(--stig-bg-page) !important;
+        color: var(--stig-fg);
+        min-height: 100%;
+      }
+      #stig-ui-root .stig-themed-shell {
+        background: var(--stig-bg-page) !important;
+        color: var(--stig-fg) !important;
+      }
+      #stig-ui-root .stig-themed-section {
+        background: var(--stig-bg-section) !important;
+        color: var(--stig-fg) !important;
+        border-color: var(--stig-border) !important;
+      }
+      #stig-ui-root .stig-themed-detail {
+        background: var(--stig-bg-page) !important;
+        color: var(--stig-fg) !important;
       }
       #stig-ui-root .stig-themed-shell,
       #stig-ui-root .stig-themed-section {

@@ -1,6 +1,7 @@
 import { apiFetch, unwrap } from "../api";
 import { applyAppTheme, resolveAppTheme } from "../theme";
 import { DEFAULT_THEME_PRESET, THEME_PRESET_IDS } from "./presets";
+import { notifyThemeUpdated } from "./themeEvents";
 
 function normalizePreset(raw) {
     const value = String(raw || DEFAULT_THEME_PRESET).toLowerCase();
@@ -47,5 +48,6 @@ export async function persistThemePreset(presetId) {
 export async function refreshAppThemeFromServer() {
     const theme = await resolveAppTheme();
     applyAppTheme(theme);
+    notifyThemeUpdated(theme);
     return theme;
 }

@@ -1,7 +1,7 @@
 import styled, { css } from "styled-components";
 import { variables, mixins } from "@splunk/themes";
 
-export const Shell = styled.div`
+export const Shell = styled.div.attrs({ className: "stig-themed-shell" })`
     ${mixins.reset("block")};
     box-sizing: border-box;
     position: relative;
@@ -14,7 +14,7 @@ export const Shell = styled.div`
     font-family: ${variables.fontFamily};
 `;
 
-export const Header = styled.header`
+export const Header = styled.header.attrs({ className: "stig-themed-section" })`
     flex: 0 0 auto;
     display: flex;
     flex-wrap: wrap;
@@ -68,7 +68,7 @@ export const Pane = styled.div`
     overflow: hidden;
 `;
 
-export const ListPane = styled(Pane)`
+export const ListPane = styled(Pane).attrs({ className: "stig-themed-section" })`
     width: 46%;
     min-width: 420px;
     max-width: 720px;
@@ -76,7 +76,7 @@ export const ListPane = styled(Pane)`
     background: var(--stig-bg-section, ${variables.backgroundColorSection});
 `;
 
-export const DetailPane = styled(Pane)`
+export const DetailPane = styled(Pane).attrs({ className: "stig-themed-detail" })`
     flex: 1;
     overflow: auto;
     padding: 20px 24px 32px;

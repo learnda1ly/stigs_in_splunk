@@ -1,7 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { SplunkThemeProvider } from "@splunk/themes";
-import { applyAppTheme, resolveAppTheme } from "./theme";
+import ThemeRoot from "./ThemeRoot";
 
 function hideSplunkChrome() {
     document.body.classList.add("stig-ui-page");
@@ -76,34 +75,12 @@ export function mountPage(App) {
             return;
         }
         hideSplunkChrome();
-        resolveAppTheme()
-            .then((theme) => {
-                applyAppTheme(theme);
-                const colorScheme = theme.colorScheme === "light" ? "light" : "dark";
-                const root = createRoot(el);
-                root.render(
-                    <SplunkThemeProvider
-                        family={theme.family || "prisma"}
-                        colorScheme={colorScheme}
-                        density={theme.density || "comfortable"}
-                    >
-                        <App />
-                    </SplunkThemeProvider>
-                );
-            })
-            .catch(() => {
-                applyAppTheme({ colorScheme: "dark", palette: null });
-                const root = createRoot(el);
-                root.render(
-                    <SplunkThemeProvider
-                        family="prisma"
-                        colorScheme="dark"
-                        density="comfortable"
-                    >
-                        <App />
-                    </SplunkThemeProvider>
-                );
-            });
+        const root = createRoot(el);
+        root.render(
+            <ThemeRoot>
+                <App />
+            </ThemeRoot>
+        );
     };
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", start);

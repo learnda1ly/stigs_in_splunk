@@ -28,7 +28,7 @@ require(["splunkjs/ready!"], function () {
         "/static/app/stigs_in_splunk/ui/" +
         file +
         "?v=" +
-        encodeURIComponent(bundle);
+        encodeURIComponent(bundle + "-2026092401");
     var existing = document.querySelector('script[data-stig-ui-bundle="' + bundle + '"]');
     if (existing) {
         return;
