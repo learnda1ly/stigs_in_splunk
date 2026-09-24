@@ -1,0 +1,11 @@
+{
+  "name": "stigs-in-splunk-e2e",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:smoke": "playwright test smoke.spec.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1"
+  }
+}

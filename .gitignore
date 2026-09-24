@@ -4,6 +4,11 @@ tests/fixtures/baselines/U_*.xml
 output/
 .venv-ucc/
 ui/node_modules/
+e2e/node_modules/
+e2e/.auth/
+e2e/test-results/
+e2e/playwright-report/
+e2e/blob-report/
 
 __pycache__/
 *.py[cod]
