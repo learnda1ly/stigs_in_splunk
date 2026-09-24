@@ -19,6 +19,7 @@ from splunk.persistconn.application import PersistentServerConnectionApplication
 import access
 import audit
 import kv_client
+from stig_ucc_kv import _context_session, normalize_roles
 from importers.ingest import detect_format
 from services import baselines as baselines_svc
 from services import baseline_library as baseline_library_svc
@@ -118,6 +119,52 @@ def _body_json(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
 
+def _enrich_session(session: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge Splunk roles from current-context; passSession often omits role list."""
+    token = session.get("authtoken")
+    if not token:
+        return session
+    merged_roles = normalize_roles(session.get("roles"))
+    try:
+        extra = _context_session(token)
+    except Exception:
+        session["roles"] = merged_roles
+        return session
+    if extra.get("user"):
+        session["user"] = extra["user"]
+    for role in normalize_roles(extra.get("roles")):
+        if role not in merged_roles:
+            merged_roles.append(role)
+    session["roles"] = merged_roles
+    if extra.get("capabilities") and not session.get("capabilities"):
+        session["capabilities"] = extra["capabilities"]
+    return session
+
+
+def _kv_connect(session: Dict[str, Any]):
+    """KV collections are app-owner scoped; workspace ACL is enforced in services."""
+    token = session.get("authtoken")
+    username = (session.get("user") or "").strip()
+    roles = access.user_roles(session)
+    if token and roles & access.ADMIN_ROLES:
+        return kv_client.connect(token)
+    try:
+        import splunk.auth as splunk_auth
+
+        if username:
+            trusted = splunk_auth.getSessionKeyForTrustedUser(username)
+            if trusted:
+                return kv_client.connect(trusted)
+        trusted_admin = splunk_auth.getSessionKeyForTrustedUser("admin")
+        if trusted_admin:
+            return kv_client.connect(trusted_admin)
+    except Exception:
+        logger.debug("privileged KV session unavailable", exc_info=True)
+    if token:
+        return kv_client.connect(token)
+    raise PermissionError("authentication required")
+
+
 class StigRestHandler(PersistentServerConnectionApplication):
     def __init__(self, command_line: str, command_arg: str):
         PersistentServerConnectionApplication.__init__(self)
@@ -137,7 +184,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
 
     def _dispatch(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         method = (payload.get("method") or "GET").upper()
-        session = payload.get("session") or {}
+        session = _enrich_session(dict(payload.get("session") or {}))
         authtoken = session.get("authtoken")
         if not authtoken:
             return _error("authentication required", status=401)
@@ -152,7 +199,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
         )
         resource, parts = _parse_path(rest_path)
 
-        service = kv_client.connect(authtoken)
+        service = _kv_connect(session)
 
         try:
             if resource == "stig_collections":

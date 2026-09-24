@@ -1,3 +1,39 @@
 
 []
 access = read : [ * ], write : [ admin, sc_admin ]
+
+[collections/stig_reviews]
+access = read : [ * ], write : [ admin, sc_admin, stig_user, stig_admin ]
+
+[collections/stig_review_history]
+access = read : [ * ], write : [ admin, sc_admin, stig_user, stig_admin ]
+
+[collections/stig_checklists]
+access = read : [ * ], write : [ admin, sc_admin, stig_user, stig_admin ]
+
+[collections/stig_hosts]
+access = read : [ * ], write : [ admin, sc_admin, stig_user, stig_admin ]
+
+[collections/stig_collections]
+access = read : [ * ], write : [ admin, sc_admin, stig_user, stig_admin ]
+
+[collections/stig_collection_grants]
+access = read : [ * ], write : [ admin, sc_admin, stig_user, stig_admin ]
+
+[collections/stig_baselines]
+access = read : [ * ], write : [ admin, sc_admin, stig_user, stig_admin ]
+
+[collections/stig_baseline_rules]
+access = read : [ * ], write : [ admin, sc_admin, stig_user, stig_admin ]
+
+[collections/stig_labels]
+access = read : [ * ], write : [ admin, sc_admin, stig_user, stig_admin ]
+
+[collections/stig_editor_settings]
+access = read : [ * ], write : [ admin, sc_admin, stig_user, stig_admin ]
+
+[collections/stig_assignment_rules]
+access = read : [ * ], write : [ admin, sc_admin, stig_user, stig_admin ]
+
+[collections/stig_host_baseline_assignments]
+access = read : [ * ], write : [ admin, sc_admin, stig_user, stig_admin ]

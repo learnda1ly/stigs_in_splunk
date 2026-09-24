@@ -14,6 +14,8 @@ const MINIMAL_BENCHMARK = path.resolve(
 const BASELINE_LABEL = 'Example_STIG';
 const HOSTNAME = 'web-01';
 
+test.use({ trace: 'off', video: 'off' });
+
 function restAuthHeader() {
   const user = process.env.SPLUNK_ADMIN_USER;
   const password = process.env.SPLUNK_ADMIN_PASSWORD;
