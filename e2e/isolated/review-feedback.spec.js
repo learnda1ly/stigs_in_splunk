@@ -25,6 +25,13 @@ const BENCHMARK_XML = path.join(
   'minimal_benchmark.xml',
 );
 
+// This spec logs in as non-admin users; do not inherit admin storageState from the project.
+test.use({
+  trace: 'off',
+  video: 'off',
+  storageState: { cookies: [], origins: [] },
+});
+
 function restAuthHeader() {
   const user = process.env.SPLUNK_ADMIN_USER;
   const password = process.env.SPLUNK_ADMIN_PASSWORD;
@@ -160,7 +167,7 @@ async function splunkLogin(page, username) {
   await page.goto('/en-US/account/login', { timeout: 60_000 });
   await page.locator('input[name=username]').fill(username);
   await page.locator('input[name=password]').fill(TEST_PASSWORD);
-  await page.getByRole('button', { name: 'Sign In' }).click();
+  await page.locator('input[type=submit].splButton-primary').first().click();
   await page.waitForURL((url) => !url.pathname.includes('/account/login'), {
     timeout: 60_000,
   });
@@ -170,6 +177,7 @@ async function loginAs(browser, username) {
   const context = await browser.newContext({
     ignoreHTTPSErrors: true,
     baseURL: getSplunkBaseUrl(),
+    storageState: { cookies: [], origins: [] },
   });
   const page = await context.newPage();
   await splunkLogin(page, username);

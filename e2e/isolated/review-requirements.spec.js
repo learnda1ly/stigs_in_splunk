@@ -128,15 +128,6 @@ test.use({ trace: 'off', video: 'off' });
 test.describe('Workspace review requirements', () => {
   test.setTimeout(180_000);
 
-  test.beforeAll(() => {
-    const resultsDir = path.join(__dirname, '../test-results');
-    try {
-      fs.rmSync(resultsDir, { recursive: true, force: true });
-    } catch {
-      // ignore missing results dir
-    }
-  });
-
   test('policy in review requirements UI gates editor submit until finding details meet minimum length', async ({
     page,
     request,

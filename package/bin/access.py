@@ -125,7 +125,16 @@ def user_has_stig_write(session: Dict[str, Any]) -> bool:
     if user_has_stig_admin(session):
         return True
     caps = session.get("capabilities") or {}
-    return bool(caps.get("stig_write"))
+    if isinstance(caps, dict) and caps.get("stig_write"):
+        return True
+    if isinstance(caps, (list, tuple, set)) and "stig_write" in caps:
+        return True
+    roles = user_roles(session)
+    # authorize.conf grants stig_write to role_stig_user / role_stig_admin; Splunk
+    # persist REST sessions often omit app capabilities in session["capabilities"].
+    if roles & {"stig_user", "stig_admin"}:
+        return True
+    return False
 
 
 def _principal_matches(principal: str, username: str, roles: Set[str]) -> bool:
