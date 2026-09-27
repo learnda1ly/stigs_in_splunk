@@ -1,0 +1,11 @@
+<dashboard version="1.1" theme="dark" script="stig_splunk_ui_boot.js" hideEdit="true" hideExport="true" hideTitle="true">
+  <label>Documentation</label>
+  <description>In-app operator guide for STIG in Splunk.</description>
+  <row>
+    <panel>
+      <html>
+        <div id="stig-ui-root" data-ui-bundle="documentation"></div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

@@ -26,6 +26,7 @@ module.exports = {
         library: path.join(__dirname, "src/library.jsx"),
         hosts: path.join(__dirname, "src/hosts.jsx"),
         transfer: path.join(__dirname, "src/transfer.jsx"),
+        documentation: path.join(__dirname, "src/documentation.jsx"),
     },
     output: {
         path: outDir,
