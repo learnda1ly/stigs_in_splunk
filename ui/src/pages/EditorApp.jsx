@@ -1716,12 +1716,6 @@ export default function EditorApp() {
                                             ? "yes"
                                             : "no"}
                                     </span>
-                                    <span>
-                                        <strong>Workflow</strong>{" "}
-                                        <WorkflowChip
-                                            workflowState={selected.review.workflow_state}
-                                        />
-                                    </span>
                                 </MetaLine>
                                 {selected.review.reject_feedback ? (
                                     <Message appearance="error">
