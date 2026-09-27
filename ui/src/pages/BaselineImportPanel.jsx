@@ -15,6 +15,7 @@ import {
     rowImportStatus,
     skipLine,
 } from "../baselineZipImport";
+import ImportActivityMessage from "../components/ImportActivityMessage";
 import { DropHint, DropTitle, DropZone, PagePad, ProgressFill, ProgressTrack } from "../layout";
 
 /** Extension-only: mixed MIME tokens in `accept` grey out .zip in many file dialogs. */
@@ -91,6 +92,7 @@ export default function BaselineImportPanel() {
     const [uploadPct, setUploadPct] = useState(0);
     const [skipped, setSkipped] = useState(null);
     const [zipName, setZipName] = useState("");
+    const [singleImport, setSingleImport] = useState(null);
 
     const loadBaselines = () => {
         setLoading(true);
@@ -111,7 +113,8 @@ export default function BaselineImportPanel() {
 
     const importSingleFile = (file) => {
         setBusy(true);
-        setBanner({ type: "info", text: "Importing " + file.name + "…" });
+        setSingleImport({ name: file.name, phase: "reading" });
+        setBanner(null);
         return readFile(file)
             .then((text) => {
                 const fmt =
@@ -121,6 +124,7 @@ export default function BaselineImportPanel() {
                 if (fmt === "zip") {
                     throw new Error("use zip import path");
                 }
+                setSingleImport({ name: file.name, phase: "server" });
                 return apiUpload("stig_baselines/import", {
                     query: { format: fmt, source_uri: file.name },
                     contentType: contentTypeFor(fmt),
@@ -139,7 +143,10 @@ export default function BaselineImportPanel() {
             .catch((err) =>
                 setBanner({ type: "error", text: "Import failed: " + err.message })
             )
-            .finally(() => setBusy(false));
+            .finally(() => {
+                setBusy(false);
+                setSingleImport(null);
+            });
     };
 
     const importZipFile = (file) => {
@@ -150,15 +157,7 @@ export default function BaselineImportPanel() {
         setBusy(true);
         setPhase("upload");
         setUploadPct(0);
-        setBanner({
-            type: "info",
-            text:
-                "Uploading " +
-                file.name +
-                " (" +
-                formatBytes(file.size) +
-                ") — nested zips are scanned; only Manual-xccdf STIGs are imported.",
-        });
+        setBanner(null);
         return importDisaBaselineZip(file, {
             onPhase: setPhase,
             onUploadPct: setUploadPct,
@@ -332,6 +331,40 @@ export default function BaselineImportPanel() {
                 </Link>{" "}
                 tab.
             </p>
+            {busy && singleImport ? (
+                <ImportActivityMessage
+                    title={
+                        singleImport.phase === "reading"
+                            ? "Reading " + singleImport.name
+                            : "Importing " + singleImport.name
+                    }
+                    detail={
+                        singleImport.phase === "reading"
+                            ? "Loading the file in your browser before upload."
+                            : "Splunk is parsing the baseline and updating the catalog."
+                    }
+                    hint="Large files can take a minute; the page is still working."
+                />
+            ) : null}
+            {busy && phase && !singleImport ? (
+                <ImportActivityMessage
+                    title={
+                        phase === "upload"
+                            ? "Uploading " + (zipName || "zip archive")
+                            : phase === "scan"
+                              ? "Scanning " + (zipName || "zip archive")
+                              : "Importing baselines from " + (zipName || "zip archive")
+                    }
+                    detail={
+                        phase === "upload"
+                            ? "Sending the archive to Splunk in chunks."
+                            : phase === "scan"
+                              ? "Listing Manual-xccdf members in the archive."
+                              : "Importing each baseline from the archive."
+                    }
+                    hint="Nested DISA zips can take several minutes; see the table below for per-file status."
+                />
+            ) : null}
             {banner ? (
                 <Message appearance={banner.type} onRequestRemove={() => setBanner(null)}>
                     {banner.text}
@@ -440,8 +473,12 @@ export default function BaselineImportPanel() {
                         : "Drop DISA zip or benchmark files here"}
                 </DropTitle>
                 <DropHint>
-                    {busy && phase === "upload"
-                        ? "Large zips upload in 4MB chunks to persist REST…"
+                    {busy
+                        ? phase === "upload"
+                            ? "Large zips upload in 4MB chunks to persist REST…"
+                            : singleImport
+                              ? "Baseline import running — wait before dropping another file."
+                              : "Zip import running — see status above and the member table below."
                         : "Or click to browse (.zip library/product, Manual-xccdf .xml, .ckl, .cklb)"}
                 </DropHint>
             </DropZone>

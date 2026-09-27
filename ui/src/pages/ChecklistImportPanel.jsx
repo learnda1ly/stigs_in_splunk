@@ -16,6 +16,7 @@ import {
     viewUrl,
     viewUrlWithQuery,
 } from "../api";
+import ImportActivityMessage from "../components/ImportActivityMessage";
 import WorkspaceSelect from "../components/WorkspaceSelect";
 import WorkspaceSelectHint from "../components/onboarding/WorkspaceSelectHint";
 import {
@@ -87,6 +88,46 @@ function readFile(file) {
     });
 }
 
+function checklistActivityCopy(activity) {
+    if (!activity || !activity.name) {
+        return { title: "Import in progress", detail: "", hint: "" };
+    }
+    const { name, index, total, phase } = activity;
+    const fileLabel =
+        total > 1 ? "File " + index + " of " + total + ": " + name : name;
+    if (phase === "reading") {
+        return {
+            title: "Reading " + fileLabel,
+            detail: "Loading the file in your browser before upload.",
+            hint: "Large archives can take a moment; the page is still working.",
+        };
+    }
+    return {
+        title: "Importing " + fileLabel,
+        detail:
+            "Splunk is parsing the checklist, updating hosts, and indexing findings.",
+        hint:
+            "This step can take several minutes for large zips or many findings. " +
+            "Do not close this tab until it finishes.",
+    };
+}
+
+function checklistRowStatus(row, activeKey) {
+    if (row.status === "uploading" && row.key === activeKey) {
+        return "Importing on server…";
+    }
+    if (row.status === "uploading") {
+        return "Waiting…";
+    }
+    if (row.status === "done") {
+        return row.created ? "Created" : "Updated";
+    }
+    if (row.status === "error") {
+        return row.error;
+    }
+    return "Queued";
+}
+
 export default function ChecklistImportPanel() {
     const inputRef = useRef(null);
     const [collections, setCollections] = useState([]);
@@ -98,6 +139,7 @@ export default function ChecklistImportPanel() {
     const [banner, setBanner] = useState(null);
     const [baselineCatalogEmpty, setBaselineCatalogEmpty] = useState(false);
     const [editorDeepLink, setEditorDeepLink] = useState(null);
+    const [importActivity, setImportActivity] = useState(null);
 
     const loadCollections = () =>
         apiGet("stig_collections")
@@ -169,7 +211,11 @@ export default function ChecklistImportPanel() {
     );
     const done = rows.filter((row) => row.status === "done").length;
     const failed = rows.filter((row) => row.status === "error" && row.format).length;
-    const pct = rows.length ? Math.round((done / rows.length) * 100) : 0;
+    const uploading = rows.filter((row) => row.status === "uploading").length;
+    const pct = rows.length
+        ? Math.min(100, Math.round(((done + uploading * 0.5) / rows.length) * 100))
+        : 0;
+    const activityCopy = checklistActivityCopy(importActivity);
 
     const createWorkspace = () => {
         const name = newName.trim();
@@ -194,7 +240,8 @@ export default function ChecklistImportPanel() {
             .finally(() => setBusy(false));
     };
 
-    const importOne = (row) => {
+    const importOne = (row, index, total) => {
+        setImportActivity({ name: row.name, index, total, phase: "reading", key: row.key });
         setRows((prev) =>
             prev.map((item) =>
                 item.key === row.key ? { ...item, status: "uploading", error: "" } : item
@@ -202,8 +249,11 @@ export default function ChecklistImportPanel() {
         );
         if (row.format === "zip") {
             return readFileAsArrayBuffer(row.file)
-                .then((buffer) =>
-                    apiUpload("stig_imports", {
+                .then((buffer) => {
+                    setImportActivity((prev) =>
+                        prev && prev.key === row.key ? { ...prev, phase: "server" } : prev
+                    );
+                    return apiUpload("stig_imports", {
                         query: {
                             stig_collection_id: collectionId,
                             format: "zip",
@@ -211,14 +261,22 @@ export default function ChecklistImportPanel() {
                         },
                         contentType: "application/zip",
                         body: buffer,
-                    })
-                )
+                    });
+                })
                 .then((doc) => applyZipImportResult(row.key, doc))
-                .catch((err) => applyRowError(row.key, err.message));
+                .catch((err) => applyRowError(row.key, err.message))
+                .finally(() => {
+                    setImportActivity((prev) =>
+                        prev && prev.key === row.key ? null : prev
+                    );
+                });
         }
         return readFile(row.file)
-            .then((text) =>
-                apiUpload("stig_imports", {
+            .then((text) => {
+                setImportActivity((prev) =>
+                    prev && prev.key === row.key ? { ...prev, phase: "server" } : prev
+                );
+                return apiUpload("stig_imports", {
                     query: {
                         stig_collection_id: collectionId,
                         format: row.format,
@@ -226,10 +284,15 @@ export default function ChecklistImportPanel() {
                     },
                     contentType: contentTypeFor(row.format),
                     body: text,
-                })
-            )
+                });
+            })
             .then((doc) => applySingleImportResult(row.key, doc))
-            .catch((err) => applyRowError(row.key, err.message));
+            .catch((err) => applyRowError(row.key, err.message))
+            .finally(() => {
+                setImportActivity((prev) =>
+                    prev && prev.key === row.key ? null : prev
+                );
+            });
     };
 
     const applyRowError = (key, message) => {
@@ -350,19 +413,39 @@ export default function ChecklistImportPanel() {
             return;
         }
         setBusy(true);
-        setBanner({
-            type: "info",
-            text: "Importing " + pending.length + " file" + (pending.length === 1 ? "" : "s") + "…",
+        setBanner(null);
+        const total = pending.length;
+        const first = pending[0];
+        setImportActivity({
+            name: first.name,
+            index: 1,
+            total,
+            phase: "reading",
+            key: first.key,
         });
         pending
-            .reduce((chain, row) => chain.then(() => importOne(row)), Promise.resolve())
+            .reduce(
+                (chain, row, idx) => chain.then(() => importOne(row, idx + 1, total)),
+                Promise.resolve()
+            )
             .then(() => {
-                setBanner({
-                    type: "success",
-                    text: "Import finished.",
+                setRows((current) => {
+                    const errCount = current.filter(
+                        (row) => row.status === "error" && row.format
+                    ).length;
+                    setBanner({
+                        type: errCount ? "warning" : "success",
+                        text: errCount
+                            ? "Import finished with " + errCount + " failed file(s)."
+                            : "Import finished.",
+                    });
+                    return current;
                 });
             })
-            .finally(() => setBusy(false));
+            .finally(() => {
+                setBusy(false);
+                setImportActivity(null);
+            });
     };
 
     const dropDisabled = busy;
@@ -426,10 +509,21 @@ export default function ChecklistImportPanel() {
                         fontSize: 12,
                     }}
                 >
+                    {busy ? <WaitSpinner size="small" /> : null}
                     <span>
-                        {rows.length} file{rows.length === 1 ? "" : "s"}
+                        {busy && importActivity
+                            ? activityCopy.title
+                            : rows.length +
+                              " file" +
+                              (rows.length === 1 ? "" : "s")}
                     </span>
-                    <ProgressTrack title={pct + "% imported"}>
+                    <ProgressTrack
+                        title={
+                            busy
+                                ? pct + "% — import in progress"
+                                : pct + "% imported"
+                        }
+                    >
                         <ProgressFill $pct={pct} />
                     </ProgressTrack>
                 </div>
@@ -464,6 +558,13 @@ export default function ChecklistImportPanel() {
                         </Link>{" "}
                         tab before XCCDF results or assignment.
                     </Message>
+                ) : null}
+                {busy && importActivity ? (
+                    <ImportActivityMessage
+                        title={activityCopy.title}
+                        detail={activityCopy.detail}
+                        hint={activityCopy.hint}
+                    />
                 ) : null}
                 {banner ? (
                     <Message
@@ -524,9 +625,11 @@ export default function ChecklistImportPanel() {
                 >
                     <DropTitle>Drop checklists, zip archives, or XCCDF results here</DropTitle>
                     <DropHint>
-                        {collectionId
-                            ? "Or click to browse. Existing hosts and checklists in this workspace are updated."
-                            : "Create or select a workspace before uploading."}
+                        {busy
+                            ? "Import running — wait for the current file to finish before adding more."
+                            : collectionId
+                              ? "Or click to browse. Existing hosts and checklists in this workspace are updated."
+                              : "Create or select a workspace before uploading."}
                     </DropHint>
                 </DropZone>
                 <div style={{ marginTop: 20 }}>
@@ -564,15 +667,28 @@ export default function ChecklistImportPanel() {
                                             </Table.Cell>
                                             <Table.Cell>{statsLine(row.stats)}</Table.Cell>
                                             <Table.Cell>
-                                                {row.status === "uploading"
-                                                    ? "Uploading…"
-                                                    : row.status === "done"
-                                                      ? row.created
-                                                          ? "Created"
-                                                          : "Updated"
-                                                      : row.status === "error"
-                                                        ? row.error
-                                                        : "Queued"}
+                                                {row.status === "uploading" &&
+                                                importActivity &&
+                                                importActivity.key === row.key ? (
+                                                    <span
+                                                        style={{
+                                                            display: "inline-flex",
+                                                            alignItems: "center",
+                                                            gap: 8,
+                                                        }}
+                                                    >
+                                                        <WaitSpinner size="small" />
+                                                        {checklistRowStatus(
+                                                            row,
+                                                            importActivity.key
+                                                        )}
+                                                    </span>
+                                                ) : (
+                                                    checklistRowStatus(
+                                                        row,
+                                                        importActivity && importActivity.key
+                                                    )
+                                                )}
                                             </Table.Cell>
                                         </Table.Row>
                                     ))
