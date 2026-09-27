@@ -1,5 +1,10 @@
 const { expect } = require('@playwright/test');
 const { appPath } = require('../fixtures/splunk');
+const {
+  workspaceCombobox,
+  selectWorkspaceOption,
+  escapeRegExp,
+} = require('../helpers/workspaceSelect');
 
 const NAV_TIMEOUT_MS = 60_000;
 const CONTROL_TIMEOUT_MS = 30_000;
@@ -13,15 +18,15 @@ class CollectionReviewPage {
   }
 
   workspaceSelect() {
-    return this.page.getByRole('combobox').first();
+    return workspaceCombobox(this.page);
   }
 
   baselineSelect() {
-    return this.page.getByRole('combobox').nth(1);
+    return this.page.locator('#stig-ui-root').getByRole('combobox', { name: 'Baseline' });
   }
 
   ruleSelect() {
-    return this.page.getByRole('combobox').nth(2);
+    return this.page.locator('#stig-ui-root').getByRole('combobox', { name: 'Rule' });
   }
 
   async open() {
@@ -38,14 +43,7 @@ class CollectionReviewPage {
    * @param {string} name
    */
   async selectWorkspace(name) {
-    const select = this.workspaceSelect();
-    await select.click();
-    const option = this.page.getByRole('option', {
-      name: new RegExp(escapeRegExp(name)),
-    });
-    await expect(option.first()).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
-    await option.first().click();
-    await expect(select).toContainText(name, { timeout: CONTROL_TIMEOUT_MS });
+    await selectWorkspaceOption(this.page, this.workspaceSelect(), name, CONTROL_TIMEOUT_MS);
   }
 
   /**
@@ -95,10 +93,6 @@ class CollectionReviewPage {
       timeout: CONTROL_TIMEOUT_MS,
     });
   }
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 module.exports = { CollectionReviewPage };

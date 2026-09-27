@@ -163,6 +163,7 @@ test.describe('STIG reporting and export', () => {
       await collectionDashboard.selectWorkspace(workspaceName);
       await collectionDashboard.expectWorkspaceSelected(workspaceName);
       await collectionDashboard.expectWorkspaceDataVisible();
+      await collectionDashboard.expectByStatusUsesStatusPills();
 
       const metaDashboard = new MetaDashboardPage(page);
       await metaDashboard.open();

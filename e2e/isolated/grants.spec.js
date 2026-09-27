@@ -2,6 +2,7 @@ const { test, expect, chromium } = require('@playwright/test');
 const { ADMIN_STORAGE_STATE_PATH, getSplunkBaseUrl } = require('../fixtures/auth');
 const { appPath } = require('../fixtures/splunk');
 const { GrantsPage } = require('../pages/GrantsPage');
+const { workspaceCombobox, escapeRegExp } = require('../helpers/workspaceSelect');
 
 const REST_BASE =
   process.env.SPLUNK_MGMT_URL ||
@@ -162,7 +163,7 @@ async function assertEditorWorkspaceListed(page, workspaceName, shouldOffer) {
   });
   await expect(page.locator('#stig-ui-root')).toBeVisible({ timeout: 60_000 });
 
-  const select = page.getByRole('combobox').first();
+  const select = workspaceCombobox(page);
   await expect(select).toBeVisible({ timeout: 30_000 });
   await select.click();
   await expect(page.getByRole('option').first()).toBeVisible({ timeout: 30_000 });

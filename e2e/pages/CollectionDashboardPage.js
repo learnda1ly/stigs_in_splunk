@@ -1,5 +1,10 @@
 const { expect } = require('@playwright/test');
 const { appPath } = require('../fixtures/splunk');
+const {
+  workspaceCombobox,
+  selectWorkspaceOption,
+  expectWorkspaceOptionSelected,
+} = require('../helpers/workspaceSelect');
 
 const NAV_TIMEOUT_MS = 60_000;
 const CONTROL_TIMEOUT_MS = 30_000;
@@ -13,7 +18,7 @@ class CollectionDashboardPage {
   }
 
   workspaceSelect() {
-    return this.page.getByRole('combobox').first();
+    return workspaceCombobox(this.page);
   }
 
   async open() {
@@ -36,11 +41,7 @@ class CollectionDashboardPage {
       { timeout: CONTROL_TIMEOUT_MS },
     );
     const select = this.workspaceSelect();
-    await select.click();
-    const option = this.page.getByRole('option', { name: new RegExp(escapeRegExp(name)) });
-    await expect(option.first()).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
-    await option.first().click();
-    await expect(select).toContainText(name, { timeout: CONTROL_TIMEOUT_MS });
+    await selectWorkspaceOption(this.page, select, name, CONTROL_TIMEOUT_MS);
     await metricsReady;
     await expect(this.page.getByRole('heading', { name: 'Completion' })).toBeVisible({
       timeout: CONTROL_TIMEOUT_MS,
@@ -51,9 +52,20 @@ class CollectionDashboardPage {
    * @param {string} name
    */
   async expectWorkspaceSelected(name) {
-    await expect(this.workspaceSelect()).toContainText(name, {
-      timeout: CONTROL_TIMEOUT_MS,
-    });
+    await expectWorkspaceOptionSelected(this.workspaceSelect(), name, CONTROL_TIMEOUT_MS);
+  }
+
+  /** Status breakdown uses pills only (no duplicate label text in the same cell). */
+  async expectByStatusUsesStatusPills() {
+    const section = this.page.getByRole('heading', { name: 'By status', exact: true });
+    await expect(section).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
+    const table = section.locator('xpath=following::table[1]');
+    await expect(table).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
+    const statusCell = table.locator('tbody tr').first().locator('td').first();
+    await expect(statusCell).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
+    const cellText = (await statusCell.innerText()).trim();
+    const occurrences = (cellText.match(/Open/gi) || []).length;
+    expect(occurrences).toBeLessThanOrEqual(1);
   }
 
   async expectWorkspaceDataVisible() {
@@ -69,10 +81,6 @@ class CollectionDashboardPage {
       timeout: CONTROL_TIMEOUT_MS,
     });
   }
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 module.exports = { CollectionDashboardPage };

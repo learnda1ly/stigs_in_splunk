@@ -34,6 +34,23 @@ test.describe('Documentation navigation', () => {
       timeout: UI_TIMEOUT_MS,
     });
     await expect(navScope.getByText('Classic', { exact: false })).toHaveCount(0);
+    await expect(navScope.getByText('Export', { exact: true })).toBeVisible({
+      timeout: UI_TIMEOUT_MS,
+    });
+    await expect(navScope.getByText('STIG library', { exact: true })).toBeVisible({
+      timeout: UI_TIMEOUT_MS,
+    });
+  });
+
+  test('editor theme control omits deployment-wide SplunkUI help text', async ({ page }) => {
+    await page.goto(appPath('stig_editor_ui'), { timeout: NAV_TIMEOUT_MS });
+    await expect(page.locator('#stig-ui-root')).toBeVisible({ timeout: UI_TIMEOUT_MS });
+    await expect(
+      page.getByText('Applies to all SplunkUI pages for this deployment.'),
+    ).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'Editor color theme' })).toBeVisible({
+      timeout: UI_TIMEOUT_MS,
+    });
   });
 
   test('documentation view renders all required sections', async ({ page }) => {

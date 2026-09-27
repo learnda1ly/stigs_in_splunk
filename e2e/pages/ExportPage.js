@@ -1,5 +1,6 @@
 const { expect } = require('@playwright/test');
 const { appPath } = require('../fixtures/splunk');
+const { workspaceCombobox, selectWorkspaceOption } = require('../helpers/workspaceSelect');
 
 const NAV_TIMEOUT_MS = 60_000;
 const CONTROL_TIMEOUT_MS = 30_000;
@@ -13,11 +14,11 @@ class ExportPage {
   }
 
   workspaceSelect() {
-    return this.page.getByRole('combobox').first();
+    return workspaceCombobox(this.page);
   }
 
   formatSelect() {
-    return this.page.getByRole('combobox').nth(1);
+    return this.page.locator('#stig-ui-root').getByRole('combobox', { name: 'Format' });
   }
 
   async open() {
@@ -38,11 +39,7 @@ class ExportPage {
       { timeout: CONTROL_TIMEOUT_MS },
     );
     const select = this.workspaceSelect();
-    await select.click();
-    const option = this.page.getByRole('option', { name: new RegExp(escapeRegExp(name)) });
-    await expect(option.first()).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
-    await option.first().click();
-    await expect(select).toContainText(name, { timeout: CONTROL_TIMEOUT_MS });
+    await selectWorkspaceOption(this.page, select, name, CONTROL_TIMEOUT_MS);
     await rowsReady;
     await expect(this.page.getByRole('cell', { name: name }).first()).toBeVisible({
       timeout: CONTROL_TIMEOUT_MS,
@@ -84,10 +81,6 @@ class ExportPage {
     const raw = fs.readFileSync(filePath, 'utf8');
     expect(raw).toContain(hostname);
   }
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 module.exports = { ExportPage };
