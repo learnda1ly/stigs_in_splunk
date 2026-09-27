@@ -27,7 +27,8 @@ Indexed events use **sourcetype** `stig:audit` with JSON field extraction (`prop
 Example SPL:
 
 ```spl
-index=stig_audit sourcetype=stig:audit action=create entity_type=stig_host
+index=stig_audit sourcetype=stig:audit
+| spath
 | table _time user workspace_id object
 ```
 

@@ -7,8 +7,9 @@
       <table>
         <search>
           <query>index=stig_audit sourcetype=stig:audit
+| spath
 | table _time action user object workspace_id entity_type entity_id
-| sort - _time
+| sort 0 - _time
 | head 200</query>
           <earliest>-7d@d</earliest>
           <latest>now</latest>
@@ -22,6 +23,7 @@
       <chart>
         <search>
           <query>index=stig_audit sourcetype=stig:audit
+| spath
 | timechart span=1h count by action</query>
           <earliest>-7d@d</earliest>
           <latest>now</latest>
@@ -34,8 +36,9 @@
       <table>
         <search>
           <query>index=stig_audit sourcetype=stig:audit
+| spath
 | stats count AS actions BY user
-| sort - actions
+| sort 0 - actions
 | head 20</query>
           <earliest>-7d@d</earliest>
           <latest>now</latest>
