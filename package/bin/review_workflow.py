@@ -36,18 +36,24 @@ def workflow_state(record: Dict[str, Any]) -> str:
     return normalize_workflow_state(record.get("workflow_state"))
 
 
-def is_editable(record: Dict[str, Any]) -> bool:
+def is_editable(record: Dict[str, Any], *, governance_enabled: bool = True) -> bool:
     """Assessor may PATCH finding fields only while draft (including after reject)."""
+    if not governance_enabled:
+        return True
     return workflow_state(record) == "draft"
 
 
-def is_ingest_mutable(record: Dict[str, Any]) -> bool:
+def is_ingest_mutable(record: Dict[str, Any], *, governance_enabled: bool = True) -> bool:
     """HEC/import/reconcile may change review content only in draft (like REST PATCH)."""
-    return is_editable(record)
+    return is_editable(record, governance_enabled=governance_enabled)
 
 
-def is_governance_open_finding(record: Dict[str, Any]) -> bool:
+def is_governance_open_finding(
+    record: Dict[str, Any], *, governance_enabled: bool = True
+) -> bool:
     """Open assessor status that is not owner-accepted (spec §12 reporting)."""
+    if not governance_enabled:
+        return record.get("status") == "open"
     return record.get("status") == "open" and workflow_state(record) != "accepted"
 
 

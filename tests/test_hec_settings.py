@@ -13,6 +13,7 @@ from services import settings as settings_svc  # noqa: E402
 # Catalog in globalConfig.json (general tab) + spec §4.3.1 — not hec_token.
 DOCUMENTED_SETTING_FIELDS = frozenset(
     {
+        "governance_enabled",
         "vim_mode",
         "trust_event_collection_id",
         "ingest_index",

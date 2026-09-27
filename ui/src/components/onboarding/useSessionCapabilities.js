@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { apiGet } from "../../api";
 
 /**
- * Whether the signed-in user can edit/submit findings (server-side access.py rules).
+ * Whether the signed-in user can edit findings (server-side access rules).
  * @returns {boolean|null} null while loading or if the probe failed
  */
 export function useSessionCapabilities() {

@@ -218,7 +218,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
             if resource == "stig_settings":
                 return self._settings(method, parts, payload, service, username)
             if resource == "stig_readiness":
-                return self._readiness(method, payload, session)
+                return self._readiness(method, payload, session, service)
             if resource == "stig_imports":
                 return self._imports(method, parts, query, payload, service, session, username)
             if resource == "stig_assignment_rules":
@@ -1877,10 +1877,16 @@ class StigRestHandler(PersistentServerConnectionApplication):
         return _json_response(result)
 
     def _readiness(
-        self, method: str, payload: Dict[str, Any], session: Dict[str, Any]
+        self,
+        method: str,
+        payload: Dict[str, Any],
+        session: Dict[str, Any],
+        service: Any,
     ) -> Dict[str, Any]:
         if method == "GET":
-            return _json_response(setup_readiness_svc.build_readiness_report(session))
+            return _json_response(
+                setup_readiness_svc.build_readiness_report(session, service)
+            )
         if method == "POST":
             body = _body_json(payload)
             if (body.get("action") or "").strip().lower() != "complete":

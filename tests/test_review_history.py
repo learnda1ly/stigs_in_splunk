@@ -401,5 +401,35 @@ class ReviewHistoryRestTests(unittest.TestCase):
         mock_list.assert_called_once()
 
 
+class ReviewAuditDetailsTests(unittest.TestCase):
+    @patch.object(history_svc, "_context_for_review")
+    def test_audit_details_include_changed_finding_text(self, mock_ctx):
+        mock_ctx.return_value = {
+            "stig_collection_id": "ws1",
+            "rule_id": "SV-123",
+            "checklist_id": "cl1",
+        }
+        details = history_svc.audit_details_for_review_change(
+            MagicMock(),
+            {
+                "_key": "r1",
+                "status": "open",
+                "finding_details": "",
+                "comments": "",
+            },
+            {
+                "_key": "r1",
+                "status": "open",
+                "finding_details": "Added assessor notes",
+                "comments": "",
+            },
+        )
+        self.assertEqual(details["stig_collection_id"], "ws1")
+        self.assertIn("finding_details", details["changed_fields"])
+        self.assertEqual(details["finding_details"], "Added assessor notes")
+        self.assertIn("summary", details)
+        self.assertIn("finding_details", details["summary"])
+
+
 if __name__ == "__main__":
     unittest.main()

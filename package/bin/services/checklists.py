@@ -35,6 +35,7 @@ from services import collections as collections_svc
 from services import grants as grants_svc
 from services import hosts as hosts_svc
 from services import review_history as review_history_svc
+from services import settings as settings_svc
 
 
 def _require_collection(service, collection_id: str, session: Dict[str, Any], write: bool = False):
@@ -420,12 +421,17 @@ def apply_review_seeds(
     unmatched = 0
     locked = 0
     ts = now_epoch()
+    governance_enabled = settings_svc.is_governance_enabled(
+        settings_svc.get_settings(service)
+    )
     for rec in records:
         seed = match_review_seed(rec, seeds)
         if not seed:
             unmatched += 1
             continue
-        if is_ingest_locked(rec) or not review_workflow.is_ingest_mutable(rec):
+        if is_ingest_locked(rec) or not review_workflow.is_ingest_mutable(
+            rec, governance_enabled=governance_enabled
+        ):
             locked += 1
             continue
         patch = dict(rec)

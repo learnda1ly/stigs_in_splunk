@@ -20,6 +20,7 @@ from services import baselines as baselines_svc
 from services import checklists as checklists_svc
 from services import grants as grants_svc
 from services import review_history as review_history_svc
+from services import settings as settings_svc
 
 
 _VERSION_RE = re.compile(r"^v?(\d+)\s*r\s*(\d+)$", re.IGNORECASE)
@@ -86,8 +87,12 @@ def assert_newer_baseline_revision(
     )
 
 
-def _governed_row(rec: Dict[str, Any]) -> bool:
-    return is_ingest_locked(rec) or not review_workflow.is_editable(rec)
+def _governed_row(rec: Dict[str, Any], *, governance_enabled: bool = True) -> bool:
+    if is_ingest_locked(rec):
+        return True
+    if not governance_enabled:
+        return False
+    return not review_workflow.is_editable(rec)
 
 
 def _merge_review_from_prior(
@@ -96,6 +101,8 @@ def _merge_review_from_prior(
     new_baseline_id: str,
     username: str,
     ts: float,
+    *,
+    governance_enabled: bool = True,
 ) -> Tuple[Dict[str, Any], str]:
     """Build updated review dict; returns (review, outcome)."""
     new_hash = str(rule.get("check_content_hash") or "")
@@ -115,7 +122,7 @@ def _merge_review_from_prior(
         patch["valid"] = validation.persistable_valid(patch)
         return patch, "merged"
 
-    if _governed_row(prior):
+    if _governed_row(prior, governance_enabled=governance_enabled):
         patch["valid"] = validation.persistable_valid(patch)
         return patch, "preserved"
 
@@ -201,6 +208,9 @@ def upgrade_checklist(
     stats = {"merged": 0, "reset": 0, "preserved": 0, "added": 0, "removed": 0}
     ts = now_epoch()
     matched_keys: Set[str] = set()
+    governance_enabled = settings_svc.is_governance_enabled(
+        settings_svc.get_settings(service)
+    )
 
     for rule in new_rules:
         prior = match_review_for_rule(remaining, rule)
@@ -209,7 +219,12 @@ def upgrade_checklist(
             if key:
                 matched_keys.add(str(key))
             updated, outcome = _merge_review_from_prior(
-                prior, rule, new_baseline_id, username, ts
+                prior,
+                rule,
+                new_baseline_id,
+                username,
+                ts,
+                governance_enabled=governance_enabled,
             )
             stored = kv_client.update_record(reviews_coll, prior["_key"], kv_record(updated))
             review_history_svc.record_review_change(
