@@ -32,7 +32,7 @@ The app creates a **Default** workspace on first use. Checklist imports without 
 1. **Workspaces** — **Get started → Workspaces**; create a workspace or use Default.
 2. **Import baselines** — **Get started → Import** → **Baselines** tab (not Checklists first on greenfield).
 3. **Hosts** — **Get started → Hosts**; select workspace, add a host.
-4. **Assign STIG** — **Work → STIG Editor**; select workspace + host → **Host actions → Assign STIG** (or **STIG library → Create checklist**).
+4. **Assign STIG** — **Work → STIG Editor**; select workspace and host, then **Assign STIG** (or **STIG library → Create checklist**).
 5. **Review findings** — Editor: update status/details → **Write** → **Submit** if your process requires review.
 6. **Collection dashboard** — **Review → Collection dashboard** for metrics and POA&M after findings exist.
 

@@ -8,7 +8,7 @@
   <collection label="Work" icon="code">
     <view name="stig_editor_ui" default="true" label="STIG Editor" icon="filenode"/>
     <view name="stig_library_ui" label="STIG library" icon="cylinderindex"/>
-    <view name="stig_export_ui" label="Export" icon="boxarrowup"/>
+    <view name="stig_export_ui" label="Export" icon="arrowsquaretopright"/>
   </collection>
   <collection label="Review" icon="chartpanels">
     <view name="stig_collection_review_ui" label="Collection review" icon="chartline"/>

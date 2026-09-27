@@ -3,7 +3,7 @@ import Heading from "@splunk/react-ui/Heading";
 import Link from "@splunk/react-ui/Link";
 import Table from "@splunk/react-ui/Table";
 import { viewUrl } from "../api";
-import { Brand, BrandKicker, Header, PageIntro, PagePad, SectionBlock, Shell } from "../layout";
+import { Brand, Header, PageIntro, PagePad, SectionBlock, Shell } from "../layout";
 
 const prose = {
     fontSize: "14px",
@@ -49,7 +49,6 @@ export default function DocumentationApp() {
         <Shell>
             <Header>
                 <Brand>
-                    <BrandKicker>STIG in Splunk</BrandKicker>
                     <Heading level={1} style={{ margin: 0 }}>
                         Documentation
                     </Heading>
@@ -206,9 +205,9 @@ export default function DocumentationApp() {
                         <li>
                             <strong>Assign STIG</strong> —{" "}
                             <Link to={viewUrl("stig_editor_ui")}>STIG Editor</Link>: select workspace
-                            and host, open <strong>Host actions</strong>, choose{" "}
-                            <strong>Assign STIG</strong> (or create a checklist from{" "}
-                            <Link to={viewUrl("stig_library_ui")}>STIG library</Link>).
+                            and host, then use <strong>Assign STIG</strong> (shown when the host has
+                            no checklist yet). Alternate: create a checklist from{" "}
+                            <Link to={viewUrl("stig_library_ui")}>STIG library</Link>.
                         </li>
                         <li>
                             <strong>Review findings</strong> — In the editor, select a finding,
