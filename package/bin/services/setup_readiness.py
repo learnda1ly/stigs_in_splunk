@@ -232,6 +232,8 @@ def build_readiness_report(session: Dict[str, Any]) -> Dict[str, Any]:
         "is_configured": configured,
         "documentation_view": "stig_documentation_ui",
         "platform_ready": bool(roles.get("ok") and ownership.get("ok")),
+        "can_stig_write": access.user_has_stig_write(session),
+        "can_stig_admin": access.user_has_stig_admin(session),
     }
 
 
