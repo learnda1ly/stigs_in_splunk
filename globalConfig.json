@@ -155,6 +155,13 @@
                             "help": "Optional. When preset is Custom, this object defines colors. Otherwise it merges onto the selected preset. Example: {\"basePreset\":\"tokyo_night\",\"colors\":{\"bgInput\":\"#1a1b26\",\"fg\":\"#c0caf5\"}} or {\"cssVars\":{\"--stig-bg-page\":\"#000\"}}."
                         },
                         {
+                            "field": "governance_enabled",
+                            "label": "Enable review governance (submit / accept / reject)",
+                            "type": "checkbox",
+                            "defaultValue": true,
+                            "help": "When enabled, findings follow the submit and owner accept/reject workflow. When disabled, assessors save findings directly; Collection review and Review requirements are hidden and accept capability is not required for ordinary STIG management."
+                        },
+                        {
                             "field": "vim_mode",
                             "label": "Enable vim-style keyboard shortcuts",
                             "type": "checkbox",
@@ -207,6 +214,7 @@
                             "fields": [
                                 "ui_theme_preset",
                                 "ui_theme_custom",
+                                "governance_enabled",
                                 "vim_mode"
                             ]
                         },

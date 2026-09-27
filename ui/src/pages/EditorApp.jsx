@@ -62,6 +62,7 @@ import EditorAssignCallout from "../components/onboarding/EditorAssignCallout";
 import EditorEmptyState from "../components/onboarding/EditorEmptyState";
 import WorkspaceSelectHint from "../components/onboarding/WorkspaceSelectHint";
 import { loadVimSetting, persistVimSetting } from "../vim/settings";
+import { useGovernanceEnabled } from "../governance/settings";
 import { VimGlobalStyle } from "../vim/styles";
 import { useEditorKeys } from "../vim/useEditorKeys";
 
@@ -97,6 +98,7 @@ function lookupRule(rulesByKey, rev) {
 }
 
 export default function EditorApp() {
+    const governanceEnabled = useGovernanceEnabled();
     const [collections, setCollections] = useState([]);
     const [collectionId, setCollectionId] = useState("");
     const [reviewRequirements, setReviewRequirements] = useState(
@@ -653,7 +655,9 @@ export default function EditorApp() {
         return counts;
     }, [items]);
     const selectedEditable =
-        selected && reviewIsEditable(selected.review) && !busy;
+        selected &&
+        (!governanceEnabled || reviewIsEditable(selected.review)) &&
+        !busy;
     const pct = items.length ? Math.round((doneCount / items.length) * 100) : 0;
     const dirty =
         selected &&
@@ -686,7 +690,11 @@ export default function EditorApp() {
     };
 
     const onStatus = (value) => {
-        if (!selected || busy || !reviewIsEditable(selected.review)) {
+        if (
+            !selected ||
+            busy ||
+            (governanceEnabled && !reviewIsEditable(selected.review))
+        ) {
             return;
         }
         const previous = selected.review.status;
@@ -831,7 +839,11 @@ export default function EditorApp() {
     };
 
     const onWrite = () => {
-        if (!selected || busy || !reviewIsEditable(selected.review)) {
+        if (
+            !selected ||
+            busy ||
+            (governanceEnabled && !reviewIsEditable(selected.review))
+        ) {
             return;
         }
         const issues = reviewValidationIssues(
@@ -887,7 +899,11 @@ export default function EditorApp() {
     };
 
     const onCopyFromPeer = (peerReviewId) => {
-        if (!selected || busy || !reviewIsEditable(selected.review)) {
+        if (
+            !selected ||
+            busy ||
+            (governanceEnabled && !reviewIsEditable(selected.review))
+        ) {
             return;
         }
         const key = selected.review._key;
@@ -1230,9 +1246,14 @@ export default function EditorApp() {
                 </Toolbar>
                 <HeaderMeta>
                     <div>
-                        {doneCount} completed · {items.length - doneCount} incomplete ·{" "}
-                        {workflowCounts.submitted} submitted · {workflowCounts.accepted}{" "}
-                        accepted
+                        {doneCount} completed · {items.length - doneCount} incomplete
+                        {governanceEnabled ? (
+                            <>
+                                {" "}
+                                · {workflowCounts.submitted} submitted ·{" "}
+                                {workflowCounts.accepted} accepted
+                            </>
+                        ) : null}
                     </div>
                     <ProgressTrack title={pct + "% complete"}>
                         <ProgressFill $pct={pct} />
@@ -1563,24 +1584,28 @@ export default function EditorApp() {
                         onClick={onValidate}
                         label="Validate"
                     />
-                    <Button
-                        appearance="secondary"
-                        disabled={busy || !filtered.length}
-                        onClick={() => onBatchWorkflow("submit")}
-                        label="Submit visible"
-                    />
-                    <Button
-                        appearance="secondary"
-                        disabled={busy || !filtered.length}
-                        onClick={() => onBatchWorkflow("accept")}
-                        label="Accept visible"
-                    />
-                    <Button
-                        appearance="secondary"
-                        disabled={busy || !filtered.length}
-                        onClick={() => onBatchWorkflow("reject")}
-                        label="Reject visible"
-                    />
+                    {governanceEnabled ? (
+                        <>
+                            <Button
+                                appearance="secondary"
+                                disabled={busy || !filtered.length}
+                                onClick={() => onBatchWorkflow("submit")}
+                                label="Submit visible"
+                            />
+                            <Button
+                                appearance="secondary"
+                                disabled={busy || !filtered.length}
+                                onClick={() => onBatchWorkflow("accept")}
+                                label="Accept visible"
+                            />
+                            <Button
+                                appearance="secondary"
+                                disabled={busy || !filtered.length}
+                                onClick={() => onBatchWorkflow("reject")}
+                                label="Reject visible"
+                            />
+                        </>
+                    ) : null}
                     <Button
                         appearance="primary"
                         onClick={() => {
@@ -1631,7 +1656,9 @@ export default function EditorApp() {
                                     >
                                         <span>{complete ? "✓" : ""}</span>
                                         <StatusChip status={rev.status} />
-                                        <WorkflowChip workflowState={rev.workflow_state} />
+                                        {governanceEnabled ? (
+                                            <WorkflowChip workflowState={rev.workflow_state} />
+                                        ) : null}
                                         {showHostname ? (
                                             <span
                                                 style={{
@@ -1716,14 +1743,16 @@ export default function EditorApp() {
                                             ? "yes"
                                             : "no"}
                                     </span>
-                                    <span>
-                                        <strong>Workflow</strong>{" "}
-                                        <WorkflowChip
-                                            workflowState={selected.review.workflow_state}
-                                        />
-                                    </span>
+                                    {governanceEnabled ? (
+                                        <span>
+                                            <strong>Workflow</strong>{" "}
+                                            <WorkflowChip
+                                                workflowState={selected.review.workflow_state}
+                                            />
+                                        </span>
+                                    ) : null}
                                 </MetaLine>
-                                {selected.review.reject_feedback ? (
+                                {governanceEnabled && selected.review.reject_feedback ? (
                                     <Message appearance="error">
                                         Reject feedback: {selected.review.reject_feedback}
                                     </Message>
@@ -1842,52 +1871,56 @@ export default function EditorApp() {
                                     onSwitchField={onSwitchField}
                                 />
                             </ControlGroup>
-                            <ControlGroup label="Governance (submit / accept / reject)">
-                                <Actions>
-                                    <Button
-                                        appearance="primary"
-                                        disabled={
-                                            busy ||
-                                            !reviewIsValid(
-                                                {
-                                                    status: selected.review.status,
-                                                    finding_details: finding,
-                                                    comments,
-                                                },
-                                                reviewRequirements
-                                            ) ||
-                                            reviewWorkflowState(selected.review) !== "draft"
-                                        }
-                                        onClick={() => onWorkflow("submit")}
-                                        label="Submit"
+                            {governanceEnabled ? (
+                                <ControlGroup label="Governance (submit / accept / reject)">
+                                    <Actions>
+                                        <Button
+                                            appearance="primary"
+                                            disabled={
+                                                busy ||
+                                                !reviewIsValid(
+                                                    {
+                                                        status: selected.review.status,
+                                                        finding_details: finding,
+                                                        comments,
+                                                    },
+                                                    reviewRequirements
+                                                ) ||
+                                                reviewWorkflowState(selected.review) !== "draft"
+                                            }
+                                            onClick={() => onWorkflow("submit")}
+                                            label="Submit"
+                                        />
+                                        <Button
+                                            appearance="secondary"
+                                            disabled={
+                                                busy ||
+                                                reviewWorkflowState(selected.review) !==
+                                                    "submitted"
+                                            }
+                                            onClick={() => onWorkflow("accept")}
+                                            label="Accept"
+                                        />
+                                        <Button
+                                            appearance="secondary"
+                                            disabled={
+                                                busy ||
+                                                reviewWorkflowState(selected.review) !==
+                                                    "submitted"
+                                            }
+                                            onClick={() =>
+                                                onWorkflow("reject", rejectFeedback)
+                                            }
+                                            label="Reject"
+                                        />
+                                    </Actions>
+                                    <Text
+                                        value={rejectFeedback}
+                                        onChange={(e, { value }) => setRejectFeedback(value)}
+                                        placeholder="Optional feedback when rejecting"
                                     />
-                                    <Button
-                                        appearance="secondary"
-                                        disabled={
-                                            busy ||
-                                            reviewWorkflowState(selected.review) !== "submitted"
-                                        }
-                                        onClick={() => onWorkflow("accept")}
-                                        label="Accept"
-                                    />
-                                    <Button
-                                        appearance="secondary"
-                                        disabled={
-                                            busy ||
-                                            reviewWorkflowState(selected.review) !== "submitted"
-                                        }
-                                        onClick={() =>
-                                            onWorkflow("reject", rejectFeedback)
-                                        }
-                                        label="Reject"
-                                    />
-                                </Actions>
-                                <Text
-                                    value={rejectFeedback}
-                                    onChange={(e, { value }) => setRejectFeedback(value)}
-                                    placeholder="Optional feedback when rejecting"
-                                />
-                            </ControlGroup>
+                                </ControlGroup>
+                            ) : null}
                             <ControlGroup label="Peer hosts (same rule)">
                                 {peersLoading ? (
                                     <WaitSpinner size="small" />
@@ -1908,10 +1941,14 @@ export default function EditorApp() {
                                                     <strong>{peer.hostname || peer.host_id}</strong>
                                                     {" · "}
                                                     <StatusChip status={peer.status} />
-                                                    {" "}
-                                                    <WorkflowChip
-                                                        workflowState={peer.workflow_state}
-                                                    />
+                                                    {governanceEnabled ? (
+                                                        <>
+                                                            {" "}
+                                                            <WorkflowChip
+                                                                workflowState={peer.workflow_state}
+                                                            />
+                                                        </>
+                                                    ) : null}
                                                     <MetaLine>
                                                         {peer.finding_details_snippet ||
                                                             peer.comments_snippet ||
@@ -1983,7 +2020,7 @@ export default function EditorApp() {
                                 {dirty ? (
                                     <span>Unwritten finding details or comments</span>
                                 ) : null}
-                                {!selectedEditable ? (
+                                {governanceEnabled && !selectedEditable ? (
                                     <span>
                                         Finding is locked while submitted or accepted.
                                     </span>

@@ -28,6 +28,7 @@ from services import baselines as baselines_svc
 from services import checklists as checklists_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
+from services import settings as settings_svc
 from services import hosts as hosts_svc
 
 DEFAULT_FINDINGS_LIMIT = 500
@@ -137,6 +138,7 @@ def aggregate_metrics(
     *,
     host_count: int,
     checklist_count: int,
+    governance_enabled: bool = True,
 ) -> Dict[str, Any]:
     by_status = {status: 0 for status in STATUSES}
     by_severity: Dict[str, int] = {}
@@ -153,7 +155,9 @@ def aggregate_metrics(
         by_severity[sev] = by_severity.get(sev, 0) + 1
         if status == "open":
             open_status_count += 1
-            if review_workflow.is_governance_open_finding(review):
+            if review_workflow.is_governance_open_finding(
+                review, governance_enabled=governance_enabled
+            ):
                 open_governance_count += 1
                 open_by_severity[sev] = open_by_severity.get(sev, 0) + 1
         if validation.is_valid(review):
@@ -202,11 +206,15 @@ def collection_metrics(
     hosts = hosts_svc.list_hosts(service, session, collection_id)
     rule_meta_index = _rule_meta_index(service, baseline_ids)
     severity_index = _severity_index_from_meta(rule_meta_index)
+    governance_enabled = settings_svc.is_governance_enabled(
+        settings_svc.get_settings(service)
+    )
     metrics = aggregate_metrics(
         reviews,
         severity_index,
         host_count=len(hosts),
         checklist_count=len(checklists),
+        governance_enabled=governance_enabled,
     )
     return {
         "stig_collection_id": collection_id,
@@ -462,6 +470,9 @@ def _list_collection_findings(
 
     if ctx is None:
         ctx = _collection_workspace_context(service, collection_id, session)
+    governance_enabled = settings_svc.is_governance_enabled(
+        settings_svc.get_settings(service)
+    )
     reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
     rows: List[Dict[str, Any]] = []
     for checklist_id, checklist in ctx["checklist_by_id"].items():
@@ -480,7 +491,7 @@ def _list_collection_findings(
             if status not in status_filter:
                 continue
             if status in OPEN_STATUSES and not review_workflow.is_governance_open_finding(
-                review
+                review, governance_enabled=governance_enabled
             ):
                 continue
             if rule_id_filter and review.get("rule_id") != rule_id_filter:

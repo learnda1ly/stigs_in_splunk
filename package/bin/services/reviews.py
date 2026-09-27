@@ -16,6 +16,7 @@ from services import collections as collections_svc
 from services import grants as grants_svc
 from services import review_requirements as review_requirements_svc
 from services import review_history as review_history_svc
+from services import settings as settings_svc
 
 MAX_BATCH_REVIEWS = 500
 
@@ -50,11 +51,20 @@ def _policy_for_checklist(
         return review_requirements_svc.default_policy()
 
 
+def _governance_enabled(service) -> bool:
+    return settings_svc.is_governance_enabled(settings_svc.get_settings(service))
+
+
 def _annotate(
     records: List[Dict[str, Any]],
     policy: Optional[Dict[str, Any]] = None,
+    *,
+    governance_enabled: bool = True,
 ) -> List[Dict[str, Any]]:
-    return [validation.annotate_review(rec, policy) for rec in records]
+    return [
+        validation.annotate_review(rec, policy, governance_enabled=governance_enabled)
+        for rec in records
+    ]
 
 
 def _workspace_for_checklist(
@@ -72,7 +82,14 @@ def _workspace_for_checklist(
     return rec, grants
 
 
-def _ensure_editable(existing: Dict[str, Any], session: Dict[str, Any]) -> None:
+def _ensure_editable(
+    existing: Dict[str, Any],
+    session: Dict[str, Any],
+    *,
+    governance_enabled: bool = True,
+) -> None:
+    if not governance_enabled:
+        return
     if review_workflow.is_editable(existing):
         return
     if access.user_has_stig_admin(session):
@@ -117,6 +134,9 @@ def _workflow_action(
     reject_feedback: Optional[str] = None,
 ) -> Dict[str, Any]:
     coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
+    if not _governance_enabled(service):
+        raise ValueError("review governance is disabled in app configuration")
+
     existing = kv_client.get_by_key(coll, key)
     if not existing:
         raise KeyError(key)
@@ -156,7 +176,9 @@ def _workflow_action(
     review_history_svc.record_review_change(
         service, existing, stored, username, action=action
     )
-    return validation.annotate_review(stored, policy)
+    return validation.annotate_review(
+        stored, policy, governance_enabled=_governance_enabled(service)
+    )
 
 
 def submit_review(
@@ -263,6 +285,7 @@ def list_reviews(
     if rule_version:
         query["rule_version"] = rule_version
     records = kv_client.query_all(coll, query if query else None)
+    governance_enabled = _governance_enabled(service)
 
     allowed = {r["_key"] for r in collections_svc.list_collections(service, session)}
     if stig_collection_id:
@@ -279,7 +302,9 @@ def list_reviews(
         policy = review_requirements_svc.get_policy(
             service, rec.get("stig_collection_id"), session
         )
-        annotated = _annotate(records, policy)
+        annotated = _annotate(
+            records, policy, governance_enabled=governance_enabled
+        )
     else:
         visible_checklists: set[str] = set()
         if stig_collection_id:
@@ -298,7 +323,9 @@ def list_reviews(
         records = [
             r for r in records if r.get("checklist_id") in visible_checklists
         ]
-        annotated = _annotate_with_workspace_policies(service, records, session)
+        annotated = _annotate_with_workspace_policies(
+            service, records, session, governance_enabled=governance_enabled
+        )
 
     want = _as_bool(valid)
     if want is not None:
@@ -324,7 +351,9 @@ def get_review(service, key: str, session: Dict[str, Any]) -> Optional[Dict[str,
         policy = _policy_for_checklist(service, checklist_id, session)
     else:
         policy = review_requirements_svc.default_policy()
-    return validation.annotate_review(rec, policy)
+    return validation.annotate_review(
+        rec, policy, governance_enabled=_governance_enabled(service)
+    )
 
 
 def update_review(
@@ -342,8 +371,11 @@ def update_review(
         raise PermissionError("stig_write required")
 
     content_keys = {"status", "finding_details", "comments", "package_id", "ingest_lock"}
+    governance_enabled = _governance_enabled(service)
     if any(k in body for k in content_keys):
-        _ensure_editable(existing, session)
+        _ensure_editable(
+            existing, session, governance_enabled=governance_enabled
+        )
 
     patch = dict(existing)
     patch["workflow_state"] = review_workflow.workflow_state(existing)
@@ -377,7 +409,9 @@ def update_review(
     review_history_svc.record_review_change(
         service, existing, stored, username, action="update"
     )
-    return validation.annotate_review(stored, policy)
+    return validation.annotate_review(
+        stored, policy, governance_enabled=governance_enabled
+    )
 
 
 def batch_update_reviews(
@@ -462,15 +496,20 @@ def validate_checklist(
     )
     coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
     records = kv_client.query_all(coll, {"checklist_id": checklist_id})
+    governance_enabled = _governance_enabled(service)
     annotated: List[Dict[str, Any]] = []
     valid_count = 0
     for rec in records:
-        result = validation.annotate_review(rec, policy)
+        result = validation.annotate_review(
+            rec, policy, governance_enabled=governance_enabled
+        )
         if persist and _as_bool(rec.get("valid")) is not result["valid"]:
             patch = dict(rec)
             patch["valid"] = result["valid"]
             stored = kv_client.update_record(coll, rec["_key"], kv_record(patch))
-            result = validation.annotate_review(stored, policy)
+            result = validation.annotate_review(
+                stored, policy, governance_enabled=governance_enabled
+            )
         if result["valid"]:
             valid_count += 1
         annotated.append(result)
@@ -497,6 +536,8 @@ def _annotate_with_workspace_policies(
     service,
     records: List[Dict[str, Any]],
     session: Dict[str, Any],
+    *,
+    governance_enabled: bool = True,
 ) -> List[Dict[str, Any]]:
     if not records:
         return []
@@ -516,6 +557,10 @@ def _annotate_with_workspace_policies(
             except KeyError:
                 policy_cache[collection_id] = review_requirements_svc.default_policy()
         out.append(
-            validation.annotate_review(rec, policy_cache[collection_id])
+            validation.annotate_review(
+                rec,
+                policy_cache[collection_id],
+                governance_enabled=governance_enabled,
+            )
         )
     return out

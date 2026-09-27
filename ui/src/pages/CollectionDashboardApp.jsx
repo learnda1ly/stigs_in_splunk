@@ -29,6 +29,7 @@ import {
     Toolbar,
 } from "../layout";
 import { StatusChip } from "../status";
+import { useGovernanceEnabled } from "../governance/settings";
 
 const MetricGrid = styled.div`
     display: grid;
@@ -188,6 +189,7 @@ function mergeUnreviewedRules(parts) {
 }
 
 export default function CollectionDashboardApp() {
+    const governanceEnabled = useGovernanceEnabled();
     const [tab, setTab] = useState("metrics");
     const [collections, setCollections] = useState([]);
     const [collectionId, setCollectionId] = useState("");
@@ -966,8 +968,11 @@ export default function CollectionDashboardApp() {
                             {aggregate ? (
                                 <>
                                     <Message appearance="info">
-                                        Matching findings after filters (governance applies when
-                                        status includes open): {aggregate.open_findings_total || 0}
+                                        Matching findings after filters
+                                        {governanceEnabled
+                                            ? " (governance applies when status includes open)"
+                                            : ""}
+                                        : {aggregate.open_findings_total || 0}
                                     </Message>
                                     {renderAggregateTable(
                                         "By group (V-ID)",

@@ -7,7 +7,7 @@ toggle. The HEC token is never stored here.
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import kv_client
 from models import (
@@ -78,9 +78,20 @@ def _pick(body: Dict[str, Any], existing: Dict[str, Any], key: str, default: str
     return existing.get(key) or default
 
 
+def is_governance_enabled(settings: Optional[Dict[str, Any]] = None) -> bool:
+    """Review submit/accept/reject workflow; defaults on for existing installs."""
+    if not settings:
+        return True
+    parsed = as_bool(settings.get("governance_enabled"))
+    if parsed is None:
+        return True
+    return bool(parsed)
+
+
 def _public(rec: Dict[str, Any], username: str = "") -> Dict[str, Any]:
     return {
         "_key": rec.get("_key") or UCC_SETTINGS_STANZA,
+        "governance_enabled": is_governance_enabled(rec),
         "vim_mode": bool(as_bool(rec.get("vim_mode"))),
         "trust_event_collection_id": bool(as_bool(rec.get("trust_event_collection_id"))),
         "ingest_index": rec.get("ingest_index") or DEFAULT_INGEST_INDEX,
@@ -155,6 +166,9 @@ def _write_ucc(session_key: str, record: Dict[str, Any]) -> bool:
     except ImportError:
         return False
     postargs = {
+        "governance_enabled": (
+            "1" if is_governance_enabled(record) else "0"
+        ),
         "vim_mode": "1" if as_bool(record.get("vim_mode")) else "0",
         "trust_event_collection_id": (
             "1" if as_bool(record.get("trust_event_collection_id")) else "0"
@@ -217,7 +231,13 @@ def save_settings(service, body: Dict[str, Any], username: str) -> Dict[str, Any
         if "trust_event_collection_id" in body
         else as_bool(existing.get("trust_event_collection_id"))
     )
+    gov = (
+        as_bool(body["governance_enabled"])
+        if "governance_enabled" in body
+        else as_bool(existing.get("governance_enabled"))
+    )
     record = {
+        "governance_enabled": bool(gov) if gov is not None else True,
         "vim_mode": bool(vim) if vim is not None else False,
         "trust_event_collection_id": bool(trust) if trust is not None else False,
         "ingest_index": _pick(body, existing, "ingest_index", DEFAULT_INGEST_INDEX),

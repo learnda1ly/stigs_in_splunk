@@ -12,7 +12,10 @@ import {
     apiGet,
     defaultWorkspaceId,
     isAllWorkspaces,
+    viewUrl,
 } from "../api";
+import Link from "@splunk/react-ui/Link";
+import { useGovernanceEnabled } from "../governance/settings";
 import WorkspaceSelect from "../components/WorkspaceSelect";
 import {
     Brand,
@@ -34,6 +37,7 @@ const STATUS_OPTIONS = Object.keys(STATUS_LABELS).map((key) => ({
 }));
 
 export default function ReviewRequirementsApp() {
+    const governanceEnabled = useGovernanceEnabled();
     const [workspaces, setWorkspaces] = useState([]);
     const [collectionId, setCollectionId] = useState("");
     const [policy, setPolicy] = useState(DEFAULT_REVIEW_REQUIREMENTS);
@@ -145,6 +149,21 @@ export default function ReviewRequirementsApp() {
             setSaving(false);
         }
     };
+
+    if (!governanceEnabled) {
+        return (
+            <Shell>
+                <PagePad>
+                    <Message appearance="info">
+                        Review requirements apply only when governance is enabled. Turn it on
+                        under{" "}
+                        <Link to={viewUrl("configuration")}>Workspaces → Editor &amp; ingest</Link>
+                        .
+                    </Message>
+                </PagePad>
+            </Shell>
+        );
+    }
 
     return (
         <Shell>

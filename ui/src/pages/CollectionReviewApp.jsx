@@ -15,8 +15,11 @@ import {
     apiPatch,
     defaultWorkspaceId,
     isAllWorkspaces,
+    viewUrl,
     workspaceScopeQuery,
 } from "../api";
+import Link from "@splunk/react-ui/Link";
+import { useGovernanceEnabled } from "../governance/settings";
 import WorkspaceSelect from "../components/WorkspaceSelect";
 import {
     Actions,
@@ -104,6 +107,7 @@ function emptyRow(host, checklist, review) {
 }
 
 export default function CollectionReviewApp() {
+    const governanceEnabled = useGovernanceEnabled();
     const [collections, setCollections] = useState([]);
     const [collectionId, setCollectionId] = useState("");
     const [reviewRequirements, setReviewRequirements] = useState(
@@ -596,6 +600,21 @@ export default function CollectionReviewApp() {
             )
             .finally(() => setBusy(false));
     };
+
+    if (!governanceEnabled) {
+        return (
+            <Shell>
+                <PagePad>
+                    <Message appearance="info">
+                        Review governance is turned off in app configuration. Use the STIG Editor
+                        to manage findings directly. Re-enable governance under{" "}
+                        <Link to={viewUrl("configuration")}>Workspaces → Editor &amp; ingest</Link>
+                        .
+                    </Message>
+                </PagePad>
+            </Shell>
+        );
+    }
 
     return (
         <Shell>

@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import ThemeRoot from "./ThemeRoot";
+import { hideGovernanceNavEntries } from "./governance/settings";
 
 function hideSplunkChrome() {
     document.body.classList.add("stig-ui-page");
@@ -75,6 +76,7 @@ export function mountPage(App) {
             return;
         }
         hideSplunkChrome();
+        hideGovernanceNavEntries();
         const root = createRoot(el);
         root.render(
             <ThemeRoot>

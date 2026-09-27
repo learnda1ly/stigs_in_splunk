@@ -131,14 +131,19 @@ def is_completed(review: Dict[str, Any], policy: Optional[Dict[str, Any]] = None
 
 
 def annotate_review(
-    review: Dict[str, Any], policy: Optional[Dict[str, Any]] = None
+    review: Dict[str, Any],
+    policy: Optional[Dict[str, Any]] = None,
+    *,
+    governance_enabled: bool = True,
 ) -> Dict[str, Any]:
     """Return a copy with ``valid`` and ``validation_errors`` (not for KV)."""
     import review_workflow
 
     out = dict(review)
     out["workflow_state"] = review_workflow.workflow_state(out)
-    out["workflow_editable"] = review_workflow.is_editable(out)
+    out["workflow_editable"] = review_workflow.is_editable(
+        out, governance_enabled=governance_enabled
+    )
     issues = collect_issues(out, policy)
     out["valid"] = not issues
     out["validation_errors"] = issues
