@@ -12,7 +12,7 @@ from services import hec as hec_svc
 
 SPLUNK_SETTINGS_ROLES = (
     "Settings → Users and authentication → Roles → "
-    "assign role_stig_user or role_stig_admin to your account"
+    "assign stig_user or stig_admin to your account"
 )
 SPLUNK_SETTINGS_HEC = (
     "Settings → Data inputs → HTTP Event Collector → "
@@ -21,7 +21,7 @@ SPLUNK_SETTINGS_HEC = (
 )
 
 STIG_ROLE_HINT = (
-    "Assign Splunk role role_stig_user (assessor) or role_stig_admin (administrator). "
+    "Assign Splunk role stig_user (assessor) or stig_admin (administrator). "
     "They grant capabilities stig_read, stig_write, and edit_kvstore (stig_admin adds stig_admin)."
 )
 
@@ -52,14 +52,14 @@ def assess_role_readiness(session: Dict[str, Any]) -> Dict[str, Any]:
     ok = _user_has_stig_read(session)
     missing: List[str] = []
     if not ok:
-        missing.append("stig_read (via role_stig_user or role_stig_admin)")
+        missing.append("stig_read (via stig_user or stig_admin)")
     return {
         "ok": ok,
         "missing": missing,
         "fix_in_splunk": SPLUNK_SETTINGS_ROLES,
         "guidance": STIG_ROLE_HINT,
         "next_action": (
-            "Ask a Splunk admin to assign role_stig_user or role_stig_admin, "
+            "Ask a Splunk admin to assign stig_user or stig_admin, "
             "then sign out and back in."
             if not ok
             else ""

@@ -80,7 +80,7 @@ require([
         }
 
         var html = "";
-        html += row("STIG role (role_stig_user or role_stig_admin)", roles, "stig-setup-badge-ok");
+        html += row("STIG role (stig_user or stig_admin)", roles, "stig-setup-badge-ok");
         html += row("HEC input stig_findings (index stig)", hec, "stig-setup-badge-hec");
         html += row("App directory ownership (local/)", own, "stig-setup-badge-own");
 
@@ -150,4 +150,9 @@ require([
     });
 
     loadReadiness();
+
+    $("#stig-setup-doc-link").attr(
+        "href",
+        localePrefix() + "/app/stigs_in_splunk/stig_documentation_ui"
+    );
 });
