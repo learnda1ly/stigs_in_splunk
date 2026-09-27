@@ -36,6 +36,7 @@ TRACKED_FIELDS = (
 
 MAX_SUMMARY_LEN = 240
 MAX_TEXT_PREVIEW = 80
+MAX_AUDIT_FIELD_LEN = 4000
 
 
 def _parse_int(value: Any, default: int, minimum: int = 0, maximum: Optional[int] = None) -> int:
@@ -161,6 +162,49 @@ def _context_for_review(
         "rule_id": _text(review.get("rule_id")),
         "rule_version": _text(review.get("rule_version")),
     }
+
+
+def audit_details_for_review_change(
+    service,
+    before: Dict[str, Any],
+    after: Dict[str, Any],
+    *,
+    action: str = "update",
+    checklist: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Structured audit ``details`` for review mutations (index + dashboards)."""
+    ctx = _context_for_review(service, after, checklist=checklist)
+    details: Dict[str, Any] = {k: v for k, v in ctx.items() if v}
+    details["status"] = _text(after.get("status"))
+    changed = changed_field_names(before, after)
+    if changed:
+        details["changed_fields"] = changed
+    summary = build_change_summary(before, after, action=action)
+    if summary:
+        details["summary"] = summary
+    if "status" in changed:
+        details["previous_status"] = _text(before.get("status"))
+    if "workflow_state" in changed or action in ("submit", "accept", "reject"):
+        details["previous_workflow_state"] = review_workflow.workflow_state(before)
+        details["workflow_state"] = review_workflow.workflow_state(after)
+    for field in changed:
+        if field in ("finding_details", "comments", "reject_feedback", "package_id"):
+            new_val = _text(after.get(field))
+            old_val = _text(before.get(field))
+            if new_val != old_val:
+                if len(new_val) <= MAX_AUDIT_FIELD_LEN:
+                    details[field] = new_val
+                else:
+                    details[field] = new_val[:MAX_AUDIT_FIELD_LEN] + "…"
+                if old_val:
+                    key = f"previous_{field}"
+                    if len(old_val) <= MAX_AUDIT_FIELD_LEN:
+                        details[key] = old_val
+                    else:
+                        details[key] = old_val[:MAX_AUDIT_FIELD_LEN] + "…"
+        elif field == "ingest_lock":
+            details["ingest_lock"] = _bool_value(after.get(field))
+    return details
 
 
 def record_review_change(

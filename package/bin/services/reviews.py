@@ -171,7 +171,9 @@ def _workflow_action(
         "stig_review",
         key,
         username,
-        {"workflow_state": stored.get("workflow_state")},
+        review_history_svc.audit_details_for_review_change(
+            service, existing, stored, action=action
+        ),
     )
     review_history_svc.record_review_change(
         service, existing, stored, username, action=action
@@ -402,7 +404,15 @@ def update_review(
     patch["updated_at"] = now_epoch()
     patch["updated_by"] = username
     stored = kv_client.update_record(coll, key, kv_record(patch))
-    audit.log_event("update", "stig_review", key, username, {"status": stored.get("status")})
+    audit.log_event(
+        "update",
+        "stig_review",
+        key,
+        username,
+        review_history_svc.audit_details_for_review_change(
+            service, existing, stored, action="update"
+        ),
+    )
     review_history_svc.record_review_change(
         service, existing, stored, username, action="update"
     )
