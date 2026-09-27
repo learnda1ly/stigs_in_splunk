@@ -7,7 +7,16 @@ import Select from "@splunk/react-ui/Select";
 import Table from "@splunk/react-ui/Table";
 import Text from "@splunk/react-ui/Text";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
-import { apiFetch, apiGet, defaultWorkspaceId, workspaceLabel } from "../api";
+import {
+    apiFetch,
+    apiGet,
+    defaultWorkspaceId,
+    fetchMergedPerWorkspace,
+    isAllWorkspaces,
+    workspaceLabel,
+    workspaceScopeQuery,
+} from "../api";
+import WorkspaceSelect from "../components/WorkspaceSelect";
 import { Brand, BrandKicker, Header, PagePad, Shell, Toolbar } from "../layout";
 
 const ROLE_OPTIONS = [
@@ -89,24 +98,30 @@ export default function GrantsApp() {
         [baselines]
     );
 
-    const loadGrants = useCallback(async (cid) => {
+    const loadGrants = useCallback(async (cid, workspaceList) => {
         if (!cid) {
             setGrants([]);
             return;
         }
-        const rows = await apiGet("stig_collections/" + cid + "/grants");
+        const rows = isAllWorkspaces(cid)
+            ? await fetchMergedPerWorkspace(apiGet, workspaceList || workspaces, "grants")
+            : await apiGet("stig_collections/" + cid + "/grants");
         setGrants(Array.isArray(rows) ? rows : []);
-    }, []);
+    }, [workspaces]);
 
-    const loadWorkspaceAssets = useCallback(async (cid) => {
+    const loadWorkspaceAssets = useCallback(async (cid, workspaceList) => {
         if (!cid) {
             setHosts([]);
             return;
         }
+        const scope = workspaceScopeQuery(cid);
+        const list = workspaceList || workspaces;
         const [hs, cls, lbls] = await Promise.all([
-            apiGet("stig_hosts", { stig_collection_id: cid }),
-            apiGet("stig_checklists", { stig_collection_id: cid }),
-            apiGet("stig_collections/" + cid + "/labels"),
+            apiGet("stig_hosts", scope),
+            apiGet("stig_checklists", scope),
+            isAllWorkspaces(cid)
+                ? fetchMergedPerWorkspace(apiGet, list, "labels")
+                : apiGet("stig_collections/" + cid + "/labels"),
         ]);
         setHosts(Array.isArray(hs) ? hs : []);
         setLabels(Array.isArray(lbls) ? lbls : []);
@@ -134,7 +149,10 @@ export default function GrantsApp() {
                 setCollectionId(cid);
             }
             if (cid) {
-                await Promise.all([loadGrants(cid), loadWorkspaceAssets(cid)]);
+                await Promise.all([
+                    loadGrants(cid, colls || []),
+                    loadWorkspaceAssets(cid, colls || []),
+                ]);
             }
         } catch (err) {
             setError(String(err.message || err));
@@ -149,7 +167,10 @@ export default function GrantsApp() {
 
     useEffect(() => {
         if (collectionId) {
-            Promise.all([loadGrants(collectionId), loadWorkspaceAssets(collectionId)]).catch(
+            Promise.all([
+                loadGrants(collectionId, workspaces),
+                loadWorkspaceAssets(collectionId, workspaces),
+            ]).catch(
                 (err) => setError(String(err.message || err))
             );
         }
@@ -158,6 +179,10 @@ export default function GrantsApp() {
     async function createGrant() {
         setError("");
         setInfo("");
+        if (isAllWorkspaces(collectionId)) {
+            setError("Select a single workspace to add grants.");
+            return;
+        }
         try {
             await apiFetch("stig_collections/" + collectionId + "/grants", {
                 method: "POST",
@@ -171,20 +196,25 @@ export default function GrantsApp() {
             });
             setInfo("Grant saved.");
             setShowAddGrant(false);
-            await loadGrants(collectionId);
+            await loadGrants(collectionId, workspaces);
         } catch (err) {
             setError(String(err.message || err));
         }
     }
 
-    async function removeGrant(grantId) {
+    async function removeGrant(grantId, workspaceId) {
         setError("");
+        const wsId = workspaceId || collectionId;
+        if (!wsId || isAllWorkspaces(wsId)) {
+            setError("Could not resolve workspace for this grant.");
+            return;
+        }
         try {
             await apiFetch(
-                "stig_collections/" + collectionId + "/grants/" + grantId,
+                "stig_collections/" + wsId + "/grants/" + grantId,
                 { method: "DELETE" }
             );
-            await loadGrants(collectionId);
+            await loadGrants(collectionId, workspaces);
         } catch (err) {
             setError(String(err.message || err));
         }
@@ -203,18 +233,11 @@ export default function GrantsApp() {
                 {info ? <Message type="info">{info}</Message> : null}
                 <Toolbar>
                     <ControlGroup label="Workspace">
-                        <Select
+                        <WorkspaceSelect
+                            workspaces={workspaces}
                             value={collectionId}
                             onChange={(e, { value }) => setCollectionId(value)}
-                        >
-                            {(workspaces || []).map((ws) => (
-                                <Select.Option
-                                    key={ws._key}
-                                    label={workspaceLabel(ws)}
-                                    value={ws._key}
-                                />
-                            ))}
-                        </Select>
+                        />
                     </ControlGroup>
                 </Toolbar>
                 {loading ? (
@@ -269,7 +292,12 @@ export default function GrantsApp() {
                                             <Button
                                                 label="Remove"
                                                 appearance="secondary"
-                                                onClick={() => removeGrant(row._key)}
+                                                onClick={() =>
+                                                    removeGrant(
+                                                        row._key,
+                                                        row.stig_collection_id
+                                                    )
+                                                }
                                             />
                                         </Table.Cell>
                                     </Table.Row>

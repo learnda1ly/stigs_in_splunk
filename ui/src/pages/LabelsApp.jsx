@@ -8,7 +8,16 @@ import Switch from "@splunk/react-ui/Switch";
 import Table from "@splunk/react-ui/Table";
 import Text from "@splunk/react-ui/Text";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
-import { apiFetch, apiGet, defaultWorkspaceId, workspaceLabel } from "../api";
+import {
+    apiFetch,
+    apiGet,
+    defaultWorkspaceId,
+    fetchMergedPerWorkspace,
+    isAllWorkspaces,
+    workspaceLabel,
+    workspaceScopeQuery,
+} from "../api";
+import WorkspaceSelect from "../components/WorkspaceSelect";
 import {
     Brand,
     BrandKicker,
@@ -61,20 +70,23 @@ export default function LabelsApp() {
         return map;
     }, [labels]);
 
-    const loadWorkspaceData = useCallback(async (cid) => {
+    const loadWorkspaceData = useCallback(async (cid, workspaceList) => {
         if (!cid) {
             setLabels([]);
             setHosts([]);
             return;
         }
+        const list = workspaceList || workspaces;
         const [lblRows, hostRows] = await Promise.all([
-            apiGet("stig_collections/" + cid + "/labels"),
-            apiGet("stig_hosts", { stig_collection_id: cid }),
+            isAllWorkspaces(cid)
+                ? fetchMergedPerWorkspace(apiGet, list, "labels")
+                : apiGet("stig_collections/" + cid + "/labels"),
+            apiGet("stig_hosts", workspaceScopeQuery(cid)),
         ]);
         setLabels(Array.isArray(lblRows) ? lblRows : []);
         setHosts(Array.isArray(hostRows) ? hostRows : []);
         setSelectedHostIds({});
-    }, []);
+    }, [workspaces]);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -88,7 +100,7 @@ export default function LabelsApp() {
                 setCollectionId(cid);
             }
             if (cid) {
-                await loadWorkspaceData(cid);
+                await loadWorkspaceData(cid, colls || []);
             }
         } catch (err) {
             setError(String(err.message || err));
@@ -140,8 +152,17 @@ export default function LabelsApp() {
         setWarning("");
     }
 
+    function labelWorkspaceId(labelId) {
+        const row = labelById[labelId] || {};
+        return row.stig_collection_id || collectionId;
+    }
+
     async function createLabel() {
         clearMessages();
+        if (isAllWorkspaces(collectionId)) {
+            setError("Select a single workspace to create labels.");
+            return;
+        }
         const name = (newName || "").trim();
         if (!name) {
             setError("Label name cannot be empty.");
@@ -167,6 +188,11 @@ export default function LabelsApp() {
 
     async function saveLabelName(labelId) {
         clearMessages();
+        const wsId = labelWorkspaceId(labelId);
+        if (!wsId) {
+            setError("Could not resolve workspace for this label.");
+            return;
+        }
         const name = (renameDraft[labelId] || "").trim();
         if (!name) {
             setError("Label name cannot be empty.");
@@ -174,7 +200,7 @@ export default function LabelsApp() {
         }
         try {
             await apiFetch(
-                "stig_collections/" + collectionId + "/labels/" + labelId,
+                "stig_collections/" + wsId + "/labels/" + labelId,
                 {
                     method: "PATCH",
                     body: { name },
@@ -189,6 +215,11 @@ export default function LabelsApp() {
 
     async function removeLabel(labelId) {
         clearMessages();
+        const wsId = labelWorkspaceId(labelId);
+        if (!wsId) {
+            setError("Could not resolve workspace for this label.");
+            return;
+        }
         const row = labelById[labelId] || {};
         const displayName = (row.name || "").trim() || labelId;
         if (
@@ -202,7 +233,7 @@ export default function LabelsApp() {
         }
         try {
             await apiFetch(
-                "stig_collections/" + collectionId + "/labels/" + labelId,
+                "stig_collections/" + wsId + "/labels/" + labelId,
                 { method: "DELETE" }
             );
             setInfo(
@@ -214,16 +245,16 @@ export default function LabelsApp() {
         }
     }
 
-    async function assignLabelToHosts(labelId, hostIds) {
+    async function assignLabelToHosts(labelId, hostIds, workspaceId) {
         if (!labelId || !hostIds.length) {
             return;
         }
+        const wsId = workspaceId || labelWorkspaceId(labelId);
+        if (!wsId) {
+            return;
+        }
         await apiFetch(
-            "stig_collections/" +
-                collectionId +
-                "/labels/" +
-                labelId +
-                "/assets",
+            "stig_collections/" + wsId + "/labels/" + labelId + "/assets",
             {
                 method: "POST",
                 body: { host_ids: hostIds },
@@ -252,10 +283,15 @@ export default function LabelsApp() {
         const skippedUnknown = selectedIds.filter(
             (id) => !workspaceHostIds.has(id)
         );
+        const wsId = labelWorkspaceId(bulkLabelId);
+        if (!wsId) {
+            setError("Could not resolve workspace for this label.");
+            return;
+        }
         try {
             const result = await apiFetch(
                 "stig_collections/" +
-                    collectionId +
+                    wsId +
                     "/labels/" +
                     bulkLabelId +
                     "/assets",
@@ -353,7 +389,11 @@ export default function LabelsApp() {
             : ids.filter((id) => id !== labelId);
         try {
             if (assign && !ids.includes(labelId)) {
-                await assignLabelToHosts(labelId, [host._key]);
+                await assignLabelToHosts(
+                    labelId,
+                    [host._key],
+                    host.stig_collection_id
+                );
             } else if (!assign) {
                 await setHostLabels(host._key, next);
             }
@@ -386,18 +426,11 @@ export default function LabelsApp() {
                 {info ? <Message type="info">{info}</Message> : null}
                 <Toolbar>
                     <ControlGroup label="Workspace">
-                        <Select
+                        <WorkspaceSelect
+                            workspaces={workspaces}
                             value={collectionId}
                             onChange={(e, { value }) => setCollectionId(value)}
-                        >
-                            {(workspaces || []).map((ws) => (
-                                <Select.Option
-                                    key={ws._key}
-                                    label={workspaceLabel(ws)}
-                                    value={ws._key}
-                                />
-                            ))}
-                        </Select>
+                        />
                     </ControlGroup>
                 </Toolbar>
                 {loading ? (

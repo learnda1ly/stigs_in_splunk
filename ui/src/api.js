@@ -256,6 +256,30 @@ export function workspaceScopeQuery(collectionId) {
     return { stig_collection_id: collectionId };
 }
 
+export function visibleWorkspaceIds(list) {
+    return (Array.isArray(list) ? list : [])
+        .map((row) => row && row._key)
+        .filter(Boolean);
+}
+
+/** Fetch a per-workspace collection sub-resource across every visible workspace. */
+export async function fetchMergedPerWorkspace(apiGet, workspaces, segment) {
+    const ids = visibleWorkspaceIds(workspaces);
+    if (!ids.length) {
+        return [];
+    }
+    const parts = await Promise.all(
+        ids.map((id) =>
+            apiGet("stig_collections/" + id + "/" + segment).then((rows) =>
+                (Array.isArray(rows) ? rows : []).map((row) =>
+                    Object.assign({}, row, { stig_collection_id: id })
+                )
+            )
+        )
+    );
+    return parts.reduce((acc, chunk) => acc.concat(chunk), []);
+}
+
 export function downloadBlob(filename, blob) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");

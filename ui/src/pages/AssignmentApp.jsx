@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Button from "@splunk/react-ui/Button";
 import ControlGroup from "@splunk/react-ui/ControlGroup";
 import Heading from "@splunk/react-ui/Heading";
@@ -8,7 +8,16 @@ import Switch from "@splunk/react-ui/Switch";
 import Table from "@splunk/react-ui/Table";
 import Text from "@splunk/react-ui/Text";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
-import { apiFetch, apiGet, defaultWorkspaceId, workspaceLabel } from "../api";
+import {
+    apiFetch,
+    apiGet,
+    defaultWorkspaceId,
+    isAllWorkspaces,
+    workspaceLabel,
+    workspacesOfferAllChoice,
+    WORKSPACE_ALL,
+} from "../api";
+import WorkspaceSelect from "../components/WorkspaceSelect";
 import {
     Actions,
     Brand,
@@ -68,6 +77,7 @@ export default function AssignmentApp() {
     const [previewResult, setPreviewResult] = useState(null);
     const [showAddRule, setShowAddRule] = useState(false);
     const [showAddOverride, setShowAddOverride] = useState(false);
+    const [scopeFilter, setScopeFilter] = useState("");
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -78,9 +88,21 @@ export default function AssignmentApp() {
                 apiGet("stig_assignment_rules"),
                 apiGet("stig_host_baseline_assignments"),
             ]);
-            setWorkspaces(colls || []);
+            const list = colls || [];
+            setWorkspaces(list);
             setRules(ruleRows || []);
             setOverrides(overrideRows || []);
+            setScopeFilter((prev) => {
+                if (prev && list.some((w) => w._key === prev)) {
+                    return prev;
+                }
+                if (isAllWorkspaces(prev)) {
+                    return WORKSPACE_ALL;
+                }
+                return workspacesOfferAllChoice(list)
+                    ? WORKSPACE_ALL
+                    : defaultWorkspaceId(list);
+            });
             const def = defaultWorkspaceId(colls);
             setRuleDraft((d) => ({
                 ...d,
@@ -154,10 +176,23 @@ export default function AssignmentApp() {
         }
     }
 
-    const workspaceOptions = workspaces.map((ws) => ({
-        label: workspaceLabel(ws),
-        value: ws._key,
-    }));
+    const visibleRules = useMemo(() => {
+        if (!scopeFilter || isAllWorkspaces(scopeFilter)) {
+            return rules;
+        }
+        return rules.filter(
+            (row) => row.target_stig_collection_id === scopeFilter
+        );
+    }, [rules, scopeFilter]);
+
+    const visibleOverrides = useMemo(() => {
+        if (!scopeFilter || isAllWorkspaces(scopeFilter)) {
+            return overrides;
+        }
+        return overrides.filter(
+            (row) => row.target_stig_collection_id === scopeFilter
+        );
+    }, [overrides, scopeFilter]);
 
     return (
         <Shell>
@@ -169,6 +204,14 @@ export default function AssignmentApp() {
                     </Heading>
                 </Brand>
                 <Toolbar>
+                    <ControlGroup label="Workspace" labelPosition="top">
+                        <WorkspaceSelect
+                            workspaces={workspaces}
+                            value={scopeFilter}
+                            onChange={(_e, { value }) => setScopeFilter(value)}
+                            filter
+                        />
+                    </ControlGroup>
                     <Actions>
                         <Button label="Refresh" onClick={load} disabled={loading} />
                     </Actions>
@@ -241,8 +284,8 @@ export default function AssignmentApp() {
                                 <Table.HeadCell width={64}>On</Table.HeadCell>
                             </Table.Head>
                             <Table.Body>
-                                {rules.length ? (
-                                    rules.map((row) => (
+                                {visibleRules.length ? (
+                                    visibleRules.map((row) => (
                                         <Table.Row key={row._key}>
                                             <Table.Cell>{row.priority}</Table.Cell>
                                             <Table.Cell>{row.name}</Table.Cell>
@@ -301,7 +344,8 @@ export default function AssignmentApp() {
                                     </ControlGroup>
                                 </FormRow>
                                 <ControlGroup label="Workspace" labelPosition="top">
-                                    <Select
+                                    <WorkspaceSelect
+                                        workspaces={workspaces}
                                         value={ruleDraft.target_stig_collection_id}
                                         onChange={(_e, { value }) =>
                                             setRuleDraft({
@@ -309,16 +353,9 @@ export default function AssignmentApp() {
                                                 target_stig_collection_id: value,
                                             })
                                         }
+                                        includeAll={false}
                                         filter
-                                    >
-                                        {workspaceOptions.map((opt) => (
-                                            <Select.Option
-                                                key={opt.value}
-                                                label={opt.label}
-                                                value={opt.value}
-                                            />
-                                        ))}
-                                    </Select>
+                                    />
                                 </ControlGroup>
                                 <ControlGroup
                                     label="Match (JSON)"
@@ -392,8 +429,8 @@ export default function AssignmentApp() {
                                 <Table.HeadCell>Note</Table.HeadCell>
                             </Table.Head>
                             <Table.Body>
-                                {overrides.length ? (
-                                    overrides.map((row) => (
+                                {visibleOverrides.length ? (
+                                    visibleOverrides.map((row) => (
                                         <Table.Row key={row._key}>
                                             <Table.Cell>{row.hostname}</Table.Cell>
                                             <Table.Cell>{row.benchmark_id}</Table.Cell>
@@ -455,7 +492,8 @@ export default function AssignmentApp() {
                                     </ControlGroup>
                                 </FormRow>
                                 <ControlGroup label="Workspace" labelPosition="top">
-                                    <Select
+                                    <WorkspaceSelect
+                                        workspaces={workspaces}
                                         value={overrideDraft.target_stig_collection_id}
                                         onChange={(_e, { value }) =>
                                             setOverrideDraft({
@@ -463,16 +501,9 @@ export default function AssignmentApp() {
                                                 target_stig_collection_id: value,
                                             })
                                         }
+                                        includeAll={false}
                                         filter
-                                    >
-                                        {workspaceOptions.map((opt) => (
-                                            <Select.Option
-                                                key={opt.value}
-                                                label={opt.label}
-                                                value={opt.value}
-                                            />
-                                        ))}
-                                    </Select>
+                                    />
                                 </ControlGroup>
                                 <ControlGroup label="Note" labelPosition="top">
                                     <Text

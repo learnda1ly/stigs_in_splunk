@@ -7,7 +7,15 @@ import Select from "@splunk/react-ui/Select";
 import Table from "@splunk/react-ui/Table";
 import Text from "@splunk/react-ui/Text";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
-import { apiFetch, apiGet, defaultWorkspaceId, workspaceLabel } from "../api";
+import {
+    apiFetch,
+    apiGet,
+    defaultWorkspaceId,
+    fetchMergedPerWorkspace,
+    isAllWorkspaces,
+    workspaceLabel,
+} from "../api";
+import WorkspaceSelect from "../components/WorkspaceSelect";
 import {
     Brand,
     BrandKicker,
@@ -64,14 +72,20 @@ export default function WorkspaceDefaultsApp() {
             }));
     }, [baselines, draftStigId]);
 
-    const loadDefaults = useCallback(async (cid) => {
+    const loadDefaults = useCallback(async (cid, workspaceList) => {
         if (!cid) {
             setDefaults([]);
             return;
         }
-        const rows = await apiGet("stig_collections/" + cid + "/baseline_defaults");
+        const rows = isAllWorkspaces(cid)
+            ? await fetchMergedPerWorkspace(
+                  apiGet,
+                  workspaceList || workspaces,
+                  "baseline_defaults"
+              )
+            : await apiGet("stig_collections/" + cid + "/baseline_defaults");
         setDefaults(rows || []);
-    }, []);
+    }, [workspaces]);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -88,7 +102,7 @@ export default function WorkspaceDefaultsApp() {
             if (!collectionId && cid) {
                 setCollectionId(cid);
             }
-            await loadDefaults(cid || collectionId);
+            await loadDefaults(cid || collectionId, colls || []);
         } catch (err) {
             setError(String(err.message || err));
         } finally {
@@ -110,6 +124,10 @@ export default function WorkspaceDefaultsApp() {
 
     async function saveDefault() {
         setError("");
+        if (isAllWorkspaces(collectionId)) {
+            setError("Select a single workspace to set defaults.");
+            return;
+        }
         try {
             await apiFetch(
                 "stig_collections/" + collectionId + "/baseline_defaults",
@@ -130,26 +148,28 @@ export default function WorkspaceDefaultsApp() {
         }
     }
 
-    async function removeDefault(stigId) {
+    async function removeDefault(stigId, workspaceId) {
         setError("");
+        const wsId = workspaceId || collectionId;
+        if (!wsId || isAllWorkspaces(wsId)) {
+            setError("Could not resolve workspace for this default.");
+            return;
+        }
         try {
             await apiFetch(
                 "stig_collections/" +
-                    collectionId +
+                    wsId +
                     "/baseline_defaults/" +
                     encodeURIComponent(stigId),
                 { method: "DELETE" }
             );
-            await loadDefaults(collectionId);
+            await loadDefaults(collectionId, workspaces);
         } catch (err) {
             setError(String(err.message || err));
         }
     }
 
-    const workspaceOptions = workspaces.map((ws) => ({
-        label: workspaceLabel(ws),
-        value: ws._key,
-    }));
+    const showWorkspaceColumn = isAllWorkspaces(collectionId);
 
     return (
         <Shell>
@@ -169,14 +189,11 @@ export default function WorkspaceDefaultsApp() {
                 {loading ? <WaitSpinner /> : null}
                 <Toolbar>
                     <ControlGroup label="Workspace" labelPosition="top">
-                        <Select
+                        <WorkspaceSelect
+                            workspaces={workspaces}
                             value={collectionId}
                             onChange={(_, { value }) => setCollectionId(value)}
-                        >
-                            {workspaceOptions.map((opt) => (
-                                <Select.Option key={opt.value} label={opt.label} value={opt.value} />
-                            ))}
-                        </Select>
+                        />
                     </ControlGroup>
                 </Toolbar>
                 <div
@@ -196,11 +213,14 @@ export default function WorkspaceDefaultsApp() {
                         label={showAddDefault ? "Cancel" : "Add default"}
                         appearance="primary"
                         onClick={() => setShowAddDefault((open) => !open)}
-                        disabled={!collectionId}
+                        disabled={!collectionId || isAllWorkspaces(collectionId)}
                     />
                 </div>
                 <Table>
                     <Table.Head>
+                        {showWorkspaceColumn ? (
+                            <Table.HeadCell>Workspace</Table.HeadCell>
+                        ) : null}
                         <Table.HeadCell>STIG id</Table.HeadCell>
                         <Table.HeadCell>Baseline</Table.HeadCell>
                         <Table.HeadCell>Version</Table.HeadCell>
@@ -208,7 +228,25 @@ export default function WorkspaceDefaultsApp() {
                     </Table.Head>
                     <Table.Body>
                         {(defaults || []).map((row) => (
-                            <Table.Row key={row.stig_id}>
+                            <Table.Row
+                                key={
+                                    (row.stig_collection_id || "") +
+                                    ":" +
+                                    row.stig_id
+                                }
+                            >
+                                {showWorkspaceColumn ? (
+                                    <Table.Cell>
+                                        {workspaceLabel(
+                                            workspaces.find(
+                                                (w) =>
+                                                    w._key === row.stig_collection_id
+                                            ) || {
+                                                _key: row.stig_collection_id,
+                                            }
+                                        )}
+                                    </Table.Cell>
+                                ) : null}
                                 <Table.Cell>{row.stig_id}</Table.Cell>
                                 <Table.Cell>
                                     {row.baseline_title || row.baseline_id}
@@ -219,7 +257,12 @@ export default function WorkspaceDefaultsApp() {
                                     <Button
                                         appearance="secondary"
                                         label="Remove"
-                                        onClick={() => removeDefault(row.stig_id)}
+                                        onClick={() =>
+                                            removeDefault(
+                                                row.stig_id,
+                                                row.stig_collection_id
+                                            )
+                                        }
                                     />
                                 </Table.Cell>
                             </Table.Row>
@@ -269,7 +312,12 @@ export default function WorkspaceDefaultsApp() {
                             <Button
                                 label="Save default"
                                 onClick={saveDefault}
-                                disabled={!collectionId || !draftStigId || !draftBaselineId}
+                                disabled={
+                                    !collectionId ||
+                                    isAllWorkspaces(collectionId) ||
+                                    !draftStigId ||
+                                    !draftBaselineId
+                                }
                             />
                         </Toolbar>
                     </div>
