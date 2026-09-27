@@ -162,6 +162,11 @@ class ReviewPatchEnforcementTests(unittest.TestCase):
         coll = MagicMock()
         mock_kv.get_collection.return_value = coll
         mock_kv.get_by_key.return_value = dict(existing)
+        mock_kv.update_record.return_value = {
+            **existing,
+            "finding_details": "",
+            "valid": False,
+        }
         mock_checklists.get_checklist.return_value = {
             "_key": "cl1",
             "stig_collection_id": "ws1",
@@ -172,17 +177,21 @@ class ReviewPatchEnforcementTests(unittest.TestCase):
             [],
         )
 
-        with self.assertRaises(ValueError):
-            reviews_svc.update_review(
-                MagicMock(),
-                "rev1",
-                {"finding_details": ""},
-                "writer",
-                {
-                    "user": "writer",
-                    "capabilities": {"stig_write": True},
-                },
-            )
+        with patch.object(reviews_svc, "audit") as mock_audit:
+            mock_audit.log_event = MagicMock()
+            with patch.object(reviews_svc, "review_history_svc") as mock_hist:
+                mock_hist.record_review_change = MagicMock()
+                result = reviews_svc.update_review(
+                    MagicMock(),
+                    "rev1",
+                    {"finding_details": ""},
+                    "writer",
+                    {
+                        "user": "writer",
+                        "capabilities": {"stig_write": True},
+                    },
+                )
+        self.assertFalse(result["valid"])
 
 
 class ReviewSubmitEnforcementTests(unittest.TestCase):

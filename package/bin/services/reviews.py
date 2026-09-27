@@ -398,9 +398,6 @@ def update_review(
             raise ValueError("ingest_lock must be a boolean")
         patch["ingest_lock"] = bool(locked)
     policy = _policy_for_checklist(service, checklist_id, session)
-    issues = validation.collect_issues(patch, policy)
-    if any(k in body for k in content_keys) and issues:
-        raise ValueError(validation.format_issue_messages(issues))
     patch["valid"] = validation.persistable_valid(patch, policy)
     patch["updated_at"] = now_epoch()
     patch["updated_by"] = username

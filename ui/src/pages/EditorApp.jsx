@@ -846,21 +846,6 @@ export default function EditorApp() {
         ) {
             return;
         }
-        const issues = reviewValidationIssues(
-            {
-                status: selected.review.status,
-                finding_details: finding,
-                comments,
-            },
-            reviewRequirements
-        );
-        if (issues.length) {
-            setBanner({
-                type: "error",
-                text: issues[0].message || "Review validation failed",
-            });
-            return;
-        }
         setBusy(true);
         apiPatch("stig_reviews/" + selected.review._key, {
             finding_details: finding,
@@ -1643,6 +1628,13 @@ export default function EditorApp() {
                                 const host =
                                     hostsById[checklistById(rev.checklist_id).host_id] || {};
                                 const complete = reviewIsValid(rev, reviewRequirements);
+                                const validationIssues = reviewValidationIssues(
+                                    rev,
+                                    reviewRequirements
+                                );
+                                const validationHint = validationIssues
+                                    .map((issue) => issue.message)
+                                    .join(" ");
                                 const isSel = selected && selected.review._key === rev._key;
                                 const showHostname = !hostId;
                                 return (
@@ -1654,7 +1646,23 @@ export default function EditorApp() {
                                         type="button"
                                         onClick={() => setSelectedKey(rev._key)}
                                     >
-                                        <span>{complete ? "✓" : ""}</span>
+                                        <span
+                                            title={validationHint || undefined}
+                                            aria-label={
+                                                validationHint || undefined
+                                            }
+                                            style={{
+                                                width: "1.25em",
+                                                flexShrink: 0,
+                                                color: complete ? "#155724" : "#856404",
+                                            }}
+                                        >
+                                            {complete
+                                                ? "✓"
+                                                : validationHint
+                                                  ? "⚠"
+                                                  : ""}
+                                        </span>
                                         <StatusChip status={rev.status} />
                                         {governanceEnabled ? (
                                             <WorkflowChip workflowState={rev.workflow_state} />
@@ -1757,31 +1765,6 @@ export default function EditorApp() {
                                         Reject feedback: {selected.review.reject_feedback}
                                     </Message>
                                 ) : null}
-                                <Message
-                                    appearance={
-                                        reviewIsValid(
-                                            {
-                                                status: selected.review.status,
-                                                finding_details: finding,
-                                                comments,
-                                            },
-                                            reviewRequirements
-                                        )
-                                            ? "success"
-                                            : "warning"
-                                    }
-                                >
-                                    {reviewIsValid(
-                                        {
-                                            status: selected.review.status,
-                                            finding_details: finding,
-                                            comments,
-                                        },
-                                        reviewRequirements
-                                    )
-                                        ? "Completed — review meets workspace requirements."
-                                        : "Incomplete — update finding details/comments to match workspace requirements, then Write."}
-                                </Message>
                             </div>
                             <ControlGroup label="Status (saves immediately)">
                                 <Select
