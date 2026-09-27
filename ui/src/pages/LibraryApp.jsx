@@ -6,7 +6,7 @@ import Select from "@splunk/react-ui/Select";
 import Table from "@splunk/react-ui/Table";
 import Text from "@splunk/react-ui/Text";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
-import { apiGet } from "../api";
+import { apiGet, viewUrl } from "../api";
 import CreateChecklistModal from "../components/CreateChecklistModal";
 import { Brand, BrandKicker, Header, PagePad, Shell } from "../layout";
 
@@ -196,6 +196,23 @@ export default function LibraryApp() {
                 {error ? <Message appearance="error">{error}</Message> : null}
                 {loading ? (
                     <WaitSpinner size="large" />
+                ) : !benchmarks.length ? (
+                    <Message appearance="info">
+                        <p style={{ marginTop: 0 }}>
+                            No STIG baselines are in the catalog yet. Import XCCDF, CKL, or CKLB
+                            files to browse rules and create checklists.
+                        </p>
+                        <Button
+                            appearance="primary"
+                            label="Import baselines"
+                            onClick={() => {
+                                window.location.assign(viewUrl("stig_import_ui") + "#baselines");
+                            }}
+                        />
+                        <p style={{ marginBottom: 0, fontSize: 13 }}>
+                            Baselines are global; workspace filters only affect checklist scope.
+                        </p>
+                    </Message>
                 ) : (
                     <>
                         <div

@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from "react";
 import Heading from "@splunk/react-ui/Heading";
 import TabBar from "@splunk/react-ui/TabBar";
+import { apiGet } from "../api";
+import {
+    defaultImportTabWhenCatalogEmpty,
+    readImportTabFromHash,
+    storeImportTab,
+} from "../components/onboarding/importTabPrefs";
 import {
     Brand,
     BrandKicker,
@@ -11,24 +17,42 @@ import {
 import BaselineImportPanel from "./BaselineImportPanel";
 import ChecklistImportPanel from "./ChecklistImportPanel";
 
-const TAB_IDS = ["checklists", "baselines"];
-
-function tabFromHash() {
-    const id = (window.location.hash || "").replace(/^#/, "");
-    return TAB_IDS.includes(id) ? id : "checklists";
-}
-
 export default function ImportApp() {
-    const [tab, setTab] = useState(() => tabFromHash());
+    const [tab, setTab] = useState(() => readImportTabFromHash() || "baselines");
 
     useEffect(() => {
-        const onHashChange = () => setTab(tabFromHash());
+        const onHashChange = () => {
+            const fromHash = readImportTabFromHash();
+            if (fromHash) {
+                setTab(fromHash);
+                storeImportTab(fromHash);
+            }
+        };
         window.addEventListener("hashchange", onHashChange);
         return () => window.removeEventListener("hashchange", onHashChange);
     }, []);
 
+    useEffect(() => {
+        if (readImportTabFromHash()) {
+            return;
+        }
+        apiGet("stig_baselines")
+            .then((rows) => {
+                const list = Array.isArray(rows) ? rows : [];
+                const next = defaultImportTabWhenCatalogEmpty(!list.length);
+                setTab(next);
+                if (window.location.hash.replace(/^#/, "") !== next) {
+                    window.location.hash = next;
+                }
+            })
+            .catch(() => {
+                setTab(defaultImportTabWhenCatalogEmpty(true));
+            });
+    }, []);
+
     const onTabChange = (e, { selectedTabId }) => {
         setTab(selectedTabId);
+        storeImportTab(selectedTabId);
         if (window.location.hash.replace(/^#/, "") !== selectedTabId) {
             window.location.hash = selectedTabId;
         }

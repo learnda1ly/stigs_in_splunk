@@ -73,14 +73,8 @@ class EditorAssignPage {
   }
 
   async openHostActions() {
-    const button = this.hostActionsButton();
-    await button.scrollIntoViewIfNeeded();
-    if ((await button.getAttribute('aria-expanded')) !== 'true') {
-      await button.click();
-    }
-    await expect(button).toHaveAttribute('aria-expanded', 'true');
+    await expect(this.assignBaselineSelect()).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
     await expect(this.assignToHostButton()).toBeVisible();
-    await expect(this.assignBaselineSelect()).toBeVisible();
   }
 
   /**

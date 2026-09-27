@@ -7,7 +7,16 @@ import Select from "@splunk/react-ui/Select";
 import Table from "@splunk/react-ui/Table";
 import Text from "@splunk/react-ui/Text";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
-import { apiFetch, apiGet, apiUpload, defaultWorkspaceId, viewUrl, workspaceLabel } from "../api";
+import {
+    apiFetch,
+    apiGet,
+    apiUpload,
+    defaultWorkspaceId,
+    viewUrl,
+    viewUrlWithQuery,
+    workspaceLabel,
+} from "../api";
+import WorkspaceSelectHint from "../components/onboarding/WorkspaceSelectHint";
 import {
     Actions,
     DropHint,
@@ -86,6 +95,8 @@ export default function ChecklistImportPanel() {
     const [busy, setBusy] = useState(false);
     const [over, setOver] = useState(false);
     const [banner, setBanner] = useState(null);
+    const [baselineCatalogEmpty, setBaselineCatalogEmpty] = useState(false);
+    const [editorDeepLink, setEditorDeepLink] = useState(null);
 
     const loadCollections = () =>
         apiGet("stig_collections")
@@ -109,6 +120,12 @@ export default function ChecklistImportPanel() {
 
     useEffect(() => {
         loadCollections();
+    }, []);
+
+    useEffect(() => {
+        apiGet("stig_baselines")
+            .then((rows) => setBaselineCatalogEmpty(!(Array.isArray(rows) && rows.length)))
+            .catch(() => setBaselineCatalogEmpty(true));
     }, []);
 
     const addFiles = (fileList) => {
@@ -224,6 +241,13 @@ export default function ChecklistImportPanel() {
 
     const applySingleImportResult = (key, doc) => {
         const checklists = (doc && doc.checklists) || [];
+        const hostKey = doc && doc.host && doc.host._key;
+        if (collectionId && hostKey) {
+            setEditorDeepLink({
+                stig_collection_id: collectionId,
+                host_id: hostKey,
+            });
+        }
         setRows((prev) =>
             prev.map((item) =>
                 item.key === key
@@ -328,12 +352,12 @@ export default function ChecklistImportPanel() {
         });
         pending
             .reduce((chain, row) => chain.then(() => importOne(row)), Promise.resolve())
-            .then(() =>
+            .then(() => {
                 setBanner({
                     type: "success",
-                    text: "Import finished. Open the editor to review findings.",
-                })
-            )
+                    text: "Import finished.",
+                });
+            })
             .finally(() => setBusy(false));
     };
 
@@ -357,7 +381,7 @@ export default function ChecklistImportPanel() {
                         <Select
                             value={collectionId}
                             onChange={(e, { value }) => setCollectionId(value)}
-                            placeholder="Select collection"
+                            placeholder="Select workspace"
                             filter
                             disabled={busy}
                         >
@@ -369,6 +393,7 @@ export default function ChecklistImportPanel() {
                                 />
                             ))}
                         </Select>
+                        {!collections.length ? <WorkspaceSelectHint /> : null}
                     </ControlGroup>
                     <ControlGroup label="New workspace" labelPosition="top">
                         <Text
@@ -422,14 +447,42 @@ export default function ChecklistImportPanel() {
                         Baselines
                     </Link>{" "}
                     tab. Manage workspaces in{" "}
-                    <Link to={viewUrl("configuration")}>Configuration</Link>.
+                    <Link to={viewUrl("configuration")}>Workspaces</Link>.
                 </p>
+                {baselineCatalogEmpty ? (
+                    <Message appearance="warning" style={{ marginBottom: 12 }}>
+                        STIG baselines are global (shared across workspaces). Checklists and
+                        findings belong to the workspace you select above. Import baselines on
+                        the{" "}
+                        <Link
+                            onClick={() => {
+                                window.location.hash = "baselines";
+                            }}
+                        >
+                            Baselines
+                        </Link>{" "}
+                        tab before XCCDF results or assignment.
+                    </Message>
+                ) : null}
                 {banner ? (
                     <Message
                         appearance={banner.type}
                         onRequestRemove={() => setBanner(null)}
                     >
                         {banner.text}
+                        {banner.type === "success" && editorDeepLink ? (
+                            <div style={{ marginTop: 8 }}>
+                                <Button
+                                    appearance="primary"
+                                    label="Review in editor"
+                                    onClick={() => {
+                                        window.location.assign(
+                                            viewUrlWithQuery("stig_editor_ui", editorDeepLink)
+                                        );
+                                    }}
+                                />
+                            </div>
+                        ) : null}
                     </Message>
                 ) : null}
                 <input
@@ -545,6 +598,17 @@ export default function ChecklistImportPanel() {
                         label="Clear list"
                     />
                 </Actions>
+                <p
+                    style={{
+                        marginTop: 16,
+                        marginBottom: 0,
+                        fontSize: 12,
+                        color: "var(--splunk-color-content-muted, #666)",
+                    }}
+                >
+                    Findings from HEC ingest reconcile to KV about every 5 minutes (scheduled
+                    search <code>STIG reconcile findings to KV</code>).
+                </p>
             </PagePad>
         </>
     );
