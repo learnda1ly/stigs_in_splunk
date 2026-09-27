@@ -21,20 +21,13 @@ export default function EditorAssignCallout({
     return (
         <Message appearance="info" style={{ marginBottom: 16 }}>
             <p style={{ marginTop: 0 }}>
-                This host has no STIG checklist yet. Assign a baseline revision to materialize
-                findings for review.
+                This host has no checklist yet. Assign a STIG baseline so there are findings to
+                review.
             </p>
             {!allBaselines.length ? (
                 <p style={{ marginBottom: 12 }}>
                     Import baselines first on the{" "}
-                    <Link
-                        onClick={() => {
-                            window.location.assign(importUrl);
-                        }}
-                    >
-                        Import
-                    </Link>{" "}
-                    page.
+                    <Link to={importUrl}>Import</Link> page.
                 </p>
             ) : null}
             <ControlGroup label="Assign STIG" labelPosition="top">

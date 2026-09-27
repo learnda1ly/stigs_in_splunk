@@ -447,7 +447,7 @@ export default function ChecklistImportPanel() {
                         Baselines
                     </Link>{" "}
                     tab. Manage workspaces in{" "}
-                    <Link to={viewUrl("configuration")}>Configuration</Link>.
+                    <Link to={viewUrl("configuration")}>Workspaces</Link>.
                 </p>
                 {baselineCatalogEmpty ? (
                     <Message appearance="warning" style={{ marginBottom: 12 }}>
