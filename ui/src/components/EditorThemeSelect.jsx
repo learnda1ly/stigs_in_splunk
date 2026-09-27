@@ -32,7 +32,6 @@ export default function EditorThemeSelect({ label = "Theme", minWidth = 168 }) {
             label={label}
             labelPosition="top"
             error={error || undefined}
-            help={error ? undefined : "Applies to all SplunkUI pages for this deployment."}
         >
             <div style={{ minWidth }}>
                 <Select

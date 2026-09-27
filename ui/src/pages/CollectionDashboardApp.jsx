@@ -14,8 +14,10 @@ import {
     defaultWorkspaceId,
     downloadBase64,
     downloadText,
-    workspaceLabel,
+    isAllWorkspaces,
+    workspaceScopeQuery,
 } from "../api";
+import WorkspaceSelect from "../components/WorkspaceSelect";
 import {
     Actions,
     Brand,
@@ -26,7 +28,7 @@ import {
     Shell,
     Toolbar,
 } from "../layout";
-import { STATUS_LABELS, StatusChip } from "../status";
+import { StatusChip } from "../status";
 
 const MetricGrid = styled.div`
     display: grid;
@@ -107,6 +109,84 @@ function countRows(mapObj) {
         .map((key) => ({ key, count: mapObj[key] }));
 }
 
+function workspaceIds(collections) {
+    return (collections || []).map((c) => c && c._key).filter(Boolean);
+}
+
+function mergeAggregateParts(parts) {
+    const mergeRows = (field) => {
+        const byKey = {};
+        (parts || []).forEach((part) => {
+            (part && part[field] ? part[field] : []).forEach((row) => {
+                const key =
+                    (row.baseline_id || "") +
+                    ":" +
+                    (row.group_id || row.rule_id || row.cci || "");
+                const existing = byKey[key];
+                if (!existing) {
+                    byKey[key] = Object.assign({}, row);
+                    return;
+                }
+                existing.count = (existing.count || 0) + (row.count || 0);
+                existing.host_count =
+                    (existing.host_count || 0) + (row.host_count || 0);
+            });
+        });
+        return Object.values(byKey).sort((a, b) => (b.count || 0) - (a.count || 0));
+    };
+    const openTotal = (parts || []).reduce(
+        (sum, part) => sum + Number((part && part.open_findings_total) || 0),
+        0
+    );
+    return {
+        open_findings_total: openTotal,
+        by_group_id: mergeRows("by_group_id"),
+        by_rule_id: mergeRows("by_rule_id"),
+        by_cci: mergeRows("by_cci"),
+    };
+}
+
+function mergeUnreviewedAssets(parts) {
+    const assets = [];
+    let total = 0;
+    (parts || []).forEach((part) => {
+        total += Number((part && part.total_unreviewed) || 0);
+        (part && part.assets ? part.assets : []).forEach((asset) => assets.push(asset));
+    });
+    return {
+        total_unreviewed: total,
+        asset_count: assets.length,
+        assets,
+    };
+}
+
+function mergeUnreviewedRules(parts) {
+    const byKey = {};
+    (parts || []).forEach((part) => {
+        (part && part.rules ? part.rules : []).forEach((row) => {
+            const key =
+                (row.baseline_id || "") +
+                ":" +
+                (row.rule_id || row.group_id || "");
+            const existing = byKey[key];
+            if (!existing) {
+                byKey[key] = Object.assign({}, row);
+                return;
+            }
+            existing.unreviewed_count =
+                (existing.unreviewed_count || 0) + (row.unreviewed_count || 0);
+            existing.host_count =
+                (existing.host_count || 0) + (row.host_count || 0);
+            const names = new Set([
+                ...(existing.hostnames || []),
+                ...(row.hostnames || []),
+            ]);
+            existing.hostnames = Array.from(names);
+        });
+    });
+    return { rules: Object.values(byKey) };
+}
+
 export default function CollectionDashboardApp() {
     const [tab, setTab] = useState("metrics");
     const [collections, setCollections] = useState([]);
@@ -159,6 +239,23 @@ export default function CollectionDashboardApp() {
         }
         setLoading(true);
         setBanner(null);
+        if (isAllWorkspaces(cid)) {
+            apiFetch("stig_collections/meta/metrics")
+                .then((payload) => {
+                    const summary = (payload && payload.summary) || null;
+                    setMetrics(summary);
+                    setReviewAging(null);
+                    setStaleSummary(null);
+                })
+                .catch((err) => {
+                    setMetrics(null);
+                    setReviewAging(null);
+                    setStaleSummary(null);
+                    setBanner({ type: "error", message: String(err.message || err) });
+                })
+                .finally(() => setLoading(false));
+            return;
+        }
         Promise.all([
             apiFetch("stig_collections/" + cid + "/metrics"),
             apiFetch("stig_collections/" + cid + "/review_aging"),
@@ -202,9 +299,19 @@ export default function CollectionDashboardApp() {
             return;
         }
         setAggregateLoading(true);
-        apiFetch("stig_collections/" + cid + "/findings/aggregate", {
-            query: findingsRestQuery({ group_by: "group_id,rule_id,cci" }),
-        })
+        const query = findingsRestQuery({ group_by: "group_id,rule_id,cci" });
+        const work = isAllWorkspaces(cid)
+            ? Promise.all(
+                  workspaceIds(collections).map((wsId) =>
+                      apiFetch("stig_collections/" + wsId + "/findings/aggregate", {
+                          query,
+                      })
+                  )
+              ).then((parts) => mergeAggregateParts(parts))
+            : apiFetch("stig_collections/" + cid + "/findings/aggregate", {
+                  query,
+              });
+        work
             .then((data) => setAggregate(data))
             .catch((err) => {
                 setAggregate(null);
@@ -227,10 +334,37 @@ export default function CollectionDashboardApp() {
         if (severityFilter) {
             query.severity = severityFilter;
         }
-        Promise.all([
-            apiFetch("stig_collections/" + cid + "/unreviewed/assets", { query }),
-            apiFetch("stig_collections/" + cid + "/unreviewed/rules", { query }),
-        ])
+        const work = isAllWorkspaces(cid)
+            ? Promise.all(
+                  workspaceIds(collections).map((wsId) =>
+                      Promise.all([
+                          apiFetch(
+                              "stig_collections/" + wsId + "/unreviewed/assets",
+                              { query }
+                          ),
+                          apiFetch(
+                              "stig_collections/" + wsId + "/unreviewed/rules",
+                              { query }
+                          ),
+                      ])
+                  )
+              ).then((pairs) => {
+                  const assetParts = pairs.map((p) => p[0]);
+                  const ruleParts = pairs.map((p) => p[1]);
+                  return [
+                      mergeUnreviewedAssets(assetParts),
+                      mergeUnreviewedRules(ruleParts),
+                  ];
+              })
+            : Promise.all([
+                  apiFetch("stig_collections/" + cid + "/unreviewed/assets", {
+                      query,
+                  }),
+                  apiFetch("stig_collections/" + cid + "/unreviewed/rules", {
+                      query,
+                  }),
+              ]);
+        work
             .then(([assets, rules]) => {
                 setUnreviewedAssets(assets);
                 setUnreviewedRules(rules);
@@ -251,23 +385,57 @@ export default function CollectionDashboardApp() {
             return;
         }
         setFindingsLoading(true);
-        const query = {
-            stig_collection_id: cid,
+        const baseQuery = {
             limit: 500,
             offset: 0,
         };
         if (opts.status != null ? opts.status : statusFilter) {
-            query.status = opts.status != null ? opts.status : statusFilter;
+            baseQuery.status = opts.status != null ? opts.status : statusFilter;
         }
         const sev = opts.severity != null ? opts.severity : severityFilter;
         if (sev) {
-            query.severity = sev;
+            baseQuery.severity = sev;
         }
         const host = opts.host_id != null ? opts.host_id : hostFilter;
         if (host) {
-            query.host_id = host;
+            baseQuery.host_id = host;
         }
-        apiFetch("stig_findings", { query })
+        const work = isAllWorkspaces(cid)
+            ? Promise.all(
+                  workspaceIds(collections).map((wsId) =>
+                      apiFetch("stig_findings", {
+                          query: Object.assign(
+                              { stig_collection_id: wsId },
+                              baseQuery
+                          ),
+                      })
+                  )
+              ).then((parts) => {
+                  const merged = [];
+                  let total = 0;
+                  let hasMore = false;
+                  (parts || []).forEach((data) => {
+                      merged.push(...(data.findings || []));
+                      const pag = data.pagination || {};
+                      total += Number(pag.total || 0);
+                      if (pag.has_more) {
+                          hasMore = true;
+                      }
+                  });
+                  return {
+                      findings: merged,
+                      pagination: {
+                          total,
+                          has_more: hasMore,
+                          limit: baseQuery.limit,
+                          offset: 0,
+                      },
+                  };
+              })
+            : apiFetch("stig_findings", {
+                  query: Object.assign({ stig_collection_id: cid }, baseQuery),
+              });
+        work
             .then((data) => {
                 setFindings(data.findings || []);
                 setPagination(data.pagination || null);
@@ -285,7 +453,7 @@ export default function CollectionDashboardApp() {
             return;
         }
         loadMetrics(collectionId);
-        apiGet("stig_hosts", { stig_collection_id: collectionId })
+        apiGet("stig_hosts", workspaceScopeQuery(collectionId))
             .then(setHosts)
             .catch(() => setHosts([]));
         if (tab === "findings") {
@@ -349,7 +517,13 @@ export default function CollectionDashboardApp() {
     };
 
     const exportPoam = (fmt) => {
-        if (!collectionId) {
+        if (!collectionId || isAllWorkspaces(collectionId)) {
+            if (isAllWorkspaces(collectionId)) {
+                setBanner({
+                    type: "warning",
+                    message: "Choose a single workspace to export POA&M.",
+                });
+            }
             return;
         }
         setPoamLoading(true);
@@ -526,18 +700,12 @@ export default function CollectionDashboardApp() {
                 </Brand>
                 <Toolbar>
                     <ControlGroup label="Workspace" labelPosition="top">
-                        <Select
+                        <WorkspaceSelect
+                            workspaces={collections}
                             value={collectionId}
                             onChange={(e, { value }) => setCollectionId(value)}
-                        >
-                            {collections.map((c) => (
-                                <Select.Option
-                                    key={c._key}
-                                    label={workspaceLabel(c)}
-                                    value={c._key}
-                                />
-                            ))}
-                        </Select>
+                            filter
+                        />
                     </ControlGroup>
                 </Toolbar>
             </Header>
@@ -667,8 +835,6 @@ export default function CollectionDashboardApp() {
                                                 <Table.Row key={row.key}>
                                                     <Table.Cell>
                                                         <StatusChip status={row.key} />
-                                                        {" "}
-                                                        {STATUS_LABELS[row.key] || row.key}
                                                     </Table.Cell>
                                                     <Table.Cell>{row.count}</Table.Cell>
                                                 </Table.Row>

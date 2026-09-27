@@ -7,7 +7,13 @@ import Select from "@splunk/react-ui/Select";
 import Switch from "@splunk/react-ui/Switch";
 import Text from "@splunk/react-ui/Text";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
-import { apiFetch, apiGet, defaultWorkspaceId, workspaceLabel } from "../api";
+import {
+    apiFetch,
+    apiGet,
+    defaultWorkspaceId,
+    isAllWorkspaces,
+} from "../api";
+import WorkspaceSelect from "../components/WorkspaceSelect";
 import {
     Brand,
     BrandKicker,
@@ -36,17 +42,8 @@ export default function ReviewRequirementsApp() {
     const [error, setError] = useState("");
     const [saved, setSaved] = useState("");
 
-    const workspaceOptions = useMemo(
-        () =>
-            (workspaces || []).map((row) => ({
-                label: workspaceLabel(row),
-                value: row._key,
-            })),
-        [workspaces]
-    );
-
     const loadPolicy = useCallback(async (cid) => {
-        if (!cid) {
+        if (!cid || isAllWorkspaces(cid)) {
             setPolicy(DEFAULT_REVIEW_REQUIREMENTS);
             return;
         }
@@ -126,7 +123,7 @@ export default function ReviewRequirementsApp() {
     };
 
     const onSave = async () => {
-        if (!collectionId) {
+        if (!collectionId || isAllWorkspaces(collectionId)) {
             return;
         }
         setSaving(true);
@@ -171,26 +168,28 @@ export default function ReviewRequirementsApp() {
                 ) : null}
                 <Toolbar>
                     <ControlGroup label="Workspace" labelPosition="top">
-                        <Select
+                        <WorkspaceSelect
+                            workspaces={workspaces}
                             value={collectionId}
                             onChange={onWorkspaceChange}
                             style={{ minWidth: 280 }}
-                        >
-                            {workspaceOptions.map((opt) => (
-                                <Select.Option
-                                    key={opt.value}
-                                    label={opt.label}
-                                    value={opt.value}
-                                />
-                            ))}
-                        </Select>
+                        />
                     </ControlGroup>
                     <Button
                         label={saving ? "Saving…" : "Save"}
                         onClick={onSave}
-                        disabled={!collectionId || saving}
+                        disabled={
+                            !collectionId ||
+                            isAllWorkspaces(collectionId) ||
+                            saving
+                        }
                     />
                 </Toolbar>
+                {isAllWorkspaces(collectionId) ? (
+                    <Message type="info" style={{ marginBottom: 12 }}>
+                        Select a single workspace to view or edit its review requirements.
+                    </Message>
+                ) : null}
                 <Heading level={3}>Validation policy</Heading>
                 <p style={{ maxWidth: 720, opacity: 0.85 }}>
                     Controls when a review counts as complete for progress, submit,

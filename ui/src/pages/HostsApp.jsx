@@ -8,7 +8,16 @@ import Select from "@splunk/react-ui/Select";
 import Table from "@splunk/react-ui/Table";
 import Text from "@splunk/react-ui/Text";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
-import { apiFetch, apiGet, defaultWorkspaceId, viewUrl, viewUrlWithQuery, workspaceLabel } from "../api";
+import {
+    apiFetch,
+    apiGet,
+    defaultWorkspaceId,
+    isAllWorkspaces,
+    viewUrl,
+    viewUrlWithQuery,
+    workspaceScopeQuery,
+} from "../api";
+import WorkspaceSelect from "../components/WorkspaceSelect";
 import {
     Brand,
     BrandKicker,
@@ -66,7 +75,7 @@ export default function HostsApp() {
             return Promise.resolve();
         }
         setLoading(true);
-        return apiGet("stig_hosts", { stig_collection_id: collectionId })
+        return apiGet("stig_hosts", workspaceScopeQuery(collectionId))
             .then((rows) => setHosts(Array.isArray(rows) ? rows : []))
             .catch((err) =>
                 setBanner({ type: "error", text: "Failed to load hosts: " + err.message })
@@ -97,8 +106,11 @@ export default function HostsApp() {
 
     const createHost = () => {
         const name = draft.hostname.trim();
-        if (!collectionId) {
-            setBanner({ type: "warning", text: "Select a workspace." });
+        if (!collectionId || isAllWorkspaces(collectionId)) {
+            setBanner({
+                type: "warning",
+                text: "Select a single workspace to create a host.",
+            });
             return;
         }
         if (!name) {
@@ -211,20 +223,13 @@ export default function HostsApp() {
                 ) : null}
                 <Toolbar style={{ marginBottom: 16, flexWrap: "wrap" }}>
                     <ControlGroup label="Workspace" labelPosition="top">
-                        <Select
+                        <WorkspaceSelect
+                            workspaces={workspaces}
                             value={collectionId}
                             onChange={(e, { value }) => setCollectionId(value)}
                             filter
                             disabled={busy}
-                        >
-                            {workspaces.map((ws) => (
-                                <Select.Option
-                                    key={ws._key}
-                                    label={workspaceLabel(ws)}
-                                    value={ws._key}
-                                />
-                            ))}
-                        </Select>
+                        />
                     </ControlGroup>
                     <ControlGroup label="Filter" labelPosition="top">
                         <Text

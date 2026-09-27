@@ -12,9 +12,13 @@ import {
     apiGet,
     apiPatch,
     defaultWorkspaceId,
+    fetchMergedPerWorkspace,
+    isAllWorkspaces,
     viewUrl,
     workspaceLabel,
+    workspaceScopeQuery,
 } from "../api";
+import WorkspaceSelect from "../components/WorkspaceSelect";
 import {
     Actions,
     Body,
@@ -313,11 +317,18 @@ export default function EditorApp() {
             return;
         }
         setLoading(true);
+        const scopeQuery = workspaceScopeQuery(id);
+        const labelsReq = isAllWorkspaces(id)
+            ? fetchMergedPerWorkspace(apiGet, collections, "labels")
+            : apiGet("stig_collections/" + id + "/labels");
+        const policyReq = isAllWorkspaces(id)
+            ? Promise.resolve(null)
+            : apiGet("stig_collections/" + id + "/review_requirements");
         Promise.all([
-            apiGet("stig_checklists", { stig_collection_id: id }),
-            apiGet("stig_hosts", { stig_collection_id: id }),
-            apiGet("stig_collections/" + id + "/labels"),
-            apiGet("stig_collections/" + id + "/review_requirements"),
+            apiGet("stig_checklists", scopeQuery),
+            apiGet("stig_hosts", scopeQuery),
+            labelsReq,
+            policyReq,
         ])
             .then(([cls, hs, lbls, reqBody]) => {
                 setReviewRequirements(
@@ -333,7 +344,7 @@ export default function EditorApp() {
                 setLabels(Array.isArray(lbls) ? lbls : []);
                 return Promise.all([
                     checkList,
-                    apiGet("stig_reviews", { stig_collection_id: id }),
+                    apiGet("stig_reviews", scopeQuery),
                     loadRules(checkList),
                 ]);
             })
@@ -387,7 +398,7 @@ export default function EditorApp() {
         if (!collectionId) {
             return;
         }
-        const params = { stig_collection_id: collectionId };
+        const params = { ...workspaceScopeQuery(collectionId) };
         if (labelFilter) {
             params.label_id = labelFilter;
         }
@@ -407,7 +418,9 @@ export default function EditorApp() {
             : checklists;
         const req = id
             ? Promise.all(cls.map((cl) => apiGet("stig_reviews", { checklist_id: cl._key })))
-            : apiGet("stig_reviews", { stig_collection_id: collectionId }).then((r) => [r]);
+            : apiGet("stig_reviews", workspaceScopeQuery(collectionId)).then(
+                  (r) => [r]
+              );
         Promise.all([req, loadRules(cls)])
             .then(([sets]) => {
                 const reviews = [].concat.apply([], sets || []);
@@ -457,7 +470,7 @@ export default function EditorApp() {
             return;
         }
         setLoading(true);
-        const query = { stig_collection_id: collectionId };
+        const query = { ...workspaceScopeQuery(collectionId) };
         if (ruleVersion) {
             query.rule_version = ruleVersion;
         } else if (ruleId) {
@@ -470,9 +483,7 @@ export default function EditorApp() {
             .then(([reviews]) => {
                 let next = Array.isArray(reviews) ? reviews : [];
                 if (!next.length && (ruleVersion || ruleId)) {
-                    return apiGet("stig_reviews", {
-                        stig_collection_id: collectionId,
-                    }).then((all) =>
+                    return apiGet("stig_reviews", workspaceScopeQuery(collectionId)).then((all) =>
                         (Array.isArray(all) ? all : []).filter(
                             (r) =>
                                 r.rule_version === ruleVersion || r.rule_id === ruleId
@@ -1164,20 +1175,12 @@ export default function EditorApp() {
                 </Brand>
                 <Toolbar>
                     <ControlGroup label="Workspace" labelPosition="top">
-                        <Select
+                        <WorkspaceSelect
+                            workspaces={collections}
                             value={collectionId}
                             onChange={(e, { value }) => onCollection(value)}
-                            placeholder="Select workspace"
                             filter
-                        >
-                            {collections.map((c) => (
-                                <Select.Option
-                                    key={c._key}
-                                    label={workspaceLabel(c)}
-                                    value={c._key}
-                                />
-                            ))}
-                        </Select>
+                        />
                         {!collections.length ? <WorkspaceSelectHint /> : null}
                     </ControlGroup>
                     <ControlGroup label="Host" labelPosition="top">
@@ -1507,7 +1510,11 @@ export default function EditorApp() {
                                 disabled={busy}
                             >
                                 {collections
-                                    .filter((c) => c._key !== collectionId)
+                                    .filter(
+                                        (c) =>
+                                            isAllWorkspaces(collectionId) ||
+                                            c._key !== collectionId
+                                    )
                                     .map((c) => (
                                         <Select.Option
                                             key={c._key}
@@ -1590,7 +1597,9 @@ export default function EditorApp() {
                             <WaitSpinner size="medium" />
                         </Empty>
                     ) : !filtered.length ? (
-                        collectionId && !items.length ? (
+                        collectionId &&
+                        !isAllWorkspaces(collectionId) &&
+                        !items.length ? (
                             <EditorEmptyState collectionId={collectionId} />
                         ) : (
                             <Empty>

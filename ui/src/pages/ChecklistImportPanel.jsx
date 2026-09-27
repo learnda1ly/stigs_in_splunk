@@ -12,10 +12,11 @@ import {
     apiGet,
     apiUpload,
     defaultWorkspaceId,
+    isAllWorkspaces,
     viewUrl,
     viewUrlWithQuery,
-    workspaceLabel,
 } from "../api";
+import WorkspaceSelect from "../components/WorkspaceSelect";
 import WorkspaceSelectHint from "../components/onboarding/WorkspaceSelectHint";
 import {
     Actions,
@@ -333,8 +334,11 @@ export default function ChecklistImportPanel() {
         });
 
     const startImport = () => {
-        if (!collectionId) {
-            setBanner({ type: "warning", text: "Select a workspace first." });
+        if (!collectionId || isAllWorkspaces(collectionId)) {
+            setBanner({
+                type: "warning",
+                text: "Select a single workspace to import into.",
+            });
             return;
         }
         const pending = rows.filter((row) => row.status === "queued" && row.format);
@@ -378,21 +382,13 @@ export default function ChecklistImportPanel() {
             >
                 <Toolbar style={{ flex: 1 }}>
                     <ControlGroup label="Workspace" labelPosition="top">
-                        <Select
+                        <WorkspaceSelect
+                            workspaces={collections}
                             value={collectionId}
                             onChange={(e, { value }) => setCollectionId(value)}
-                            placeholder="Select workspace"
                             filter
                             disabled={busy}
-                        >
-                            {collections.map((c) => (
-                                <Select.Option
-                                    key={c._key}
-                                    label={workspaceLabel(c)}
-                                    value={c._key}
-                                />
-                            ))}
-                        </Select>
+                        />
                         {!collections.length ? <WorkspaceSelectHint /> : null}
                     </ControlGroup>
                     <ControlGroup label="New workspace" labelPosition="top">
@@ -411,7 +407,12 @@ export default function ChecklistImportPanel() {
                     />
                     <Button
                         appearance="primary"
-                        disabled={busy || !collectionId || !queued.length}
+                        disabled={
+                            busy ||
+                            !collectionId ||
+                            isAllWorkspaces(collectionId) ||
+                            !queued.length
+                        }
                         onClick={startImport}
                         label={busy ? "Importing…" : "Import queued files"}
                     />

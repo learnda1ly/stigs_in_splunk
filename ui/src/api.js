@@ -237,6 +237,49 @@ export function defaultWorkspaceId(list) {
     return (named && named._key) || (rows[0] && rows[0]._key) || "";
 }
 
+/** Sentinel for workspace pickers that aggregate across every grant-visible workspace. */
+export const WORKSPACE_ALL = "__all__";
+
+export function workspacesOfferAllChoice(list) {
+    return Array.isArray(list) && list.length > 1;
+}
+
+export function isAllWorkspaces(collectionId) {
+    return collectionId === WORKSPACE_ALL || collectionId === "";
+}
+
+/** REST query object: omit `stig_collection_id` when showing all readable workspaces. */
+export function workspaceScopeQuery(collectionId) {
+    if (!collectionId || isAllWorkspaces(collectionId)) {
+        return {};
+    }
+    return { stig_collection_id: collectionId };
+}
+
+export function visibleWorkspaceIds(list) {
+    return (Array.isArray(list) ? list : [])
+        .map((row) => row && row._key)
+        .filter(Boolean);
+}
+
+/** Fetch a per-workspace collection sub-resource across every visible workspace. */
+export async function fetchMergedPerWorkspace(apiGet, workspaces, segment) {
+    const ids = visibleWorkspaceIds(workspaces);
+    if (!ids.length) {
+        return [];
+    }
+    const parts = await Promise.all(
+        ids.map((id) =>
+            apiGet("stig_collections/" + id + "/" + segment).then((rows) =>
+                (Array.isArray(rows) ? rows : []).map((row) =>
+                    Object.assign({}, row, { stig_collection_id: id })
+                )
+            )
+        )
+    );
+    return parts.reduce((acc, chunk) => acc.concat(chunk), []);
+}
+
 export function downloadBlob(filename, blob) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
