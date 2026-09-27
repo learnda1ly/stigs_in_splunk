@@ -64,6 +64,8 @@ export default function CreateChecklistModal({
                 setHosts(list);
                 if (list.length) {
                     setExistingHostId(list[0]._key);
+                } else {
+                    setHostMode("new");
                 }
             })
             .catch(() => setHosts([]));
@@ -166,20 +168,18 @@ export default function CreateChecklistModal({
                         ))}
                     </Select>
                 </ControlGroup>
-                <ControlGroup label="Host" labelPosition="top">
-                    <RadioList
-                        value={hostMode}
-                        onChange={(e, { value }) => setHostMode(value)}
-                        disabled={busy}
-                    >
-                        <RadioList.Option value="new" label="New host" />
-                        <RadioList.Option
-                            value="existing"
-                            label="Existing host"
-                            disabled={!hosts.length}
-                        />
-                    </RadioList>
-                </ControlGroup>
+                {hosts.length > 0 ? (
+                    <ControlGroup label="Host" labelPosition="top">
+                        <RadioList
+                            value={hostMode}
+                            onChange={(e, { value }) => setHostMode(value)}
+                            disabled={busy}
+                        >
+                            <RadioList.Option value="new">New host</RadioList.Option>
+                            <RadioList.Option value="existing">Existing host</RadioList.Option>
+                        </RadioList>
+                    </ControlGroup>
+                ) : null}
                 {hostMode === "existing" ? (
                     <ControlGroup label="Select host" labelPosition="top">
                         <Select
