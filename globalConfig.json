@@ -16,7 +16,7 @@
     "pages": {
         "configuration": {
             "title": "Workspaces",
-            "description": "Workspaces and editor/ingest settings. Import STIG baselines and checklists from the Import page. If saving here fails, fix app directory ownership on the Set up page (chown). The HEC token stays on the Splunk stig_findings input and is never shown here.",
+            "description": "Workspaces and editor/ingest settings. Import on the Import page. If saving fails, chown app dirs from Set up. HEC token stays on Splunk stig_findings input; never shown here.",
             "tabs": [
                 {
                     "name": "workspace",
