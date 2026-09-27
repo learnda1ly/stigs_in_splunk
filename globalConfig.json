@@ -16,7 +16,7 @@
     "pages": {
         "configuration": {
             "title": "Configuration",
-            "description": "Workspaces and editor/ingest settings. Import STIG baselines and checklists from the Import page. The HEC token stays on the Splunk stig_findings input and is never shown here.",
+            "description": "Workspaces and editor/ingest settings. Import STIG baselines and checklists from the Import page. If saving here fails, fix app directory ownership on the Set up page (chown). The HEC token stays on the Splunk stig_findings input and is never shown here.",
             "tabs": [
                 {
                     "name": "workspace",
@@ -96,12 +96,12 @@
                             "label": "Default import workspace",
                             "type": "checkbox",
                             "defaultValue": false,
-                            "help": "Checklist imports with no workspace go here until you move the host. Only one workspace is default."
+                            "help": "When checked, checklist imports that omit a workspace are assigned to this workspace (the server-created Default workspace starts with this flag). Only one workspace can be default."
                         }
                     ],
                     "warning": {
                         "config": {
-                            "message": "Empty workspaces can be deleted here (Splunk shows a confirm dialog). Workspaces that still have hosts, checklists, grants, or assignment rows must be removed with REST DELETE and ?cascade=true (stig_admin only); global baselines are never deleted."
+                            "message": "Empty workspaces can be deleted from this table (Splunk confirms). Workspaces that still contain hosts or checklists need REST DELETE with ?cascade=true (stig_admin). Details: open the in-app Documentation view (stig_documentation_ui) troubleshooting section."
                         }
                     }
                 },
@@ -223,7 +223,7 @@
                     ],
                     "warning": {
                         "config": {
-                            "message": "Stored in local stigs_in_splunk_settings.conf stanza [general]. Splunk admins edit here (app conf write per metadata/default.meta). The HEC token is never a field on this form; it lives on the stig_findings HEC input only."
+                            "message": "Values save to local/stigs_in_splunk_settings.conf. If save fails with a permissions error, run the chown command from Apps → Manage Apps → Set up. Configure the HEC token under Splunk Settings → Data inputs → HTTP Event Collector → input stig_findings (index stig, sourcetype stig:finding); it is never stored in this form."
                         }
                     }
                 }

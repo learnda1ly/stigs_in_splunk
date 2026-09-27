@@ -30,6 +30,10 @@ export = system
 access = read : [ * ], write : [ admin, sc_admin ]
 export = system
 
+[view:setup]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+export = none
+
 [nav]
 access = read : [ * ], write : [ admin, sc_admin ]
 export = system

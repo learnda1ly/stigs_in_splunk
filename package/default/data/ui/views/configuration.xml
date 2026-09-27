@@ -1,0 +1,4 @@
+<?xml version="1.0" ?>
+<view template="stigs_in_splunk:/templates/configuration_page.html" type="html" isDashboard="False">
+    <label>Configuration</label>
+</view>

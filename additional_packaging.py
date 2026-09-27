@@ -71,6 +71,9 @@ def cleanup_output_files(output_path, ta_name):
     _write_ucc_global_config_json(app_root)
     _ensure_ucc_restmap(app_root)
     _ensure_ucc_web(app_root)
+    _ensure_configuration_fallback(app_root, os.path.isfile(
+        join(app_root, "appserver", "static", "js", "build", "entry_page.js")
+    ))
 
 
 def _restore_nav_and_views(app_root: str) -> None:
@@ -83,11 +86,17 @@ def _restore_nav_and_views(app_root: str) -> None:
         shutil.copy2(src_nav, dst_nav)
     src_views = join(repo, "package", "default", "data", "ui", "views")
     dst_views = join(app_root, "default", "data", "ui", "views")
+    ucc_entry = join(app_root, "appserver", "static", "js", "build", "entry_page.js")
+    has_ucc_bundle = os.path.isfile(ucc_entry)
     if os.path.isdir(src_views):
         os.makedirs(dst_views, exist_ok=True)
         for name in os.listdir(src_views):
-            if name.endswith(".xml"):
-                shutil.copy2(join(src_views, name), join(dst_views, name))
+            if not name.endswith(".xml"):
+                continue
+            if name == "configuration.xml" and has_ucc_bundle:
+                continue
+            shutil.copy2(join(src_views, name), join(dst_views, name))
+    _ensure_configuration_fallback(app_root, has_ucc_bundle)
 
 
 def _write_ucc_global_config_json(app_root: str) -> None:
@@ -140,6 +149,87 @@ def _ensure_ucc_web(app_root: str) -> None:
             handle.write("\n")
 
 
+def _ensure_configuration_fallback(app_root: str, has_ucc_bundle: bool) -> None:
+    """BUILD-025: show rebuild instructions when the UCC bundle is missing."""
+    repo = dirname(os.path.abspath(__file__))
+    src_template = join(repo, "package", "appserver", "templates", "configuration_page.html")
+    dst_template = join(app_root, "appserver", "templates", "configuration_page.html")
+    if os.path.isfile(src_template):
+        os.makedirs(dirname(dst_template), exist_ok=True)
+        shutil.copy2(src_template, dst_template)
+
+    if has_ucc_bundle:
+        base_html = join(app_root, "appserver", "templates", "base.html")
+        if os.path.isfile(base_html):
+            _patch_ucc_base_html_fallback(base_html)
+        return
+
+    stub_view = join(
+        repo, "package", "default", "data", "ui", "views", "configuration.xml"
+    )
+    dst_view = join(app_root, "default", "data", "ui", "views", "configuration.xml")
+    if os.path.isfile(stub_view):
+        os.makedirs(dirname(dst_view), exist_ok=True)
+        shutil.copy2(stub_view, dst_view)
+
+
+def _patch_ucc_base_html_fallback(base_html_path: str) -> None:
+    with open(base_html_path, encoding="utf-8") as handle:
+        content = handle.read()
+    if "stig-ucc-missing" in content:
+        return
+    marker = "</body>"
+    if marker not in content:
+        return
+    inject = """
+        <div id="stig-ucc-missing" style="display:none;font-family:Arial,sans-serif;max-width:42rem;margin:2rem auto;padding:1rem 1.25rem;border:1px solid #ccc;border-radius:4px;">
+            <h2>Configuration UI not built</h2>
+            <p>Missing <code>appserver/static/js/build/entry_page.js</code>. From the repo run <code>./scripts/build_ucc.sh</code>, then reinstall the app.</p>
+        </div>
+        <script>
+            if (typeof _loadScript === 'function') {
+                var _origLoad = _loadScript;
+                _loadScript = function(src, type) {
+                    return _origLoad(src, type).catch(function(err) {
+                        var el = document.getElementById('stig-ucc-missing');
+                        if (el) { el.style.display = 'block'; }
+                        throw err;
+                    });
+                };
+            }
+        </script>
+"""
+    content = content.replace(marker, inject + "\n    " + marker)
+    with open(base_html_path, "w", encoding="utf-8") as handle:
+        handle.write(content)
+
+
+def _ensure_setup_app_conf(app_conf_path: str) -> None:
+    """SETUP-007: wire setup view until an admin marks is_configured."""
+    if not os.path.isfile(app_conf_path):
+        return
+    with open(app_conf_path, encoding="utf-8") as handle:
+        content = handle.read()
+    changed = False
+    if "setup_view" not in content:
+        if "[ui]" not in content:
+            content += "\n[ui]\n"
+        if not content.endswith("\n"):
+            content += "\n"
+        content += "setup_view = setup\n"
+        changed = True
+    if "is_configured" not in content:
+        if "[install]" not in content:
+            content += "\n[install]\n"
+        if not content.endswith("\n"):
+            content += "\n"
+        content += "is_configured = false\n"
+        changed = True
+    if changed:
+        with open(app_conf_path, "w", encoding="utf-8") as handle:
+            handle.write(content)
+
+
 def additional_packaging(ta_name=None):
     """Append KV reload triggers to generated app.conf; restore custom nav/views."""
     if not ta_name:
@@ -149,6 +239,9 @@ def additional_packaging(ta_name=None):
     _write_ucc_global_config_json(app_root)
     _ensure_ucc_restmap(app_root)
     _ensure_ucc_web(app_root)
+    _ensure_configuration_fallback(app_root, os.path.isfile(
+        join(app_root, "appserver", "static", "js", "build", "entry_page.js")
+    ))
     app_conf = join(app_root, "default", "app.conf")
     if not os.path.isfile(app_conf):
         return
@@ -166,3 +259,4 @@ def additional_packaging(ta_name=None):
             handle.write(extra)
             if "reload.stig_editor" not in content:
                 handle.write("reload.stig_editor = simple\n")
+    _ensure_setup_app_conf(app_conf)
