@@ -379,6 +379,28 @@ def user_can_accept_reviews(
     )
 
 
+def user_can_edit_findings(service, session: Dict[str, Any]) -> bool:
+    """True when the user can PATCH reviews in at least one workspace."""
+    if user_has_stig_write(session):
+        return True
+    if service is None:
+        return False
+    from services import collections as collections_svc
+    from services import grants as grants_svc
+
+    try:
+        for rec in collections_svc.list_collections(service, session):
+            cid = rec.get("_key") or ""
+            if not cid:
+                continue
+            _rec, ctx, _grants = grants_svc.workspace_context(service, cid, session)
+            if ctx.can_write:
+                return True
+    except Exception:
+        return False
+    return False
+
+
 def filter_collections_for_user(
     records: Iterable[Dict[str, Any]],
     session: Dict[str, Any],

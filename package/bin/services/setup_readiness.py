@@ -219,12 +219,15 @@ def assess_ownership_readiness() -> Dict[str, Any]:
         }
 
 
-def build_readiness_report(session: Dict[str, Any]) -> Dict[str, Any]:
+def build_readiness_report(
+    session: Dict[str, Any], service: Any = None
+) -> Dict[str, Any]:
     session_key = session.get("authtoken") or ""
     roles = assess_role_readiness(session)
     hec = assess_hec_readiness(session_key)
     ownership = assess_ownership_readiness()
     configured = is_app_configured()
+    can_write = access.user_can_edit_findings(service, session)
     return {
         "roles": roles,
         "hec": hec,
@@ -232,6 +235,8 @@ def build_readiness_report(session: Dict[str, Any]) -> Dict[str, Any]:
         "is_configured": configured,
         "documentation_view": "stig_documentation_ui",
         "platform_ready": bool(roles.get("ok") and ownership.get("ok")),
+        "can_stig_write": can_write,
+        "can_stig_admin": access.user_has_stig_admin(session),
     }
 
 
