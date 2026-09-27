@@ -368,7 +368,27 @@ export default function HostsApp() {
                             ) : (
                                 <Table.Row>
                                     <Table.Cell colSpan={5} align="center">
-                                        No hosts in this workspace.
+                                        <div style={{ padding: "20px 12px" }}>
+                                            <p style={{ marginTop: 0 }}>
+                                                No hosts in this workspace.
+                                            </p>
+                                            <Button
+                                                appearance="primary"
+                                                disabled={busy || !collectionId}
+                                                onClick={() => setShowAddForm(true)}
+                                                label="Add host"
+                                            />
+                                            <p style={{ marginBottom: 0, fontSize: 13 }}>
+                                                <Link
+                                                    to={
+                                                        viewUrl("stig_import_ui") + "#checklists"
+                                                    }
+                                                >
+                                                    Import checklists
+                                                </Link>{" "}
+                                                to create hosts automatically.
+                                            </p>
+                                        </div>
                                     </Table.Cell>
                                 </Table.Row>
                             )}

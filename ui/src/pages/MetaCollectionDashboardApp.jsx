@@ -5,7 +5,8 @@ import Message from "@splunk/react-ui/Message";
 import Table from "@splunk/react-ui/Table";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
 import styled from "styled-components";
-import { apiFetch, viewUrlWithQuery } from "../api";
+import Button from "@splunk/react-ui/Button";
+import { apiFetch, viewUrl, viewUrlWithQuery } from "../api";
 import {
     Brand,
     BrandKicker,
@@ -87,10 +88,28 @@ export default function MetaCollectionDashboardApp() {
                         workspace dashboard from the table below.
                     </Message>
                     {loading ? <WaitSpinner size="medium" /> : null}
-                    {!loading && data && data.workspace_count === 0 ? (
-                        <Message type="info">No readable workspaces.</Message>
+                    {!loading && (!data || data.workspace_count === 0) ? (
+                        <Message type="info">
+                            <p style={{ marginTop: 0 }}>
+                                No workspace metrics yet. Create a workspace, import baselines, and
+                                add hosts to see org-wide totals here.
+                            </p>
+                            <Button
+                                appearance="primary"
+                                label="Open Workspaces"
+                                onClick={() => {
+                                    window.location.assign(viewUrl("configuration"));
+                                }}
+                            />
+                            <p style={{ marginBottom: 0, fontSize: 13 }}>
+                                <Link to={viewUrl("stig_import_ui") + "#baselines"}>
+                                    Import baselines
+                                </Link>{" "}
+                                when you are ready to load STIG content.
+                            </p>
+                        </Message>
                     ) : null}
-                    {!loading && totals ? (
+                    {!loading && data && data.workspace_count > 0 && totals ? (
                         <>
                             <Heading level={4}>
                                 Org totals ({data.workspace_count} workspace
@@ -130,7 +149,7 @@ export default function MetaCollectionDashboardApp() {
                             </MetricGrid>
                         </>
                     ) : null}
-                    {!loading && workspaces.length ? (
+                    {!loading && data && data.workspace_count > 0 && workspaces.length ? (
                         <>
                             <Heading level={4} style={{ marginTop: 8 }}>
                                 By workspace

@@ -139,7 +139,7 @@ test.describe('Organization workspace journey', () => {
     await editor.open();
     await editor.selectWorkspace(journey.workspaceName);
     await editor.selectHost(HOSTNAME);
-    await editor.openHostActions();
+    await editor.openHostActions(); // inline assign callout (no Host actions drawer)
     await editor.selectAssignBaseline(journey.baselineId, BASELINE_LABEL);
     await editor.assignToHost();
     await editor.expectAssignSuccess();

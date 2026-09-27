@@ -53,6 +53,10 @@ import {
 import VimField from "../vim/VimField";
 import { HelpOverlay, JumpOverlay, VimCommandBar } from "../vim/overlays";
 import EditorThemeSelect from "../components/EditorThemeSelect";
+import CapabilityGrantBanner from "../components/onboarding/CapabilityGrantBanner";
+import EditorAssignCallout from "../components/onboarding/EditorAssignCallout";
+import EditorEmptyState from "../components/onboarding/EditorEmptyState";
+import WorkspaceSelectHint from "../components/onboarding/WorkspaceSelectHint";
 import { loadVimSetting, persistVimSetting } from "../vim/settings";
 import { VimGlobalStyle } from "../vim/styles";
 import { useEditorKeys } from "../vim/useEditorKeys";
@@ -166,7 +170,7 @@ export default function EditorApp() {
         apiGet("stig_collections")
             .then((data) => setCollections(Array.isArray(data) ? data : []))
             .catch((err) =>
-                setBanner({ type: "error", text: "Failed to load collections: " + err.message })
+                setBanner({ type: "error", text: "Failed to load workspaces: " + err.message })
             );
     }, []);
 
@@ -415,9 +419,41 @@ export default function EditorApp() {
             .finally(() => setLoading(false));
     };
 
+    const assignHostStig = () => {
+        if (!hostId) {
+            return;
+        }
+        const body = assignBaselineId
+            ? { baseline_id: assignBaselineId }
+            : { stig_id: assignStigId.trim() };
+        setBusy(true);
+        apiFetch("stig_hosts/" + hostId + "/stigs", {
+            method: "POST",
+            body,
+        })
+            .then((doc) => {
+                setBanner({
+                    type: "success",
+                    text: doc.created
+                        ? "Assigned STIG and created checklist."
+                        : "STIG already assigned (existing checklist).",
+                });
+                onCollection(collectionId);
+                setHostId(hostId);
+                onHost(hostId);
+            })
+            .catch((err) =>
+                setBanner({
+                    type: "error",
+                    text: "Assign failed: " + err.message,
+                })
+            )
+            .finally(() => setBusy(false));
+    };
+
     const loadRuleAcrossHosts = (ruleVersion, ruleId) => {
         if (!collectionId) {
-            setBanner({ type: "warning", text: "Select a collection first." });
+            setBanner({ type: "warning", text: "Select a workspace first." });
             return;
         }
         setLoading(true);
@@ -885,7 +921,7 @@ export default function EditorApp() {
             }
         });
         if (!ids.length) {
-            setBanner({ type: "warning", text: "Select a collection first." });
+            setBanner({ type: "warning", text: "Select a workspace first." });
             return;
         }
         setBusy(true);
@@ -1004,7 +1040,7 @@ export default function EditorApp() {
                     {
                         id: "",
                         label: "All hosts",
-                        sub: "Every finding in this collection",
+                        sub: "Every finding in this workspace",
                     },
                 ].concat(
                     hosts.map((h) => ({
@@ -1041,12 +1077,15 @@ export default function EditorApp() {
     const openJump = useCallback(
         (kind) => {
             if (kind !== "collection" && !collectionId) {
-                setBanner({ type: "warning", text: "Select a collection first." });
+                setBanner({ type: "warning", text: "Select a workspace first." });
                 return;
             }
             const choices = jumpChoices(kind);
             if (kind === "rule" && !choices.length) {
-                setBanner({ type: "warning", text: "Load a collection first so rules can be indexed." });
+                setBanner({
+                    type: "warning",
+                    text: "Load a workspace first so rules can be indexed.",
+                });
                 return;
             }
             setJump({ kind, choices });
@@ -1128,7 +1167,7 @@ export default function EditorApp() {
                         <Select
                             value={collectionId}
                             onChange={(e, { value }) => onCollection(value)}
-                            placeholder="Select collection"
+                            placeholder="Select workspace"
                             filter
                         >
                             {collections.map((c) => (
@@ -1139,6 +1178,7 @@ export default function EditorApp() {
                                 />
                             ))}
                         </Select>
+                        {!collections.length ? <WorkspaceSelectHint /> : null}
                     </ControlGroup>
                     <ControlGroup label="Host" labelPosition="top">
                         <Select
@@ -1194,36 +1234,41 @@ export default function EditorApp() {
                     <ProgressTrack title={pct + "% complete"}>
                         <ProgressFill $pct={pct} />
                     </ProgressTrack>
-                    <VimBadge
-                        type="button"
-                        className={
-                            !vimEnabled
-                                ? "is-off"
+                    {vimEnabled || selected ? (
+                        <VimBadge
+                            type="button"
+                            className={
+                                !vimEnabled
+                                    ? "is-off"
+                                    : vimLayer === "insert"
+                                      ? "insert"
+                                      : vimLayer === "nav"
+                                        ? "nav"
+                                        : ""
+                            }
+                            onClick={toggleVim}
+                            title={
+                                vimEnabled
+                                    ? "Vim is on. Click to disable."
+                                    : "Vim keys are off. Click to enable."
+                            }
+                        >
+                            {!vimEnabled
+                                ? "VIM OFF"
                                 : vimLayer === "insert"
-                                  ? "insert"
-                                  : vimLayer === "nav"
-                                    ? "nav"
-                                    : ""
-                        }
-                        onClick={toggleVim}
-                        title={
-                            vimEnabled
-                                ? "Vim is on. Click to disable."
-                                : "Vim keys are off. Click to enable."
-                        }
-                    >
-                        {!vimEnabled
-                            ? "VIM OFF"
-                            : vimLayer === "insert"
-                              ? "INSERT"
-                              : vimLayer === "text"
-                                ? "NORMAL"
-                                : "NAV"}
-                    </VimBadge>
+                                  ? "INSERT"
+                                  : vimLayer === "text"
+                                    ? "NORMAL"
+                                    : "NAV"}
+                        </VimBadge>
+                    ) : null}
                 </HeaderMeta>
             </Header>
+            <div style={{ padding: "8px 20px 0" }}>
+                <CapabilityGrantBanner />
+            </div>
             {banner ? (
-                <div style={{ padding: "8px 20px 0" }}>
+                <div style={{ padding: "0 20px 0" }}>
                     <Message
                         appearance={banner.type}
                         onRequestRemove={() => setBanner(null)}
@@ -1447,34 +1492,7 @@ export default function EditorApp() {
                                 disabled={
                                     busy || (!assignBaselineId && !assignStigId.trim())
                                 }
-                                onClick={() => {
-                                    const body = assignBaselineId
-                                        ? { baseline_id: assignBaselineId }
-                                        : { stig_id: assignStigId.trim() };
-                                    setBusy(true);
-                                    apiFetch("stig_hosts/" + hostId + "/stigs", {
-                                        method: "POST",
-                                        body,
-                                    })
-                                        .then((doc) => {
-                                            setBanner({
-                                                type: "success",
-                                                text: doc.created
-                                                    ? "Assigned STIG and created checklist."
-                                                    : "STIG already assigned (existing checklist).",
-                                            });
-                                            onCollection(collectionId);
-                                            setHostId(hostId);
-                                            onHost(hostId);
-                                        })
-                                        .catch((err) =>
-                                            setBanner({
-                                                type: "error",
-                                                text: "Assign failed: " + err.message,
-                                            })
-                                        )
-                                        .finally(() => setBusy(false));
-                                }}
+                                onClick={assignHostStig}
                                 label="Assign to host"
                             />
                         </ControlGroup>
@@ -1572,11 +1590,17 @@ export default function EditorApp() {
                             <WaitSpinner size="medium" />
                         </Empty>
                     ) : !filtered.length ? (
-                        <Empty>
-                            {collectionId
-                                ? "No matching findings."
-                                : "Select a workspace to review STIG findings."}
-                        </Empty>
+                        collectionId && !items.length ? (
+                            <EditorEmptyState collectionId={collectionId} />
+                        ) : (
+                            <Empty>
+                                {collectionId
+                                    ? "No matching findings."
+                                    : collections.length
+                                      ? "Select a workspace to review STIG findings."
+                                      : "No workspaces available. Open Workspaces to create one."}
+                            </Empty>
+                        )
                     ) : (
                         <FindingList ref={listRef} tabIndex={0}>
                             {filtered.map((item) => {
@@ -1629,7 +1653,21 @@ export default function EditorApp() {
                 </ListPane>
                 <DetailPane>
                     {!selected ? (
-                        <Empty>Select a finding to edit status, details, and comments.</Empty>
+                        hostId && !hostChecklists.length ? (
+                            <EditorAssignCallout
+                                busy={busy}
+                                allBaselines={allBaselines}
+                                assignBaselineId={assignBaselineId}
+                                setAssignBaselineId={setAssignBaselineId}
+                                assignStigId={assignStigId}
+                                setAssignStigId={setAssignStigId}
+                                onAssign={assignHostStig}
+                            />
+                        ) : (
+                            <Empty>
+                                Select a finding to edit status, details, and comments.
+                            </Empty>
+                        )
                     ) : (
                         <FieldStack>
                             <div>
@@ -1953,7 +1991,7 @@ export default function EditorApp() {
                 <JumpOverlay
                     title={
                         jump.kind === "collection"
-                            ? "Go to collection"
+                            ? "Go to workspace"
                             : jump.kind === "host"
                               ? "Go to host"
                               : "Go to rule (all hosts)"
