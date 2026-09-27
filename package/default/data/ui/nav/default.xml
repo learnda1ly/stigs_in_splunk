@@ -1,27 +1,27 @@
 <nav search_view="search">
-  <collection label="Get started" icon="compass">
-    <view name="stig_documentation_ui" label="Documentation" icon="book"/>
-    <view name="stig_import_ui" label="Import" icon="cloud"/>
-    <view name="configuration" label="Workspaces" icon="briefcase"/>
-    <view name="stig_hosts_ui" label="Hosts" icon="desktop"/>
+  <collection label="Get started" icon="house">
+    <view name="stig_documentation_ui" label="Documentation" icon="bookshelf"/>
+    <view name="stig_import_ui" label="Import" icon="forwarderuniversal"/>
+    <view name="configuration" label="Workspaces" icon="layout"/>
+    <view name="stig_hosts_ui" label="Hosts" icon="monitor"/>
   </collection>
-  <collection label="Work" icon="code">
-    <view name="stig_editor_ui" default="true" label="STIG Editor" icon="pencil"/>
+  <collection label="Work" icon="filenode">
+    <view name="stig_editor_ui" default="true" label="STIG Editor" icon="filenode"/>
     <view name="stig_library_ui" label="STIG library" icon="cylinderindex"/>
-    <view name="stig_export_ui" label="Export" icon="arrowsquaretopright"/>
+    <view name="stig_export_ui" label="Export" icon="filechart"/>
   </collection>
   <collection label="Review" icon="chartpanels">
-    <view name="stig_collection_review_ui" label="Collection review" icon="checkcircle"/>
-    <view name="stig_collection_dashboard_ui" label="Collection dashboard" icon="report"/>
-    <view name="stig_meta_collection_dashboard_ui" label="All workspaces" icon="globe"/>
+    <view name="stig_collection_review_ui" label="Collection review" icon="chartline"/>
+    <view name="stig_collection_dashboard_ui" label="Collection dashboard" icon="filechart"/>
+    <view name="stig_meta_collection_dashboard_ui" label="All workspaces" icon="layoutoverview"/>
     <view name="stig_audit_dashboard" label="Audit" icon="pulse"/>
   </collection>
-  <collection label="Admin" icon="wrench">
-    <view name="stig_assignment_ui" label="Assignment" icon="link"/>
+  <collection label="Admin" icon="cog">
+    <view name="stig_assignment_ui" label="Assignment" icon="networkconnector"/>
     <view name="stig_workspace_defaults_ui" label="Default revisions" icon="star"/>
     <view name="stig_grants_ui" label="Workspace grants" icon="circlesfour"/>
-    <view name="stig_labels_ui" label="Asset labels" icon="flag"/>
-    <view name="stig_transfer_ui" label="Transfer assets" icon="share"/>
+    <view name="stig_labels_ui" label="Asset labels" icon="tag"/>
+    <view name="stig_transfer_ui" label="Transfer assets" icon="forwarderuniversal"/>
     <view name="stig_review_requirements_ui" label="Review requirements" icon="bookmark"/>
   </collection>
 </nav>
