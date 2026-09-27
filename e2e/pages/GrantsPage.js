@@ -1,5 +1,10 @@
 const { expect } = require('@playwright/test');
 const { appPath } = require('../fixtures/splunk');
+const {
+  workspaceCombobox,
+  selectWorkspaceOption,
+  escapeRegExp,
+} = require('../helpers/workspaceSelect');
 
 const NAV_TIMEOUT_MS = 60_000;
 const CONTROL_TIMEOUT_MS = 30_000;
@@ -24,7 +29,7 @@ class GrantsPage {
   }
 
   workspaceSelect() {
-    return this.page.getByRole('combobox').first();
+    return workspaceCombobox(this.page);
   }
 
   /**
@@ -33,13 +38,7 @@ class GrantsPage {
   async selectWorkspace(name) {
     const select = this.workspaceSelect();
     await expect(select).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
-    await select.click();
-    const option = this.page.getByRole('option', {
-      name: new RegExp(escapeRegExp(name)),
-    });
-    await expect(option.first()).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
-    await option.first().click();
-    await expect(select).toContainText(name, { timeout: CONTROL_TIMEOUT_MS });
+    await selectWorkspaceOption(this.page, select, name, CONTROL_TIMEOUT_MS);
   }
 
   newGrantHeading() {
@@ -88,10 +87,6 @@ class GrantsPage {
     await expect(row.first()).toContainText(principal);
     await expect(row.first()).toContainText(grantRole);
   }
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 module.exports = { GrantsPage };

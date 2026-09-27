@@ -1,5 +1,6 @@
 const { expect } = require('@playwright/test');
 const { appPath } = require('../fixtures/splunk');
+const { selectWorkspaceOption } = require('../helpers/workspaceSelect');
 
 const NAV_TIMEOUT_MS = 60_000;
 const CONTROL_TIMEOUT_MS = 30_000;
@@ -51,12 +52,7 @@ class EditorAssignPage {
    * @param {string} name Workspace collection name (without "(default)" suffix).
    */
   async selectWorkspace(name) {
-    const select = this.workspaceSelect();
-    await select.click();
-    const option = this.page.getByRole('option', { name: new RegExp(escapeRegExp(name)) });
-    await expect(option.first()).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
-    await option.first().click();
-    await expect(select).toContainText(name, { timeout: CONTROL_TIMEOUT_MS });
+    await selectWorkspaceOption(this.page, this.workspaceSelect(), name, CONTROL_TIMEOUT_MS);
   }
 
   /**
@@ -108,10 +104,6 @@ class EditorAssignPage {
     await expect(row.first()).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
     await expect(this.findingList()).not.toHaveCount(0);
   }
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 module.exports = { EditorAssignPage };

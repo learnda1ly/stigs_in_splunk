@@ -1,5 +1,6 @@
 const { expect } = require('@playwright/test');
 const { appPath } = require('../fixtures/splunk');
+const { workspaceCombobox, selectWorkspaceOption } = require('../helpers/workspaceSelect');
 
 const NAV_TIMEOUT_MS = 60_000;
 const CONTROL_TIMEOUT_MS = 30_000;
@@ -25,7 +26,7 @@ class LabelsPage {
   }
 
   workspaceSelect() {
-    return this.page.getByRole('combobox').first();
+    return workspaceCombobox(this.page);
   }
 
   filterByLabelSelect() {
@@ -52,14 +53,7 @@ class LabelsPage {
    * @param {string} name Workspace collection name (without "(default)" suffix).
    */
   async selectWorkspace(name) {
-    const select = this.workspaceSelect();
-    await select.click();
-    const option = this.page.getByRole('option', {
-      name: new RegExp(escapeRegExp(name)),
-    });
-    await expect(option.first()).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
-    await option.first().click();
-    await expect(select).toContainText(name, { timeout: CONTROL_TIMEOUT_MS });
+    await selectWorkspaceOption(this.page, this.workspaceSelect(), name, CONTROL_TIMEOUT_MS);
     await expect(this.page.getByRole('heading', { name: 'Assign labels to hosts' })).toBeVisible(
       {
         timeout: CONTROL_TIMEOUT_MS,
@@ -143,10 +137,6 @@ class LabelsPage {
     const row = this.hostAssignmentTable().getByRole('row').filter({ hasText: hostname });
     await expect(row).toHaveCount(0, { timeout: CONTROL_TIMEOUT_MS });
   }
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 module.exports = { LabelsPage, SELECTORS: { ...SELECTORS, page: 'LabelsPage' } };

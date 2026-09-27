@@ -1,5 +1,6 @@
 const { expect } = require('@playwright/test');
 const { appPath } = require('../fixtures/splunk');
+const { selectWorkspaceOption } = require('../helpers/workspaceSelect');
 
 const NAV_TIMEOUT_MS = 60_000;
 const CONTROL_TIMEOUT_MS = 30_000;
@@ -57,13 +58,7 @@ class ImportPage {
     await this.page.getByRole('tab', { name: 'Checklists' }).click();
     const select = this.workspaceSelect();
     await expect(select).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
-    await select.click();
-    const option = this.page.getByRole('option', {
-      name: new RegExp(escapeRegExp(name)),
-    });
-    await expect(option.first()).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
-    await option.first().click();
-    await expect(select).toContainText(name, { timeout: CONTROL_TIMEOUT_MS });
+    await selectWorkspaceOption(this.page, select, name, CONTROL_TIMEOUT_MS);
     await this.openBaselinesTab();
   }
 
@@ -85,10 +80,6 @@ class ImportPage {
       await expect(banner).toContainText(label, { timeout: CONTROL_TIMEOUT_MS });
     }
   }
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 module.exports = { ImportPage, SELECTORS };
