@@ -11,7 +11,6 @@ import {
     Brand,
     BrandKicker,
     Header,
-    PagePad,
     Shell,
 } from "../layout";
 import BaselineImportPanel from "./BaselineImportPanel";
@@ -69,7 +68,12 @@ export default function ImportApp() {
                 </Brand>
             </Header>
             <div style={{ flex: 1, minHeight: 0, overflow: "auto", display: "flex", flexDirection: "column" }}>
-                <PagePad style={{ paddingBottom: 8 }}>
+                <div
+                    style={{
+                        flex: "0 0 auto",
+                        padding: "20px 24px 8px",
+                    }}
+                >
                     <p style={{ maxWidth: 820, marginTop: 0, marginBottom: 16 }}>
                         Import checklist results into a workspace, or upload STIG baseline
                         catalogs (XCCDF, CKL, CKLB) for the editor.
@@ -78,7 +82,7 @@ export default function ImportApp() {
                         <TabBar.Tab label="Checklists" tabId="checklists" />
                         <TabBar.Tab label="Baselines" tabId="baselines" />
                     </TabBar>
-                </PagePad>
+                </div>
                 <div
                     id="checklists"
                     style={{
