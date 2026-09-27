@@ -6,6 +6,37 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <script src="../../config?autoload=1" crossorigin="use-credentials"></script>
         <style>
+            .stig-config-app-nav {
+                font-family: Splunk Platform Sans, Arial, sans-serif;
+                font-size: 13px;
+                line-height: 1.4;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 0.35rem 1rem;
+                padding: 0.65rem 1rem;
+                border-bottom: 1px solid #3c444d;
+                background: #171d21;
+                color: #f7f7f7;
+            }
+            .stig-config-app-nav strong {
+                font-weight: 600;
+                margin-right: 0.25rem;
+            }
+            .stig-config-app-nav a {
+                color: #7cccff;
+                text-decoration: none;
+            }
+            .stig-config-app-nav a:hover,
+            .stig-config-app-nav a:focus {
+                text-decoration: underline;
+            }
+            .stig-config-app-nav a[aria-current="page"] {
+                color: #f7f7f7;
+                font-weight: 600;
+                pointer-events: none;
+                text-decoration: none;
+            }
             .stig-ucc-missing {
                 font-family: Splunk Platform Sans, Arial, sans-serif;
                 max-width: 42rem;
@@ -22,6 +53,14 @@
         </style>
     </head>
     <body>
+        <nav class="stig-config-app-nav" aria-label="STIG in Splunk">
+            <strong>STIG in Splunk</strong>
+            <a href="stig_editor_ui">STIG Editor</a>
+            <a href="stig_documentation_ui">Documentation</a>
+            <a href="stig_import_ui">Import</a>
+            <a href="configuration" aria-current="page">Workspaces</a>
+            <a href="stig_hosts_ui">Hosts</a>
+        </nav>
         <div id="stig-ucc-missing" class="stig-ucc-missing" style="display: none">
             <h2>Configuration UI not built</h2>
             <p>
