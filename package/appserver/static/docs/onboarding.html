@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>STIG in Splunk — operator guide</title>
+  <style>
+    body { font-family: system-ui, sans-serif; line-height: 1.55; max-width: 52rem; margin: 2rem auto; padding: 0 1.25rem; color: #e8e8e8; background: #171d21; }
+    h1, h2 { color: #fff; }
+    h2 { margin-top: 2rem; border-bottom: 1px solid #333; padding-bottom: 0.35rem; }
+    code, pre { background: #0f1316; padding: 0.15rem 0.35rem; border-radius: 4px; font-size: 0.92em; }
+    pre { padding: 0.75rem 1rem; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.95rem; }
+    th, td { border: 1px solid #333; padding: 0.5rem 0.65rem; text-align: left; vertical-align: top; }
+    th { background: #222; }
+    a { color: #6bcaff; }
+    .muted { color: #9aa; font-size: 0.92rem; }
+  </style>
+</head>
+<body>
+  <h1>STIG in Splunk — operator guide</h1>
+  <p class="muted">Offline reference shipped with the app. Open the SplunkUI <strong>Documentation</strong> view for in-app links.</p>
+
+  <h2 id="overview">1. Overview</h2>
+  <p>STIG in Splunk stores DISA STIG baseline and checklist <strong>review state</strong> in KV store. Import baselines, register hosts per workspace, assign STIGs, review in the editor, and report from dashboards or export. Not a STIG Manager fork.</p>
+
+  <h2 id="before-you-begin">2. Before you begin</h2>
+  <ul>
+    <li>Splunk Enterprise 9.x with KV store.</li>
+    <li>Indexes <code>stig</code> and <code>stig_audit</code> (app defaults).</li>
+    <li>Splunk admin for roles and HEC.</li>
+  </ul>
+
+  <h2 id="install">3. Install</h2>
+  <p>Install tarball via Manage Apps or extract to <code>$SPLUNK_HOME/etc/apps/stigs_in_splunk</code>.</p>
+  <pre>chown -R splunk:splunk $SPLUNK_HOME/etc/apps/stigs_in_splunk</pre>
+  <p class="muted">Production installs use the tarball; developer builds use <code>./scripts/build_ucc.sh</code>.</p>
+
+  <h2 id="access-control">4. Access control</h2>
+  <table>
+    <thead><tr><th>Capability</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>stig_read</code></td><td>View STIG data via app REST.</td></tr>
+      <tr><td><code>stig_write</code></td><td>Create and update STIG data.</td></tr>
+      <tr><td><code>stig_review_accept</code></td><td>Accept or reject submitted reviews.</td></tr>
+      <tr><td><code>stig_admin</code></td><td>Manage workspace ACLs and deletes.</td></tr>
+    </tbody>
+  </table>
+  <p>Assign roles <code>stig_user</code> or <code>stig_admin</code> under Splunk Settings → Roles.</p>
+
+  <h2 id="hec">5. HTTP Event Collector (HEC)</h2>
+  <ul>
+    <li>Input: <code>stig_findings</code></li>
+    <li>Index: <code>stig</code></li>
+    <li>Sourcetype: <code>stig:finding</code></li>
+  </ul>
+  <p>Configure the token in Splunk Settings → Data inputs → HTTP Event Collector. The app does not store the token.</p>
+
+  <h2 id="quick-start">6. Quick start (about 15 minutes)</h2>
+  <ol>
+    <li><strong>Workspaces</strong> — Create a workspace or use <strong>Default</strong> (auto-created). Default import target can be changed in Workspaces.</li>
+    <li><strong>Import baselines</strong> — Import → Baselines tab (global catalog).</li>
+    <li><strong>Hosts</strong> — Register hosts in your workspace.</li>
+    <li><strong>Assign STIG</strong> — Editor: select workspace and host, then Assign STIG (or STIG library).</li>
+    <li><strong>Review findings</strong> — Editor → Write (Submit when required).</li>
+    <li><strong>Collection dashboard</strong> — Review metrics and POA&amp;M after findings exist.</li>
+  </ol>
+
+  <h2 id="import-reference">7. Import reference</h2>
+  <p><strong>Baselines</strong> — XCCDF/CKL/zip catalog (no workspace). <strong>Checklists</strong> — workspace-scoped CKL/CKLB/zip. Automation: REST <code>/stig_imports</code>, HEC <code>stig:finding</code>, reconcile every 5 minutes. See repo <code>docs/automation.md</code>.</p>
+
+  <h2 id="multi-user">8. Multi-user governance</h2>
+  <p>Configure Workspace grants (owner/manager/member/restricted). Members need <code>stig_write</code>. Accept/Reject requires <code>stig_review_accept</code> or owner/manager grant.</p>
+
+  <h2 id="troubleshooting">9. Troubleshooting</h2>
+  <ul>
+    <li>Blank Workspaces page — install built tarball; run <code>./scripts/build_ucc.sh</code> for git dev trees.</li>
+    <li>403 / empty UI — assign <code>stig_user</code> and <code>edit_kvstore</code>.</li>
+    <li>Empty editor — import baselines, assign STIG to selected host.</li>
+    <li>UCC save errors — fix <code>chown</code> on app directory.</li>
+    <li>Delete workspace 409 — remove dependents or REST cascade delete.</li>
+    <li>Search empty after import — verify HEC token on <code>stig_findings</code>.</li>
+  </ul>
+
+  <h2 id="further-reading">10. Further reading (repository)</h2>
+  <ul>
+    <li><code>docs/automation.md</code></li>
+    <li><code>docs/api.md</code>, <code>docs/openapi.yaml</code></li>
+    <li><code>docs/audit-index.md</code></li>
+    <li><code>docs/onboarding-user-guide.md</code></li>
+  </ul>
+</body>
+</html>
