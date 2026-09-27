@@ -46,6 +46,7 @@ from services import review_peers as review_peers_svc
 from services import reviews as reviews_svc
 from services import revision_upgrade as revision_upgrade_svc
 from services import settings as settings_svc
+from services import setup_readiness as setup_readiness_svc
 
 logger = logging.getLogger("stigs_in_splunk.rest")
 
@@ -216,6 +217,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return self._reviews(method, parts, query, payload, service, session, username)
             if resource == "stig_settings":
                 return self._settings(method, parts, payload, service, username)
+            if resource == "stig_readiness":
+                return self._readiness(method, payload, session)
             if resource == "stig_imports":
                 return self._imports(method, parts, query, payload, service, session, username)
             if resource == "stig_assignment_rules":
@@ -1872,6 +1875,23 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 service, normalized, session, username=username
             )
         return _json_response(result)
+
+    def _readiness(
+        self, method: str, payload: Dict[str, Any], session: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        if method == "GET":
+            return _json_response(setup_readiness_svc.build_readiness_report(session))
+        if method == "POST":
+            body = _body_json(payload)
+            if (body.get("action") or "").strip().lower() != "complete":
+                return _error(
+                    "POST action must be complete to mark setup finished",
+                    status=400,
+                )
+            result = setup_readiness_svc.mark_setup_complete(session)
+            status = 200 if result.get("ok") else 403
+            return _json_response(result, status=status)
+        return _error("method not allowed", status=405)
 
     def _settings(
         self,

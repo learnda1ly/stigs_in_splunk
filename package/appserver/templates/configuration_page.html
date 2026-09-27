@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Configuration</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <script src="../../config?autoload=1" crossorigin="use-credentials"></script>
+        <style>
+            .stig-ucc-missing {
+                font-family: Splunk Platform Sans, Arial, sans-serif;
+                max-width: 42rem;
+                margin: 2rem auto;
+                padding: 1.25rem 1.5rem;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                background: #f7f7f7;
+            }
+            .stig-ucc-missing code {
+                background: #eee;
+                padding: 0.1rem 0.35rem;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="stig-ucc-missing" class="stig-ucc-missing" style="display: none">
+            <h2>Configuration UI not built</h2>
+            <p>
+                This git checkout is missing the Splunk UCC bundle
+                (<code>appserver/static/js/build/entry_page.js</code>).
+            </p>
+            <p>
+                From the repository root, run
+                <code>./scripts/build_ucc.sh</code>
+                (or install the packaged tarball), then reinstall or remount the app.
+            </p>
+        </div>
+        <script>
+            function _loadScript(src, type) {
+                return new Promise(function (resolve, reject) {
+                    var s = document.createElement("script");
+                    if (type) {
+                        s.type = type;
+                    }
+                    s.src = src;
+                    s.onload = resolve;
+                    s.onerror = reject;
+                    document.head.appendChild(s);
+                });
+            }
+            var entry =
+                "../../static/app/stigs_in_splunk/js/build/entry_page.js";
+            _loadScript(entry, "module").catch(function () {
+                document.getElementById("stig-ucc-missing").style.display = "block";
+            });
+        </script>
+    </body>
+</html>

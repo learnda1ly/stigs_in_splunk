@@ -1,0 +1,32 @@
+<dashboard version="1.1" script="setup_page.js" hideEdit="true" hideExport="true">
+  <label>Set up STIG in Splunk</label>
+  <description>One-time platform checklist before assessors use the app.</description>
+  <row>
+    <panel>
+      <html>
+        <div id="stig-setup-root" class="stig-setup-root">
+          <p class="stig-setup-intro">
+            Complete these Splunk platform steps once per search head. This page does not store the HEC token in the app.
+          </p>
+          <div id="stig-setup-status" aria-live="polite">
+            <p>Loading readiness checks…</p>
+          </div>
+          <p class="stig-setup-doc">
+            Full operator guide:
+            <a id="stig-setup-doc-link" href="stig_documentation_ui">Documentation</a>
+            (in-app help; opens when that view is installed).
+          </p>
+          <p>
+            <button type="button" class="btn btn-primary" id="stig-setup-complete" disabled="disabled">
+              Mark setup complete
+            </button>
+            <span id="stig-setup-complete-msg" class="stig-setup-msg"></span>
+          </p>
+          <p class="stig-setup-footnote">
+            Marking complete sets <code>is_configured</code> so Manage Apps no longer shows Set up. Search and review still require the STIG role above.
+          </p>
+        </div>
+      </html>
+    </panel>
+  </row>
+</dashboard>
