@@ -6,7 +6,15 @@ import Select from "@splunk/react-ui/Select";
 import Table from "@splunk/react-ui/Table";
 import Text from "@splunk/react-ui/Text";
 import WaitSpinner from "@splunk/react-ui/WaitSpinner";
-import { apiGet, viewUrl } from "../api";
+import {
+    apiGet,
+    defaultWorkspaceId,
+    isAllWorkspaces,
+    viewUrl,
+    workspacesOfferAllChoice,
+    WORKSPACE_ALL,
+} from "../api";
+import WorkspaceSelect from "../components/WorkspaceSelect";
 import CreateChecklistModal from "../components/CreateChecklistModal";
 import { Brand, BrandKicker, Header, PagePad, Shell } from "../layout";
 
@@ -110,9 +118,11 @@ export default function LibraryApp() {
         setLoading(true);
         setError("");
         try {
-            const qs = workspaceFilter
-                ? "?stig_collection_id=" + encodeURIComponent(workspaceFilter)
-                : "";
+            const qs =
+                workspaceFilter && !isAllWorkspaces(workspaceFilter)
+                    ? "?stig_collection_id=" +
+                      encodeURIComponent(workspaceFilter)
+                    : "";
             const data = await apiGet("stig_baselines/hierarchy" + qs);
             setHierarchy(data);
         } catch (err) {
@@ -124,7 +134,15 @@ export default function LibraryApp() {
 
     useEffect(() => {
         apiGet("stig_collections")
-            .then((rows) => setWorkspaces(Array.isArray(rows) ? rows : []))
+            .then((rows) => {
+                const list = Array.isArray(rows) ? rows : [];
+                setWorkspaces(list);
+                if (workspacesOfferAllChoice(list)) {
+                    setWorkspaceFilter(WORKSPACE_ALL);
+                } else {
+                    setWorkspaceFilter(defaultWorkspaceId(list));
+                }
+            })
             .catch(() => setWorkspaces([]));
     }, []);
 
@@ -227,24 +245,16 @@ export default function LibraryApp() {
                                 value={filter}
                                 onChange={(_, { value }) => setFilter(value)}
                             />
-                            <Select
-                                value={workspaceFilter}
-                                onChange={(_, { value }) =>
-                                    setWorkspaceFilter(value)
-                                }
-                            >
-                                <Select.Option
-                                    label="All visible catalogs"
-                                    value=""
+                            {workspacesOfferAllChoice(workspaces) ? (
+                                <WorkspaceSelect
+                                    workspaces={workspaces}
+                                    value={workspaceFilter}
+                                    onChange={(_, { value }) =>
+                                        setWorkspaceFilter(value)
+                                    }
+                                    allLabel="All visible catalogs"
                                 />
-                                {workspaces.map((ws) => (
-                                    <Select.Option
-                                        key={ws._key}
-                                        label={ws.name || ws._key}
-                                        value={ws._key}
-                                    />
-                                ))}
-                            </Select>
+                            ) : null}
                         </div>
                         <div
                             style={{

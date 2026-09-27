@@ -14,8 +14,10 @@ import {
     apiGet,
     apiPatch,
     defaultWorkspaceId,
-    workspaceLabel,
+    isAllWorkspaces,
+    workspaceScopeQuery,
 } from "../api";
+import WorkspaceSelect from "../components/WorkspaceSelect";
 import {
     Actions,
     Brand,
@@ -194,11 +196,15 @@ export default function CollectionReviewApp() {
             return;
         }
         setLoading(true);
+        const scopeQuery = workspaceScopeQuery(cid);
+        const reqs = isAllWorkspaces(cid)
+            ? Promise.resolve(null)
+            : apiGet("stig_collections/" + cid + "/review_requirements");
         Promise.all([
-            apiGet("stig_hosts", { stig_collection_id: cid }),
-            apiGet("stig_checklists", { stig_collection_id: cid }),
+            apiGet("stig_hosts", scopeQuery),
+            apiGet("stig_checklists", scopeQuery),
             apiGet("stig_baselines"),
-            apiGet("stig_collections/" + cid + "/review_requirements"),
+            reqs,
         ])
             .then(([hs, cls, bl, reqBody]) => {
                 setReviewRequirements(
@@ -277,7 +283,7 @@ export default function CollectionReviewApp() {
             return;
         }
         setLoading(true);
-        const query = { stig_collection_id: collectionId };
+        const query = workspaceScopeQuery(collectionId);
         if (rule.rule_id) {
             query.rule_id = rule.rule_id;
         } else if (rule.group_id) {
@@ -602,20 +608,12 @@ export default function CollectionReviewApp() {
                 </Brand>
                 <Toolbar>
                     <ControlGroup label="Workspace" labelPosition="top">
-                        <Select
+                        <WorkspaceSelect
+                            workspaces={collections}
                             value={collectionId}
                             onChange={(e, { value }) => loadWorkspace(value)}
-                            placeholder="Select workspace"
                             filter
-                        >
-                            {collections.map((c) => (
-                                <Select.Option
-                                    key={c._key}
-                                    label={workspaceLabel(c)}
-                                    value={c._key}
-                                />
-                            ))}
-                        </Select>
+                        />
                     </ControlGroup>
                     <ControlGroup label="Baseline" labelPosition="top">
                         <Select

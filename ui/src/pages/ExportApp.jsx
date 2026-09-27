@@ -10,11 +10,16 @@ import WaitSpinner from "@splunk/react-ui/WaitSpinner";
 import {
     apiFetch,
     apiGet,
+    defaultWorkspaceId,
     downloadBase64,
     downloadText,
+    isAllWorkspaces,
     unwrap,
-    workspaceLabel,
+    workspaceScopeQuery,
+    workspacesOfferAllChoice,
+    WORKSPACE_ALL,
 } from "../api";
+import WorkspaceSelect from "../components/WorkspaceSelect";
 import {
     Actions,
     Brand,
@@ -103,7 +108,7 @@ export default function ExportApp() {
 
     const load = (cid) => {
         setLoading(true);
-        const query = cid ? { stig_collection_id: cid } : {};
+        const query = workspaceScopeQuery(cid);
         Promise.all([
             apiGet("stig_checklists", query),
             apiGet("stig_hosts", query),
@@ -129,7 +134,22 @@ export default function ExportApp() {
     };
 
     useEffect(() => {
-        load("");
+        apiGet("stig_collections")
+            .then((colls) => {
+                const list = Array.isArray(colls) ? colls : [];
+                setCollections(list);
+                const initial = workspacesOfferAllChoice(list)
+                    ? WORKSPACE_ALL
+                    : defaultWorkspaceId(list);
+                setCollectionId(initial);
+                load(initial);
+            })
+            .catch((err) =>
+                setBanner({
+                    type: "error",
+                    text: "Failed to load workspaces: " + err.message,
+                })
+            );
     }, []);
 
     const selectedIds = useMemo(
@@ -173,7 +193,10 @@ export default function ExportApp() {
         } else {
             // Full workspace download only: partial multi-select keeps export_bulk + checklist_ids.
             const allInWorkspace =
-                collectionId && ids.length === rows.length && rows.length > 0;
+                collectionId &&
+                !isAllWorkspaces(collectionId) &&
+                ids.length === rows.length &&
+                rows.length > 0;
             const bulkPath = allInWorkspace
                 ? "stig_collections/" + collectionId + "/archive/" + format
                 : "stig_checklists/export_bulk";
@@ -214,24 +237,15 @@ export default function ExportApp() {
                 </Brand>
                 <Toolbar>
                     <ControlGroup label="Workspace" labelPosition="top">
-                        <Select
+                        <WorkspaceSelect
+                            workspaces={collections}
                             value={collectionId}
                             onChange={(e, { value }) => {
                                 setCollectionId(value);
                                 load(value);
                             }}
-                            placeholder="All collections"
                             filter
-                        >
-                            <Select.Option label="All collections" value="" />
-                            {collections.map((c) => (
-                                <Select.Option
-                                    key={c._key}
-                                    label={workspaceLabel(c)}
-                                    value={c._key}
-                                />
-                            ))}
-                        </Select>
+                        />
                     </ControlGroup>
                     <ControlGroup label="Format" labelPosition="top">
                         <Select

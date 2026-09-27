@@ -12,6 +12,8 @@ import { apiFetch, apiGet, defaultWorkspaceId, workspaceLabel } from "../api";
 import {
     Brand,
     BrandKicker,
+    FormCard,
+    FormRow,
     Header,
     PagePad,
     Shell,
@@ -296,13 +298,13 @@ export default function TransferApp() {
                     />
                 </div>
                 {showCloneForm ? (
-                    <>
-                        <p>
+                    <FormCard>
+                        <p style={{ margin: 0 }}>
                             Create a new workspace from the source. Requires read access on
                             the source and stig_write. Global STIG baselines are shared,
                             not duplicated.
                         </p>
-                        <Toolbar>
+                        <FormRow $columns="minmax(220px, 2fr) auto auto auto">
                             <ControlGroup label="New workspace name">
                                 <Text
                                     value={cloneName}
@@ -338,8 +340,8 @@ export default function TransferApp() {
                                 disabled={busy || !sourceId}
                                 onClick={runClone}
                             />
-                        </Toolbar>
-                    </>
+                        </FormRow>
+                    </FormCard>
                 ) : null}
                 <Heading level={3}>Transfer hosts</Heading>
                 <p>
@@ -347,37 +349,39 @@ export default function TransferApp() {
                     write access on both workspaces. Workspace grants are not
                     copied; destination ACL applies after the move.
                 </p>
-                <Toolbar>
-                    <ControlGroup label="Source workspace">
-                        <Select
-                            value={sourceId}
-                            onChange={(e, { value }) => setSourceId(value)}
-                        >
-                            {(workspaces || []).map((ws) => (
-                                <Select.Option
-                                    key={ws._key}
-                                    label={workspaceLabel(ws)}
-                                    value={ws._key}
-                                />
-                            ))}
-                        </Select>
-                    </ControlGroup>
-                    <ControlGroup label="Destination workspace">
-                        <Select
-                            value={destId}
-                            onChange={(e, { value }) => setDestId(value)}
-                        >
-                            <Select.Option label="Select destination" value="" />
-                            {destOptions.map((ws) => (
-                                <Select.Option
-                                    key={ws._key}
-                                    label={workspaceLabel(ws)}
-                                    value={ws._key}
-                                />
-                            ))}
-                        </Select>
-                    </ControlGroup>
-                </Toolbar>
+                <FormCard>
+                    <FormRow $columns="repeat(2, minmax(220px, 1fr))">
+                        <ControlGroup label="Source workspace">
+                            <Select
+                                value={sourceId}
+                                onChange={(e, { value }) => setSourceId(value)}
+                            >
+                                {(workspaces || []).map((ws) => (
+                                    <Select.Option
+                                        key={ws._key}
+                                        label={workspaceLabel(ws)}
+                                        value={ws._key}
+                                    />
+                                ))}
+                            </Select>
+                        </ControlGroup>
+                        <ControlGroup label="Destination workspace">
+                            <Select
+                                value={destId}
+                                onChange={(e, { value }) => setDestId(value)}
+                            >
+                                <Select.Option label="Select destination" value="" />
+                                {destOptions.map((ws) => (
+                                    <Select.Option
+                                        key={ws._key}
+                                        label={workspaceLabel(ws)}
+                                        value={ws._key}
+                                    />
+                                ))}
+                            </Select>
+                        </ControlGroup>
+                    </FormRow>
+                </FormCard>
                 {loading ? (
                     <WaitSpinner />
                 ) : (
