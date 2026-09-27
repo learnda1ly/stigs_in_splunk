@@ -8,7 +8,7 @@
   </collection>
   <view name="stig_import_ui" label="Import" icon="forwarderuniversal"/>
   <view name="stig_library_ui" label="STIG library" icon="cylinderindex"/>
-  <view name="stig_export_ui" label="Export" icon="boxarrowup"/>
+  <view name="stig_export_ui" label="Export" icon="arrowsquaretopright"/>
   <collection label="Administration" icon="cog">
     <view name="stig_assignment_ui" label="Assignment" icon="tag"/>
     <view name="stig_workspace_defaults_ui" label="Default revisions" icon="star"/>
