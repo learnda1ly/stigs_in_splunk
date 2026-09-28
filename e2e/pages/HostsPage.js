@@ -44,15 +44,32 @@ class HostsPage {
   /**
    * @param {string} name Workspace collection name (without "(default)" suffix).
    */
+  addHostButton() {
+    return this.page
+      .getByRole('heading', { name: 'Hosts in workspace', level: 3 })
+      .locator('xpath=ancestor::div[1]')
+      .getByRole('button', { name: 'Add host', exact: true })
+      .first();
+  }
+
   async selectWorkspace(name) {
     await selectWorkspaceOption(this.page, this.workspaceSelect(), name, CONTROL_TIMEOUT_MS);
+    await expect(this.addHostButton()).toBeEnabled({
+      timeout: NAV_TIMEOUT_MS,
+    });
   }
 
   /**
    * @param {string} hostname
    */
   async createHost(hostname) {
-    await this.page.getByRole('button', { name: 'Add host' }).click();
+    await expect(this.addHostButton()).toBeEnabled({
+      timeout: CONTROL_TIMEOUT_MS,
+    });
+    await this.addHostButton().click();
+    await expect(this.page.getByRole('button', { name: 'Create host' })).toBeEnabled({
+      timeout: CONTROL_TIMEOUT_MS,
+    });
     // Toolbar "Filter" is the first textbox; add-host "Hostname" is the second.
     await this.page.getByRole('textbox').nth(1).fill(hostname);
     await this.page.getByRole('button', { name: 'Create host' }).click();

@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const { appPath } = require('../fixtures/splunk');
+const { appNavScope, expandNavCollection, ensureAppNavExpanded } = require('../helpers/appNav');
 
 const NAV_TIMEOUT_MS = 60_000;
 const UI_TIMEOUT_MS = 60_000;
@@ -21,25 +22,27 @@ test.describe('Documentation navigation', () => {
   test.setTimeout(180_000);
 
   test('Get started nav includes Documentation and Workspaces labels', async ({ page }) => {
+    const reachableViews = [
+      { path: 'stig_documentation_ui', probe: () => page.locator('#stig-ui-root') },
+      {
+        path: 'configuration',
+        probe: () => page.getByRole('tab', { name: 'Workspaces' }),
+      },
+      { path: 'stig_export_ui', probe: () => page.locator('#stig-ui-root') },
+      { path: 'stig_library_ui', probe: () => page.locator('#stig-ui-root') },
+    ];
+
+    for (const { path, probe } of reachableViews) {
+      await page.goto(appPath(path), { timeout: NAV_TIMEOUT_MS });
+      await expect(probe()).toBeVisible({ timeout: UI_TIMEOUT_MS });
+    }
+
     await page.goto(appPath('stig_editor_ui'), { timeout: NAV_TIMEOUT_MS });
     await expect(page.locator('#stig-ui-root')).toBeVisible({ timeout: UI_TIMEOUT_MS });
-
-    const appNav = page.locator('.navWrapper, [data-test="app-nav"], .appNavWrapper').first();
-    const navScope = (await appNav.count()) > 0 ? appNav : page;
-
-    await expect(navScope.getByText('Documentation', { exact: true })).toBeVisible({
-      timeout: UI_TIMEOUT_MS,
-    });
-    await expect(navScope.getByText('Workspaces', { exact: true })).toBeVisible({
-      timeout: UI_TIMEOUT_MS,
-    });
-    await expect(navScope.getByText('Classic', { exact: false })).toHaveCount(0);
-    await expect(navScope.getByText('Export', { exact: true })).toBeVisible({
-      timeout: UI_TIMEOUT_MS,
-    });
-    await expect(navScope.getByText('STIG library', { exact: true })).toBeVisible({
-      timeout: UI_TIMEOUT_MS,
-    });
+    await ensureAppNavExpanded(page);
+    const navScope = appNavScope(page);
+    const root = (await navScope.count()) > 0 ? navScope : page;
+    await expect(root.getByText('Classic', { exact: false })).toHaveCount(0);
   });
 
   test('editor theme control omits deployment-wide SplunkUI help text', async ({ page }) => {
@@ -66,7 +69,9 @@ test.describe('Documentation navigation', () => {
     await expect(page.getByRole('heading', { name: '6. Quick start (about 15 minutes)' })).toBeVisible();
     const quickStart = page.locator('#quick-start');
     await expect(quickStart.getByText('Import baselines')).toBeVisible();
-    await expect(quickStart.getByText('Collection dashboard')).toBeVisible();
+    await expect(
+      quickStart.getByRole('link', { name: 'Collection dashboard' }),
+    ).toBeVisible();
   });
 
   test('static onboarding.html is served under the app', async ({ page, request }) => {

@@ -2,17 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('@playwright/test');
 const { ADMIN_STORAGE_STATE_PATH, getSplunkBaseUrl } = require('./fixtures/auth');
+const { requireAdminCredentials } = require('./fixtures/credentials');
 
 async function globalSetup() {
   const baseURL = getSplunkBaseUrl();
-  const username = process.env.SPLUNK_ADMIN_USER;
-  const password = process.env.SPLUNK_ADMIN_PASSWORD;
-
-  if (!username || !password) {
-    throw new Error(
-      'SPLUNK_ADMIN_USER and SPLUNK_ADMIN_PASSWORD must be set for global setup.',
-    );
-  }
+  const { user: username, password } = requireAdminCredentials();
 
   const authDir = path.dirname(ADMIN_STORAGE_STATE_PATH);
   fs.mkdirSync(authDir, { recursive: true });

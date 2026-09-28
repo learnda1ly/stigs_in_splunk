@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { restAuthHeader, loadAdminCredentials } = require('../fixtures/credentials');
 const { EditorPage } = require('../pages/EditorPage');
 const {
   workspaceCombobox,
@@ -10,16 +11,6 @@ const REST_BASE =
   process.env.SPLUNK_MGMT_URL ||
   (process.env.SPLUNK_BASE_URL || 'https://127.0.0.1:8000').replace(':8000', ':8089');
 
-function restAuthHeader() {
-  const user = process.env.SPLUNK_ADMIN_USER;
-  const password = process.env.SPLUNK_ADMIN_PASSWORD;
-  if (!user || !password) {
-    throw new Error('SPLUNK_ADMIN_USER and SPLUNK_ADMIN_PASSWORD are required');
-  }
-  return {
-    Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
-  };
-}
 
 /**
  * @param {import('@playwright/test').APIRequestContext} request

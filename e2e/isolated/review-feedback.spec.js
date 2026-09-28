@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const { restAuthHeader, loadAdminCredentials } = require('../fixtures/credentials');
 const { ReviewPage } = require('../pages/ReviewPage');
 const { CollectionReviewPage } = require('../pages/CollectionReviewPage');
 const { getSplunkBaseUrl } = require('../fixtures/auth');
@@ -32,16 +33,6 @@ test.use({
   storageState: { cookies: [], origins: [] },
 });
 
-function restAuthHeader() {
-  const user = process.env.SPLUNK_ADMIN_USER;
-  const password = process.env.SPLUNK_ADMIN_PASSWORD;
-  if (!user || !password) {
-    throw new Error('SPLUNK_ADMIN_USER and SPLUNK_ADMIN_PASSWORD are required.');
-  }
-  return {
-    Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
-  };
-}
 
 async function ensureSplunkUsers(request) {
   const headers = restAuthHeader();

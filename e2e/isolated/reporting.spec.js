@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const { restAuthHeader, loadAdminCredentials } = require('../fixtures/credentials');
 const { CollectionDashboardPage } = require('../pages/CollectionDashboardPage');
 const { MetaDashboardPage } = require('../pages/MetaDashboardPage');
 const { ExportPage } = require('../pages/ExportPage');
@@ -18,16 +19,6 @@ const FIXTURE_XCCDF = path.join(
   'minimal_benchmark.xml',
 );
 
-function restAuthHeader() {
-  const user = process.env.SPLUNK_ADMIN_USER;
-  const password = process.env.SPLUNK_ADMIN_PASSWORD;
-  if (!user || !password) {
-    throw new Error('SPLUNK_ADMIN_USER and SPLUNK_ADMIN_PASSWORD are required');
-  }
-  return {
-    Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
-  };
-}
 
 function restUrl(resourcePath, query = {}) {
   const params = new URLSearchParams({ output_mode: 'json', ...query });

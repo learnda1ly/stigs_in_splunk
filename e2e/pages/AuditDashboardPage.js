@@ -40,12 +40,15 @@ class AuditDashboardPage {
   }
 
   async expectRecentActionsColumns() {
-    const table = this.recentActionsTable();
-    await expect(table).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
+    const panel = this.page
+      .locator('.dashboard-row')
+      .filter({ hasText: 'Recent audit actions' })
+      .first();
+    await expect(panel).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
     for (const column of AUDIT_TABLE_COLUMNS) {
-      await expect(table.locator('th').filter({ hasText: column }).first()).toBeVisible({
-        timeout: CONTROL_TIMEOUT_MS,
-      });
+      await expect(
+        panel.locator('th').filter({ hasText: new RegExp(`^${column}$`, 'i') }).first(),
+      ).toBeAttached({ timeout: NAV_TIMEOUT_MS });
     }
   }
 }

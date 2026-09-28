@@ -1,6 +1,6 @@
 const { expect } = require('@playwright/test');
 const { appPath } = require('../fixtures/splunk');
-const { selectWorkspaceOption } = require('../helpers/workspaceSelect');
+const { selectWorkspaceOption, escapeRegExp } = require('../helpers/workspaceSelect');
 
 const NAV_TIMEOUT_MS = 60_000;
 const CONTROL_TIMEOUT_MS = 30_000;
@@ -55,17 +55,46 @@ class EditorAssignPage {
     await selectWorkspaceOption(this.page, this.workspaceSelect(), name, CONTROL_TIMEOUT_MS);
   }
 
+  async waitForHostOption(hostKey, hostname) {
+    const select = this.hostSelect();
+    const deadline = Date.now() + CONTROL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await select.click();
+      const option = this.page.locator(`[data-test="option"][data-test-value="${hostKey}"]`);
+      if (await option.isVisible().catch(() => false)) {
+        await this.page.keyboard.press('Escape');
+        return;
+      }
+      await this.page.keyboard.press('Escape');
+      await this.page.waitForTimeout(500);
+    }
+    throw new Error(`Host ${hostname} not loaded for workspace`);
+  }
+
   /**
    * @param {string} hostname Host label in the Host combobox.
+   * @param {string} [hostKey] Host KV `_key` when option labels are unstable in the menu.
    */
-  async selectHost(hostname) {
+  async selectHost(hostname, hostKey) {
     const select = this.hostSelect();
     await expect(select).toBeEnabled({ timeout: CONTROL_TIMEOUT_MS });
-    await select.click();
-    const option = this.page.getByRole('option', { name: hostname, exact: true });
-    await expect(option).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
-    await option.click();
-    await expect(select).toContainText(hostname, { timeout: CONTROL_TIMEOUT_MS });
+    const deadline = Date.now() + CONTROL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await select.click();
+      const option = hostKey
+        ? this.page.locator(`[data-test="option"][data-test-value="${hostKey}"]`)
+        : this.page.getByRole('option', {
+            name: new RegExp(`^${escapeRegExp(hostname)}`),
+          });
+      if (await option.first().isVisible().catch(() => false)) {
+        await option.first().click({ force: true });
+        await expect(select).toContainText(hostname, { timeout: CONTROL_TIMEOUT_MS });
+        return;
+      }
+      await this.page.keyboard.press('Escape');
+      await this.page.waitForTimeout(500);
+    }
+    throw new Error(`Host option not found in editor: ${hostname}`);
   }
 
   async openHostActions() {

@@ -1,4 +1,5 @@
 const { test, expect, chromium } = require('@playwright/test');
+const { restAuthHeader, loadAdminCredentials } = require('../fixtures/credentials');
 const { ADMIN_STORAGE_STATE_PATH, getSplunkBaseUrl } = require('../fixtures/auth');
 const { appPath } = require('../fixtures/splunk');
 const { GrantsPage } = require('../pages/GrantsPage');
@@ -18,24 +19,10 @@ const TEST_USERS = [
   { name: 'stig_pw_outsider', roles: 'stig_user' },
 ];
 
-function restAuthHeader() {
-  const user = process.env.SPLUNK_ADMIN_USER;
-  const password = process.env.SPLUNK_ADMIN_PASSWORD;
-  if (!user || !password) {
-    return null;
-  }
-  return {
-    Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
-  };
-}
-
 async function waitForCollectionsApi(request, maxWaitMs = 120_000) {
   const deadline = Date.now() + maxWaitMs;
   while (Date.now() < deadline) {
     const headers = restAuthHeader();
-    if (!headers) {
-      throw new Error('SPLUNK_ADMIN_USER and SPLUNK_ADMIN_PASSWORD are required');
-    }
     try {
       const response = await request.get(
         `${REST_BASE}/servicesNS/nobody/stigs_in_splunk/stig_collections?output_mode=json`,

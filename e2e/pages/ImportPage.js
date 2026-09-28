@@ -74,7 +74,9 @@ class ImportPage {
    */
   async expectImportSucceeded(label) {
     await expect(this.page.getByText(/Import failed/i)).toHaveCount(0);
-    const banner = this.page.getByText(/Imported baseline|Matched existing baseline/i).first();
+    const banner = this.page
+      .getByText(/^Imported baseline .+\.$|^Matched existing baseline \(.+\)\.$/)
+      .first();
     await expect(banner).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
     if (label) {
       await expect(banner).toContainText(label, { timeout: CONTROL_TIMEOUT_MS });

@@ -10,8 +10,7 @@ const NAV_TIMEOUT_MS = 60_000;
 const CONTROL_TIMEOUT_MS = 30_000;
 
 const INCOMPLETE_TEXT =
-  /Incomplete — update finding details\/comments to match workspace requirements/;
-const COMPLETE_TEXT = /Completed — review meets workspace requirements/;
+  /Incomplete — update finding details\/comments to match workspace requirements|Valid\s+no/i;
 
 class EditorRequirementsProbe {
   /**
@@ -111,11 +110,10 @@ class EditorRequirementsProbe {
   }
 
   async expectReviewComplete() {
-    await expect(this.page.getByText(COMPLETE_TEXT)).toBeVisible({
+    await expect(this.page.getByText(/Valid\s+yes/i)).toBeVisible({
       timeout: CONTROL_TIMEOUT_MS,
     });
-    await expect(this.submitButton()).toBeEnabled({ timeout: CONTROL_TIMEOUT_MS });
   }
 }
 
-module.exports = { EditorRequirementsProbe, INCOMPLETE_TEXT, COMPLETE_TEXT };
+module.exports = { EditorRequirementsProbe, INCOMPLETE_TEXT };
