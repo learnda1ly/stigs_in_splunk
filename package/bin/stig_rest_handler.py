@@ -156,13 +156,13 @@ def _kv_connect(session: Dict[str, Any]):
             trusted = splunk_auth.getSessionKeyForTrustedUser(username)
             if trusted:
                 return kv_client.connect(trusted)
-        trusted_admin = splunk_auth.getSessionKeyForTrustedUser("admin")
-        if trusted_admin:
-            return kv_client.connect(trusted_admin)
     except Exception:
         logger.debug("privileged KV session unavailable", exc_info=True)
     if token:
-        return kv_client.connect(token)
+        try:
+            return kv_client.connect(token)
+        except kv_client.KvError as exc:
+            raise PermissionError(str(exc) or "KV access denied") from exc
     raise PermissionError("authentication required")
 
 
@@ -200,9 +200,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
         )
         resource, parts = _parse_path(rest_path)
 
-        service = _kv_connect(session)
-
         try:
+            service = _kv_connect(session)
             if resource == "stig_collections":
                 return self._collections(method, parts, query, payload, service, session, username)
             if resource == "stig_findings":
