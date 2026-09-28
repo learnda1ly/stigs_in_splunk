@@ -15,13 +15,13 @@
             }
         ],
         "releaseDate": null,
-        "description": "DISA STIG baseline and checklist review state in KV store with custom REST API (PoC).",
+        "description": "DISA STIG baseline and checklist review state in KV store with custom REST API.",
         "classification": {
             "intendedAudience": "IT Professionals",
             "categories": [
                 "Security, Fraud & Compliance"
             ],
-            "developmentStatus": "Development"
+            "developmentStatus": "Stable"
         },
         "commonInformationModels": null,
         "license": {

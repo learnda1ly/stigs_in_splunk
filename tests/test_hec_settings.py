@@ -103,6 +103,30 @@ class TestSettingsNeverExposeHecToken(unittest.TestCase):
 
 
 class TestHecTokenLookup(unittest.TestCase):
+    def test_storage_password_preferred_over_inputs_conf(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "inputs.conf")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("[http://stig_findings]\n")
+                handle.write('token = "from-inputs"\n')
+            orig_storage = hec_svc._token_from_storage_passwords
+            orig_local = hec_svc._token_from_local_inputs_conf
+            orig_rest = hec_svc._token_from_rest
+            hec_svc._token_from_storage_passwords = lambda _n, _s: "from-storage"
+            hec_svc._token_from_local_inputs_conf = lambda _s: hec_svc._parse_stanza_token(
+                path, hec_svc.HEC_STANZA
+            )
+            hec_svc._token_from_rest = lambda _n, _s: ""
+            try:
+                token = hec_svc.lookup_hec_token_for_input(
+                    hec_svc.HEC_INPUT_NAME, hec_svc.HEC_STANZA, "sess"
+                )
+            finally:
+                hec_svc._token_from_storage_passwords = orig_storage
+                hec_svc._token_from_local_inputs_conf = orig_local
+                hec_svc._token_from_rest = orig_rest
+            self.assertEqual(token, "from-storage")
+
     def test_parse_inputs_conf_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "inputs.conf")

@@ -24,6 +24,11 @@ except ImportError:
 
 HEC_INPUT_NAME = "stig_findings"
 HEC_STANZA = "http://stig_findings"
+HEC_TOKEN_REALM = "stigs_in_splunk"
+_HEC_CREDENTIAL_BY_INPUT = {
+    "stig_findings": "hec_stig_findings",
+    "stig_audit": "hec_stig_audit",
+}
 
 
 def emit_findings(
@@ -63,10 +68,13 @@ def lookup_hec_token(session_key: str = "") -> str:
 def lookup_hec_token_for_input(
     input_name: str, stanza: str, session_key: str = ""
 ) -> str:
+    token = _token_from_storage_passwords(input_name, session_key)
+    if token:
+        return token
     token = _token_from_rest(input_name, session_key)
     if token:
         return token
-    return _token_from_inputs_conf(stanza)
+    return _token_from_local_inputs_conf(stanza)
 
 
 def emit_indexed_events(
@@ -113,6 +121,46 @@ def _entry_token(data: Any) -> str:
     return ""
 
 
+def _token_from_storage_passwords(input_name: str, session_key: str) -> str:
+    """Read HEC token from encrypted storage/passwords (preferred on Cloud)."""
+    if not _HAS_SPLUNK_REST or not session_key:
+        return ""
+    cred_name = _HEC_CREDENTIAL_BY_INPUT.get(input_name)
+    if not cred_name:
+        return ""
+    path = (
+        f"/servicesNS/nobody/{APP_NAME}/storage/passwords/"
+        f"credential:{HEC_TOKEN_REALM}:{cred_name}:"
+    )
+    try:
+        response, content = splunk.rest.simpleRequest(
+            path,
+            sessionKey=session_key,
+            getargs={"output_mode": "json"},
+            method="GET",
+            raiseAllErrors=False,
+        )
+        status = int(response.get("status", 200))
+        if status >= 400:
+            return ""
+        if isinstance(content, bytes):
+            content = content.decode("utf-8")
+        data = json.loads(content) if isinstance(content, str) else content
+        entries = data.get("entry") or []
+        if not entries:
+            return ""
+        entry = entries[0]
+        if isinstance(entry, dict):
+            body = entry.get("content") or entry
+            if isinstance(body, dict):
+                clear = body.get("clear_password") or body.get("password")
+                if clear:
+                    return str(clear).strip()
+    except Exception:
+        return ""
+    return ""
+
+
 def _token_from_rest(input_name: str, session_key: str) -> str:
     if not _HAS_SPLUNK_REST or not session_key:
         return ""
@@ -144,24 +192,16 @@ def _token_from_rest(input_name: str, session_key: str) -> str:
     return ""
 
 
-def _token_from_inputs_conf(stanza: str) -> str:
+def _token_from_local_inputs_conf(stanza: str) -> str:
+    """Fallback: read token from on-disk local inputs.conf only (never packaged default/)."""
     home = os.environ.get("SPLUNK_HOME") or ""
-    candidates = []
-    app_inputs = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "default",
-        "inputs.conf",
-    )
-    candidates.append(app_inputs)
-    if home:
-        candidates.extend(
-            [
-                os.path.join(home, "etc", "apps", APP_NAME, "local", "inputs.conf"),
-                os.path.join(home, "etc", "apps", APP_NAME, "default", "inputs.conf"),
-                os.path.join(home, "etc", "apps", "splunk_httpinput", "local", "inputs.conf"),
-                os.path.join(home, "etc", "system", "local", "inputs.conf"),
-            ]
-        )
+    if not home:
+        return ""
+    candidates = [
+        os.path.join(home, "etc", "apps", APP_NAME, "local", "inputs.conf"),
+        os.path.join(home, "etc", "apps", "splunk_httpinput", "local", "inputs.conf"),
+        os.path.join(home, "etc", "system", "local", "inputs.conf"),
+    ]
     for path in candidates:
         token = _parse_stanza_token(path, stanza)
         if token:
@@ -228,13 +268,21 @@ def _post_hec(
             "Content-Type": "application/json",
         },
     )
-    ctx = ssl._create_unverified_context()
+    ctx = _hec_ssl_context()
     with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
         resp.read()
         status = int(getattr(resp, "status", 200) or 200)
         if status >= 400:
             raise RuntimeError(f"HEC HTTP {status}")
     return len(events)
+
+
+def _hec_ssl_context() -> ssl.SSLContext:
+    """Verify TLS by default; set STIG_HEC_TLS_VERIFY=0 only for local dev."""
+    flag = os.environ.get("STIG_HEC_TLS_VERIFY", "1").strip().lower()
+    if flag in ("0", "false", "no", "off"):
+        return ssl._create_unverified_context()
+    return ssl.create_default_context()
 
 
 def _post_receivers(

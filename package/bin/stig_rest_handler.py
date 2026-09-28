@@ -1,4 +1,4 @@
-"""Custom REST router for STIG KV store PoC."""
+"""Custom REST router for STIG KV store APIs."""
 
 from __future__ import annotations
 
