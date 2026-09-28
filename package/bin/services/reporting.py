@@ -191,8 +191,13 @@ def aggregate_metrics(
 
 
 def collection_metrics(
-    service, collection_id: str, session: Dict[str, Any]
+    service,
+    collection_id: str,
+    session: Dict[str, Any],
+    query: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    query = query or {}
+    rmf_package_id_filter = (query.get("rmf_package_id") or "").strip()
     collection = _require_read_collection(service, collection_id, session)
     checklists = checklists_svc.list_checklists(service, session, collection_id)
     checklist_ids = [c["_key"] for c in checklists if c.get("_key")]
@@ -203,7 +208,21 @@ def collection_metrics(
     for checklist_id in checklist_ids:
         reviews.extend(kv_client.query_all(reviews_coll, {"checklist_id": checklist_id}))
 
+    if rmf_package_id_filter:
+        reviews = [
+            r
+            for r in reviews
+            if str(r.get("rmf_package_id") or "").strip() == rmf_package_id_filter
+        ]
+        contributing = {str(r.get("checklist_id") or "") for r in reviews}
+        contributing.discard("")
+        checklists = [c for c in checklists if c.get("_key") in contributing]
+        checklist_ids = [c["_key"] for c in checklists if c.get("_key")]
+
     hosts = hosts_svc.list_hosts(service, session, collection_id)
+    if rmf_package_id_filter:
+        host_ids = {c.get("host_id") for c in checklists if c.get("host_id")}
+        hosts = [h for h in hosts if h.get("_key") in host_ids]
     rule_meta_index = _rule_meta_index(service, baseline_ids)
     severity_index = _severity_index_from_meta(rule_meta_index)
     governance_enabled = settings_svc.is_governance_enabled(
@@ -216,12 +235,15 @@ def collection_metrics(
         checklist_count=len(checklists),
         governance_enabled=governance_enabled,
     )
-    return {
+    out = {
         "stig_collection_id": collection_id,
         "collection_name": collection.get("name") or "",
         "generated_at": now_epoch(),
         **metrics,
     }
+    if rmf_package_id_filter:
+        out["filters"] = {"rmf_package_id": rmf_package_id_filter}
+    return out
 
 
 def rollup_aggregate_metrics(metric_parts: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -302,7 +324,10 @@ def _readable_collections_sorted(
 
 
 def _meta_metrics_workspace_rows(
-    service, session: Dict[str, Any], collections: List[Dict[str, Any]]
+    service,
+    session: Dict[str, Any],
+    collections: List[Dict[str, Any]],
+    query: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Compute per-workspace metrics for every readable collection (O(N) KV walks)."""
     workspaces: List[Dict[str, Any]] = []
@@ -311,7 +336,7 @@ def _meta_metrics_workspace_rows(
         cid = coll.get("_key") or ""
         if not cid:
             continue
-        metrics = collection_metrics(service, cid, session)
+        metrics = collection_metrics(service, cid, session, query)
         metric_parts.append(metrics)
         workspaces.append(_workspace_metrics_row(metrics, coll))
     return workspaces, metric_parts
@@ -332,11 +357,12 @@ def meta_collection_metrics(
     collections = _readable_collections_sorted(service, session)
     total_visible = len(collections)
     all_workspaces, metric_parts = _meta_metrics_workspace_rows(
-        service, session, collections
+        service, session, collections, query
     )
     page = all_workspaces[offset : offset + limit]
 
-    return {
+    rmf_package_id_filter = (query.get("rmf_package_id") or "").strip()
+    payload = {
         "generated_at": now_epoch(),
         "workspace_count": total_visible,
         "pagination": {
@@ -348,19 +374,27 @@ def meta_collection_metrics(
         "summary": rollup_aggregate_metrics(metric_parts),
         "workspaces": page,
     }
+    if rmf_package_id_filter:
+        payload["filters"] = {"rmf_package_id": rmf_package_id_filter}
+    return payload
 
 
 def meta_collection_metrics_summary(
-    service, session: Dict[str, Any], _query: Optional[Dict[str, Any]] = None
+    service, session: Dict[str, Any], query: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Org-wide rollup without per-workspace rows (same ACL as meta metrics)."""
+    query = query or {}
     collections = _readable_collections_sorted(service, session)
-    _, metric_parts = _meta_metrics_workspace_rows(service, session, collections)
-    return {
+    _, metric_parts = _meta_metrics_workspace_rows(service, session, collections, query)
+    rmf_package_id_filter = (query.get("rmf_package_id") or "").strip()
+    payload = {
         "generated_at": now_epoch(),
         "workspace_count": len(collections),
         "summary": rollup_aggregate_metrics(metric_parts),
     }
+    if rmf_package_id_filter:
+        payload["filters"] = {"rmf_package_id": rmf_package_id_filter}
+    return payload
 
 
 def _enrich_finding(
@@ -847,6 +881,7 @@ def _parse_unreviewed_filters(query: Optional[Dict[str, Any]]) -> Dict[str, Any]
         "rule_id_filter": (query.get("rule_id") or "").strip(),
         "group_id_filter": (query.get("group_id") or "").strip(),
         "severity_filter": (query.get("severity") or "").strip().lower(),
+        "rmf_package_id_filter": (query.get("rmf_package_id") or "").strip(),
         "raw": query,
     }
 
@@ -860,6 +895,7 @@ def _unreviewed_filters_response(parsed: Dict[str, Any]) -> Dict[str, Any]:
         "rule_id": parsed["rule_id_filter"] or None,
         "group_id": parsed["group_id_filter"] or None,
         "severity": parsed["severity_filter"] or None,
+        "rmf_package_id": parsed["rmf_package_id_filter"] or None,
     }
 
 
@@ -902,6 +938,10 @@ def _list_unreviewed_rows(
             sev = review_severity(review, ctx["severity_index"])
             if parsed["severity_filter"] and sev != parsed["severity_filter"]:
                 continue
+            if parsed["rmf_package_id_filter"]:
+                review_rmf = str(review.get("rmf_package_id") or "").strip()
+                if review_rmf != parsed["rmf_package_id_filter"]:
+                    continue
             meta = _rule_meta_for_finding(
                 {
                     "baseline_id": review.get("baseline_id") or baseline_id,
@@ -959,6 +999,9 @@ def splunk_unreviewed_alternative(collection_id: str) -> Dict[str, Any]:
             + "| sort -unreviewed_count baseline_id group_id rule_id"
         ),
         "outputcsv_example": base + "| outputcsv stig_unreviewed_reviews.csv",
+        "rmf_package_filter_example": base
+        + '| search rmf_package_id="YOUR_PACKAGE_ID" '
+        + "| stats count AS unreviewed_count by hostname baseline_id group_id rule_id",
     }
 
 

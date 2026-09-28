@@ -17,6 +17,7 @@ from services import checklists as checklists_svc
 from services import assignment as assignment_svc
 from services import collections as collections_svc
 from services import hosts as hosts_svc
+from services import rmf_packages as rmf_packages_svc
 
 
 def _ingest_metadata_block(event: Dict[str, Any]) -> Dict[str, Any]:
@@ -164,6 +165,8 @@ def apply_finding_events(
             normalized.append(normalize_finding_event(raw))
         except ValueError as exc:
             errors.append(str(exc))
+
+    rmf_packages_svc.enrich_finding_events_with_rmf_package_id(service, normalized)
 
     groups: Dict[str, Dict[str, Dict[str, Any]]] = {}
     for event in normalized:

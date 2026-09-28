@@ -502,7 +502,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error("method not allowed", status=405)
             try:
                 return _json_response(
-                    reporting_svc.collection_metrics(service, key, session)
+                    reporting_svc.collection_metrics(service, key, session, query)
                 )
             except KeyError:
                 return _error("not found", status=404)
@@ -622,6 +622,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     session,
                     host_id=body.get("host_id") or query.get("host_id"),
                     baseline_id=body.get("baseline_id") or query.get("baseline_id"),
+                    rmf_package_id=body.get("rmf_package_id")
+                    or query.get("rmf_package_id"),
                 )
             except KeyError:
                 return _error("not found", status=404)
@@ -1453,6 +1455,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
                         stig_collection_id=collection_id or None,
                         host_id=body.get("host_id") or query.get("host_id"),
                         baseline_id=body.get("baseline_id") or query.get("baseline_id"),
+                        rmf_package_id=body.get("rmf_package_id")
+                        or query.get("rmf_package_id"),
                     )
                 )
             except KeyError:
@@ -1514,7 +1518,13 @@ class StigRestHandler(PersistentServerConnectionApplication):
             if method != "GET":
                 return _error("method not allowed", status=405)
             fmt = query.get("format") or "cklb"
-            content = checklists_svc.export_checklist(service, checklist_id, fmt, session)
+            rmf_package_id = (query.get("rmf_package_id") or "").strip() or None
+            try:
+                content = checklists_svc.export_checklist(
+                    service, checklist_id, fmt, session, rmf_package_id=rmf_package_id
+                )
+            except KeyError:
+                return _error("not found", status=404)
             fmt_lower = (fmt or "").lower().replace("_", "-")
             if fmt_lower == "cklb":
                 ctype = "application/json"

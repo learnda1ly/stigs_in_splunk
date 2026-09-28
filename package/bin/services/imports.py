@@ -135,14 +135,7 @@ def import_checklist_file(
         source_product=source_product,
         collection_name=collection_name,
     )
-    for event in findings:
-        resolved = rmf_packages_svc.resolve_package_id(
-            service,
-            event.get("assetName") or "",
-            event.get("baselineId") or "",
-            event.get("benchmarkId") or "",
-        )
-        event["rmf_package_id"] = resolved
+    rmf_packages_svc.enrich_finding_events_with_rmf_package_id(service, findings)
     settings = settings_svc.get_settings(service)
     indexed = hec_svc.emit_findings(
         findings,

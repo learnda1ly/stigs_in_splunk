@@ -538,6 +538,38 @@ def stamp_review_rmf_package_id(
     return resolved
 
 
+def enrich_finding_events_with_rmf_package_id(
+    service, events: List[Dict[str, Any]]
+) -> None:
+    """Attach resolved ``rmf_package_id`` to HEC/reconcile finding events (in-place)."""
+    for event in events or []:
+        event["rmf_package_id"] = resolve_package_id(
+            service,
+            event.get("assetName") or "",
+            event.get("baselineId") or "",
+            event.get("benchmarkId") or "",
+        )
+
+
+def checklist_matches_rmf_package_filter(
+    service,
+    checklist: Dict[str, Any],
+    host: Dict[str, Any],
+    baseline: Dict[str, Any],
+    rmf_package_id: Optional[str],
+) -> bool:
+    filter_id = (rmf_package_id or "").strip()
+    if not filter_id:
+        return True
+    resolved = resolve_package_id(
+        service,
+        host.get("hostname") or "",
+        str(checklist.get("baseline_id") or ""),
+        str(baseline.get("stig_id") or ""),
+    )
+    return resolved == filter_id
+
+
 def resolve_for_checklist(
     service, host: Dict[str, Any], checklist: Dict[str, Any]
 ) -> Tuple[str, str, str]:
