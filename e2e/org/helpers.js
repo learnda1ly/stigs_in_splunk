@@ -1,5 +1,10 @@
 const fs = require('fs');
 
+const {
+  requireAdminCredentials,
+  restAuthHeader: buildRestAuthHeader,
+} = require('../fixtures/credentials');
+
 const TEST_PASSWORD = 'PlaywrightTest!2026';
 const ASSESSOR_USER = 'stig_pw_assessor';
 const REVIEWER_USER = 'stig_pw_reviewer';
@@ -11,23 +16,11 @@ const REST_BASE =
 const AUTH_USERS_URL = 'https://127.0.0.1:8089/services/authentication/users';
 
 function restAuthHeader() {
-  const user = process.env.SPLUNK_ADMIN_USER;
-  const password = process.env.SPLUNK_ADMIN_PASSWORD;
-  if (!user || !password) {
-    throw new Error('SPLUNK_ADMIN_USER and SPLUNK_ADMIN_PASSWORD are required');
-  }
-  return {
-    Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
-  };
+  return buildRestAuthHeader();
 }
 
 function adminCredentials() {
-  const user = process.env.SPLUNK_ADMIN_USER;
-  const password = process.env.SPLUNK_ADMIN_PASSWORD;
-  if (!user || !password) {
-    throw new Error('SPLUNK_ADMIN_USER and SPLUNK_ADMIN_PASSWORD are required');
-  }
-  return { user, password };
+  return requireAdminCredentials();
 }
 
 /**
@@ -36,8 +29,10 @@ function adminCredentials() {
  * @param {string} [password]
  */
 async function splunkLogin(page, username, password = TEST_PASSWORD) {
-  await page.goto('/en-US/account/login', { timeout: 60_000 });
-  await page.locator('input[name=username]').fill(username);
+  await page.goto('/en-US/account/login', { timeout: 60_000, waitUntil: 'domcontentloaded' });
+  const usernameInput = page.locator('input[name=username]');
+  await usernameInput.waitFor({ state: 'visible', timeout: 60_000 });
+  await usernameInput.fill(username);
   await page.locator('input[name=password]').fill(password);
   await page.locator('input[type=submit].splButton-primary').first().click();
   await page.waitForURL((url) => !url.pathname.includes('/account/login'), {
