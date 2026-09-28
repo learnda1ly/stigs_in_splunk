@@ -35,6 +35,9 @@ COLLECTIONS = (
     "stig_assignment_rules",
     "stig_host_baseline_assignments",
     "stig_collection_grants",
+    "stig_rmf_packages",
+    "stig_host_rmf_defaults",
+    "stig_host_baseline_rmf_overrides",
 )
 
 

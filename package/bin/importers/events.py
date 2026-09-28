@@ -240,6 +240,9 @@ def build_finding_event(
     pkg = review.get("package_id") or review.get("packageId")
     if pkg is not None and str(pkg).strip():
         event["package_id"] = str(pkg).strip()
+    rmf_pkg = review.get("rmf_package_id") or review.get("rmfPackageId")
+    if rmf_pkg is not None and str(rmf_pkg).strip():
+        event["rmf_package_id"] = str(rmf_pkg).strip()
     return event
 
 

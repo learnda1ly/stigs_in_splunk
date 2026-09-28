@@ -153,6 +153,7 @@ def _blank_review(
         "finding_details": "",
         "comments": "",
         "package_id": "",
+        "rmf_package_id": "",
         "ingest_lock": False,
         "workflow_state": review_workflow.DEFAULT_WORKFLOW_STATE,
         "updated_at": ts,

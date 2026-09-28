@@ -33,6 +33,7 @@ from services import baselines as baselines_svc
 from services import baseline_defaults as baseline_defaults_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
+from services import rmf_packages as rmf_packages_svc
 from services import hosts as hosts_svc
 from services import review_history as review_history_svc
 from services import settings as settings_svc
@@ -272,6 +273,8 @@ def _spawn_checklist_with_reviews(
     )
     stored_checklist = kv_client.insert_record(checklist_coll, checklist_record)
     checklist_id = stored_checklist["_key"]
+    baseline_stig_id = str(baseline.get("stig_id") or "")
+    host_hostname = host.get("hostname") or ""
 
     review_records = []
     for rule in rules:
@@ -292,6 +295,13 @@ def _spawn_checklist_with_reviews(
             "updated_at": ts,
             "updated_by": username,
         }
+        rmf_packages_svc.stamp_review_rmf_package_id(
+            service,
+            review,
+            hostname=host_hostname,
+            baseline_id=baseline_id,
+            baseline_stig_id=baseline_stig_id,
+        )
         review["valid"] = validation.persistable_valid(review)
         review_records.append(kv_record(review))
     kv_client.batch_insert(reviews_coll, review_records)
@@ -518,6 +528,11 @@ def ensure_review(
             return rec, False
     seed = seed or {}
     ts = now_epoch()
+    host_rec = None
+    if checklist.get("host_id"):
+        hosts_coll = kv_client.get_collection(service, KV_STIG_HOSTS)
+        host_rec = kv_client.get_by_key(hosts_coll, checklist.get("host_id"))
+    baseline = baselines_svc.get_baseline(service, checklist.get("baseline_id") or "") or {}
     review = {
         "checklist_id": checklist_id,
         "baseline_id": checklist.get("baseline_id"),
@@ -534,6 +549,13 @@ def ensure_review(
         "updated_at": ts,
         "updated_by": username,
     }
+    rmf_packages_svc.stamp_review_rmf_package_id(
+        service,
+        review,
+        hostname=(host_rec or {}).get("hostname") or "",
+        baseline_id=str(checklist.get("baseline_id") or ""),
+        baseline_stig_id=str(baseline.get("stig_id") or ""),
+    )
     review["valid"] = validation.persistable_valid(review)
     stored = kv_client.insert_record(reviews_coll, kv_record(review))
     return stored, True
@@ -578,7 +600,11 @@ def delete_checklist(service, key: str, username: str, session: Dict[str, Any]) 
 
 
 def export_checklist(
-    service, key: str, fmt: str, session: Dict[str, Any]
+    service,
+    key: str,
+    fmt: str,
+    session: Dict[str, Any],
+    rmf_package_id: Optional[str] = None,
 ) -> str:
     checklist = get_checklist(service, key, session)
     if not checklist:
@@ -589,6 +615,10 @@ def export_checklist(
     host = hosts_svc.get_host(service, checklist["host_id"], session)
     if not host:
         raise KeyError(checklist["host_id"])
+    if not rmf_packages_svc.checklist_matches_rmf_package_filter(
+        service, checklist, host, baseline, rmf_package_id
+    ):
+        raise KeyError(key)
 
     rules = baselines_svc.list_baseline_rules(service, checklist["baseline_id"])
     reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
@@ -647,7 +677,11 @@ def export_filename(
 
 
 def export_checklist_file(
-    service, key: str, fmt: str, session: Dict[str, Any]
+    service,
+    key: str,
+    fmt: str,
+    session: Dict[str, Any],
+    rmf_package_id: Optional[str] = None,
 ) -> Tuple[str, str]:
     checklist = get_checklist(service, key, session)
     if not checklist:
@@ -658,7 +692,7 @@ def export_checklist_file(
     host = hosts_svc.get_host(service, checklist["host_id"], session)
     if not host:
         raise KeyError(checklist["host_id"])
-    content = export_checklist(service, key, fmt, session)
+    content = export_checklist(service, key, fmt, session, rmf_package_id=rmf_package_id)
     return content, export_filename(checklist, baseline, host, fmt)
 
 
@@ -681,21 +715,40 @@ def checklist_ids_for_collection_export(
     session: Dict[str, Any],
     host_id: Optional[str] = None,
     baseline_id: Optional[str] = None,
+    rmf_package_id: Optional[str] = None,
 ) -> List[str]:
     """Workspace-scoped checklist keys for archive export (grant ACL applied)."""
     _require_workspace_export_access(service, collection_id, session)
     host_filter = (host_id or "").strip()
     baseline_filter = (baseline_id or "").strip()
+    rmf_filter = (rmf_package_id or "").strip()
     coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
     records = kv_client.query_all(coll, {"stig_collection_id": collection_id})
     ctx = _access_context(service, collection_id, session)
     host_by_id = _host_by_id_for_acl(service, collection_id, ctx)
+    if host_by_id is None:
+        hosts_coll = kv_client.get_collection(service, KV_STIG_HOSTS)
+        host_by_id = {
+            r["_key"]: r
+            for r in kv_client.query_all(hosts_coll, {"stig_collection_id": collection_id})
+            if r.get("_key")
+        }
+    baseline_cache: Dict[str, Dict[str, Any]] = {}
     ids: List[str] = []
     for rec in access.filter_checklists(records, ctx, host_by_id=host_by_id):
         if host_filter and rec.get("host_id") != host_filter:
             continue
         if baseline_filter and rec.get("baseline_id") != baseline_filter:
             continue
+        if rmf_filter:
+            host = host_by_id.get(rec.get("host_id") or "", {})
+            bid = str(rec.get("baseline_id") or "")
+            if bid not in baseline_cache:
+                baseline_cache[bid] = baselines_svc.get_baseline(service, bid) or {}
+            if not rmf_packages_svc.checklist_matches_rmf_package_filter(
+                service, rec, host, baseline_cache[bid], rmf_filter
+            ):
+                continue
         key = rec.get("_key")
         if key:
             ids.append(str(key))
@@ -710,6 +763,7 @@ def export_checklists_bulk(
     stig_collection_id: Optional[str] = None,
     host_id: Optional[str] = None,
     baseline_id: Optional[str] = None,
+    rmf_package_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     collection_id = (stig_collection_id or "").strip()
     if collection_id:
@@ -719,6 +773,7 @@ def export_checklists_bulk(
             session,
             host_id=host_id,
             baseline_id=baseline_id,
+            rmf_package_id=rmf_package_id,
         )
     else:
         ids = [str(i).strip() for i in checklist_ids or [] if str(i).strip()]
@@ -735,7 +790,11 @@ def export_checklists_bulk(
         for key in ids:
             try:
                 content, filename = export_checklist_file(
-                    service, key, export_fmt, session
+                    service,
+                    key,
+                    export_fmt,
+                    session,
+                    rmf_package_id=rmf_package_id,
                 )
             except KeyError:
                 raise KeyError(key) from None
@@ -762,6 +821,7 @@ def export_checklists_bulk(
         payload["filters"] = {
             "host_id": (host_id or "").strip() or None,
             "baseline_id": (baseline_id or "").strip() or None,
+            "rmf_package_id": (rmf_package_id or "").strip() or None,
         }
     return payload
 
@@ -773,6 +833,7 @@ def export_collection_archive(
     session: Dict[str, Any],
     host_id: Optional[str] = None,
     baseline_id: Optional[str] = None,
+    rmf_package_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Bulk CKL/CKLB/XCCDF results zip for a workspace (optional host/baseline filters)."""
     collection = _require_workspace_export_access(service, collection_id, session)
@@ -785,6 +846,7 @@ def export_collection_archive(
         stig_collection_id=collection_id,
         host_id=host_id,
         baseline_id=baseline_id,
+        rmf_package_id=rmf_package_id,
     )
     slug = _safe_filename_part(collection.get("name") or collection_id)
     export_fmt = result.get("format") or (fmt or "cklb").lower()

@@ -46,6 +46,7 @@ from services import review_peers as review_peers_svc
 from services import reviews as reviews_svc
 from services import revision_upgrade as revision_upgrade_svc
 from services import settings as settings_svc
+from services import rmf_packages as rmf_packages_svc
 from services import setup_readiness as setup_readiness_svc
 
 logger = logging.getLogger("stigs_in_splunk.rest")
@@ -230,6 +231,18 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 )
             if resource == "stig_assignment":
                 return self._assignment_preview(
+                    method, parts, query, payload, service, session, username
+                )
+            if resource == "stig_rmf_packages":
+                return self._rmf_packages(
+                    method, parts, query, payload, service, session, username
+                )
+            if resource == "stig_host_rmf_defaults":
+                return self._rmf_host_defaults(
+                    method, parts, query, payload, service, session, username
+                )
+            if resource == "stig_host_baseline_rmf_overrides":
+                return self._rmf_baseline_overrides(
                     method, parts, query, payload, service, session, username
                 )
             if resource == "stigs_in_splunk_baseline":
@@ -489,7 +502,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error("method not allowed", status=405)
             try:
                 return _json_response(
-                    reporting_svc.collection_metrics(service, key, session)
+                    reporting_svc.collection_metrics(service, key, session, query)
                 )
             except KeyError:
                 return _error("not found", status=404)
@@ -609,6 +622,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     session,
                     host_id=body.get("host_id") or query.get("host_id"),
                     baseline_id=body.get("baseline_id") or query.get("baseline_id"),
+                    rmf_package_id=body.get("rmf_package_id")
+                    or query.get("rmf_package_id"),
                 )
             except KeyError:
                 return _error("not found", status=404)
@@ -1440,6 +1455,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
                         stig_collection_id=collection_id or None,
                         host_id=body.get("host_id") or query.get("host_id"),
                         baseline_id=body.get("baseline_id") or query.get("baseline_id"),
+                        rmf_package_id=body.get("rmf_package_id")
+                        or query.get("rmf_package_id"),
                     )
                 )
             except KeyError:
@@ -1501,7 +1518,13 @@ class StigRestHandler(PersistentServerConnectionApplication):
             if method != "GET":
                 return _error("method not allowed", status=405)
             fmt = query.get("format") or "cklb"
-            content = checklists_svc.export_checklist(service, checklist_id, fmt, session)
+            rmf_package_id = (query.get("rmf_package_id") or "").strip() or None
+            try:
+                content = checklists_svc.export_checklist(
+                    service, checklist_id, fmt, session, rmf_package_id=rmf_package_id
+                )
+            except KeyError:
+                return _error("not found", status=404)
             fmt_lower = (fmt or "").lower().replace("_", "-")
             if fmt_lower == "cklb":
                 ctype = "application/json"
@@ -1876,6 +1899,129 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 service, normalized, session, username=username
             )
         return _json_response(result)
+
+    def _rmf_packages(
+        self,
+        method: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        if not parts:
+            if method == "GET":
+                return _json_response(rmf_packages_svc.list_packages(service, session))
+            if method == "POST":
+                body = _body_json(payload)
+                rec = rmf_packages_svc.create_package(service, body, username, session)
+                return _json_response(rec, status=201)
+            return _error("method not allowed", status=405)
+        package_id = parts[0]
+        if package_id == "assignments":
+            if len(parts) == 2 and parts[1] == "ingest" and method == "POST":
+                body = _body_json(payload)
+                rows = body.get("rows") or body.get("assignments") or []
+                result = rmf_packages_svc.ingest_assignment_rows(
+                    service, rows, username, session
+                )
+                return _json_response(result)
+            if len(parts) == 2 and parts[1] == "bulk" and method == "POST":
+                body = _body_json(payload)
+                result = rmf_packages_svc.bulk_assign_combos(
+                    service, body, username, session
+                )
+                return _json_response(result)
+            return _error("not found", status=404)
+        if method == "GET":
+            rec = rmf_packages_svc.get_package(service, package_id, session)
+            if not rec:
+                return _error("not found", status=404)
+            return _json_response(rec)
+        if method in ("PATCH", "PUT", "POST"):
+            body = _body_json(payload)
+            updated = rmf_packages_svc.update_package(
+                service, package_id, body, username, session
+            )
+            return _json_response(updated)
+        if method == "DELETE":
+            rmf_packages_svc.delete_package(service, package_id, username, session)
+            return _json_response({"deleted": package_id})
+        return _error("method not allowed", status=405)
+
+    def _rmf_host_defaults(
+        self,
+        method: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        if not parts:
+            if method == "GET":
+                return _json_response(rmf_packages_svc.list_host_defaults(service, session))
+            if method == "POST":
+                body = _body_json(payload)
+                rec = rmf_packages_svc.set_host_default(
+                    service,
+                    body.get("host") or body.get("hostname") or "",
+                    body.get("package_id") or "",
+                    username,
+                    session,
+                )
+                return _json_response(rec, status=201)
+            return _error("method not allowed", status=405)
+        hostname = parts[0]
+        if method in ("PUT", "PATCH", "POST"):
+            body = _body_json(payload)
+            rec = rmf_packages_svc.set_host_default(
+                service,
+                hostname,
+                body.get("package_id") or "",
+                username,
+                session,
+            )
+            return _json_response(rec)
+        return _error("method not allowed", status=405)
+
+    def _rmf_baseline_overrides(
+        self,
+        method: str,
+        parts: List[str],
+        query: Dict[str, Any],
+        payload: Dict[str, Any],
+        service,
+        session: Dict[str, Any],
+        username: str,
+    ) -> Dict[str, Any]:
+        if not parts:
+            if method == "GET":
+                return _json_response(
+                    rmf_packages_svc.list_baseline_overrides(service, session)
+                )
+            if method == "POST":
+                body = _body_json(payload)
+                rec = rmf_packages_svc.set_baseline_override(
+                    service,
+                    body.get("host") or body.get("hostname") or "",
+                    body.get("baseline_ref")
+                    or body.get("baseline")
+                    or body.get("baseline_id")
+                    or "",
+                    body.get("package_id") or "",
+                    username,
+                    session,
+                )
+                return _json_response(rec, status=201)
+            return _error("method not allowed", status=405)
+        key = parts[0]
+        if method == "DELETE":
+            rmf_packages_svc.delete_baseline_override(service, key, username, session)
+            return _json_response({"deleted": key})
+        return _error("method not allowed", status=405)
 
     def _readiness(
         self,
