@@ -16,22 +16,25 @@ _EARLIEST_RE = re.compile(r"^[A-Za-z0-9._:@/+\-]+$")
 _MAX_EARLIEST_LEN = 128
 
 
-def validate_hec_url(url: str) -> str:
-    """Return normalized HEC URL or raise ValueError (loopback HTTPS collector only)."""
+def _is_loopback_host(hostname: str) -> bool:
+    return (hostname or "").lower() in _ALLOWED_HEC_HOSTS
+
+
+def validate_hec_url_admin(url: str) -> str:
+    """Validate HEC URL saved by Splunk admin (any host; HTTPS off loopback)."""
     text = (url or "").strip()
     if not text:
         raise ValueError("hec_url is required")
     parsed = urlparse(text)
-    if parsed.scheme != "https":
-        raise ValueError("hec_url must use https")
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("hec_url must use http or https")
     if parsed.username or parsed.password:
         raise ValueError("hec_url must not include credentials")
     host = (parsed.hostname or "").lower()
-    if host not in _ALLOWED_HEC_HOSTS:
-        raise ValueError("hec_url must target localhost or 127.0.0.1")
-    port = parsed.port
-    if port is not None and port != 8088:
-        raise ValueError("hec_url must use port 8088 when a port is specified")
+    if not host:
+        raise ValueError("hec_url must include a host")
+    if not _is_loopback_host(host) and parsed.scheme != "https":
+        raise ValueError("hec_url must use https for non-loopback hosts")
     path = parsed.path or ""
     if not path.startswith(_HEC_PATH_PREFIX):
         raise ValueError("hec_url path must start with /services/collector/")
@@ -40,13 +43,13 @@ def validate_hec_url(url: str) -> str:
     return text
 
 
-def normalize_hec_url(url: Optional[str]) -> str:
-    """Use stored URL when valid; otherwise fall back to the default (safe emit path)."""
+def hec_url_for_emit(url: Optional[str]) -> str:
+    """Return stored admin-configured collector URL, or default when missing/invalid."""
     text = (url or "").strip()
     if not text:
         return DEFAULT_HEC_URL
     try:
-        return validate_hec_url(text)
+        return validate_hec_url_admin(text)
     except ValueError:
         return DEFAULT_HEC_URL
 
@@ -83,7 +86,7 @@ def validate_reconcile_earliest(earliest: str) -> str:
 def validate_ingest_settings_record(record: dict) -> None:
     """Raise ValueError when ingest-related settings are unsafe."""
     if "hec_url" in record or record.get("hec_url"):
-        validate_hec_url(record.get("hec_url") or DEFAULT_HEC_URL)
+        validate_hec_url_admin(record.get("hec_url") or DEFAULT_HEC_URL)
     if "ingest_index" in record or record.get("ingest_index"):
         validate_ingest_index(record.get("ingest_index") or "")
     if "ingest_sourcetype" in record or record.get("ingest_sourcetype"):

@@ -142,6 +142,7 @@ class TestHecTokenLookup(unittest.TestCase):
 
     def test_emit_findings_result_has_no_token(self):
         posted = {}
+        remote = "https://hec.example.com/services/collector/event"
 
         def _fake_post(url, token, events, index, sourcetype, source):
             posted["token"] = token
@@ -155,7 +156,7 @@ class TestHecTokenLookup(unittest.TestCase):
         try:
             result = hec_svc.emit_findings(
                 [{"ruleId": "SV-1", "result": "pass"}],
-                settings={"hec_url": "https://hec.example/event"},
+                settings={"hec_url": remote},
                 session_key="sess",
             )
         finally:
@@ -167,15 +168,53 @@ class TestHecTokenLookup(unittest.TestCase):
         self.assertNotIn("hec_token", result)
         self.assertNotIn("server-only-token", str(result))
         self.assertEqual(posted["token"], "server-only-token")
-        self.assertEqual(posted["url"], DEFAULT_HEC_URL)
+        self.assertEqual(posted["url"], remote)
 
-    def test_save_rejects_off_host_hec_url(self):
+    def test_stig_user_cannot_change_hec_url(self):
+        session = {"roles": ["stig_admin", "stig_admin"], "user": "assessor"}
         with self.assertRaises(ValueError):
             settings_svc.save_settings(
                 object(),
-                {"hec_url": "https://evil.example/services/collector/event"},
-                "admin",
+                {"hec_url": "https://remote.example/services/collector/event"},
+                "assessor",
+                session,
             )
+
+    def test_splunk_admin_can_save_off_host_hec_url(self):
+        stored = {}
+        session = {"roles": ["admin"], "user": "admin"}
+
+        class _Coll:
+            pass
+
+        def _query_all(_coll):
+            return []
+
+        def _insert(_coll, record):
+            stored.update(record)
+            stored["_key"] = "k1"
+            return dict(stored)
+
+        orig_get = settings_svc.kv_client.get_collection
+        orig_query = settings_svc.kv_client.query_all
+        orig_insert = settings_svc.kv_client.insert_record
+        settings_svc.kv_client.get_collection = lambda _svc, _name: _Coll()
+        settings_svc.kv_client.query_all = _query_all
+        settings_svc.kv_client.insert_record = _insert
+        remote = "https://remote.example/services/collector/event"
+        try:
+            out = settings_svc.save_settings(
+                object(),
+                {"hec_url": remote},
+                "admin",
+                session,
+            )
+        finally:
+            settings_svc.kv_client.get_collection = orig_get
+            settings_svc.kv_client.query_all = orig_query
+            settings_svc.kv_client.insert_record = orig_insert
+        self.assertEqual(stored.get("hec_url"), remote)
+        self.assertEqual(out.get("hec_url"), remote)
 
 
 if __name__ == "__main__":

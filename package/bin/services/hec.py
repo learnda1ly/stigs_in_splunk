@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("stigs_in_splunk.hec")
 
-from ingest_security import normalize_hec_url
+from ingest_security import hec_url_for_emit
 from models import (
     APP_NAME,
     DEFAULT_HEC_URL,
@@ -44,7 +44,7 @@ def emit_findings(
     settings = settings or {}
     index = settings.get("ingest_index") or DEFAULT_INGEST_INDEX
     sourcetype = settings.get("ingest_sourcetype") or DEFAULT_INGEST_SOURCETYPE
-    url = normalize_hec_url(settings.get("hec_url"))
+    url = hec_url_for_emit(settings.get("hec_url"))
     if not events:
         return {"indexed": 0, "via": "none"}
     token = lookup_hec_token(session_key)

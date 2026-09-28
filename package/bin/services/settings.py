@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
+import access
 import kv_client
 from ingest_security import (
-    normalize_hec_url,
-    validate_hec_url,
+    hec_url_for_emit,
+    validate_hec_url_admin,
     validate_ingest_index,
     validate_ingest_sourcetype,
     validate_reconcile_earliest,
@@ -103,7 +104,7 @@ def _public(rec: Dict[str, Any], username: str = "") -> Dict[str, Any]:
         "trust_event_collection_id": bool(as_bool(rec.get("trust_event_collection_id"))),
         "ingest_index": rec.get("ingest_index") or DEFAULT_INGEST_INDEX,
         "ingest_sourcetype": rec.get("ingest_sourcetype") or DEFAULT_INGEST_SOURCETYPE,
-        "hec_url": normalize_hec_url(rec.get("hec_url")),
+        "hec_url": hec_url_for_emit(rec.get("hec_url")),
         "reconcile_earliest": rec.get("reconcile_earliest") or DEFAULT_RECONCILE_EARLIEST,
         "ui_color_scheme": _normalize_ui_color_scheme(
             rec.get("ui_color_scheme")
@@ -228,7 +229,18 @@ def get_settings(service) -> Dict[str, Any]:
     return _public(rec)
 
 
-def save_settings(service, body: Dict[str, Any], username: str) -> Dict[str, Any]:
+def _splunk_platform_admin(session: Optional[Dict[str, Any]]) -> bool:
+    if not session:
+        return False
+    return bool(access.user_roles(session) & access.ADMIN_ROLES)
+
+
+def save_settings(
+    service,
+    body: Dict[str, Any],
+    username: str,
+    session: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     body = dict(body or {})
     body.pop("hec_token", None)
     existing = _read_ucc(_session_key(service)) or _read_kv(service)
@@ -249,7 +261,21 @@ def save_settings(service, body: Dict[str, Any], username: str) -> Dict[str, Any
     ingest_sourcetype = validate_ingest_sourcetype(
         _pick(body, existing, "ingest_sourcetype", DEFAULT_INGEST_SOURCETYPE)
     )
-    hec_url = validate_hec_url(_pick(body, existing, "hec_url", DEFAULT_HEC_URL))
+    current_hec = hec_url_for_emit(existing.get("hec_url"))
+    if "hec_url" in body:
+        proposed = (body.get("hec_url") or "").strip()
+        if not _splunk_platform_admin(session):
+            if proposed and proposed != current_hec:
+                raise ValueError(
+                    "hec_url may only be changed by Splunk admin or sc_admin"
+                )
+            hec_url = current_hec
+        else:
+            hec_url = validate_hec_url_admin(
+                _pick(body, existing, "hec_url", DEFAULT_HEC_URL)
+            )
+    else:
+        hec_url = current_hec
     reconcile_earliest = validate_reconcile_earliest(
         _pick(body, existing, "reconcile_earliest", DEFAULT_RECONCILE_EARLIEST)
     )

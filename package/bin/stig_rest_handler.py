@@ -215,7 +215,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
             if resource == "stig_reviews":
                 return self._reviews(method, parts, query, payload, service, session, username)
             if resource == "stig_settings":
-                return self._settings(method, parts, payload, service, username)
+                return self._settings(method, parts, payload, service, session, username)
             if resource == "stig_readiness":
                 return self._readiness(method, payload, session, service)
             if resource == "stig_imports":
@@ -1906,6 +1906,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
         parts: List[str],
         payload: Dict[str, Any],
         service,
+        session: Dict[str, Any],
         username: str,
     ) -> Dict[str, Any]:
         if parts:
@@ -1914,5 +1915,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return _json_response(settings_svc.get_settings(service))
         if method in ("PATCH", "POST", "PUT"):
             body = _body_json(payload)
-            return _json_response(settings_svc.save_settings(service, body, username))
+            return _json_response(
+                settings_svc.save_settings(service, body, username, session)
+            )
         return _error("method not allowed", status=405)

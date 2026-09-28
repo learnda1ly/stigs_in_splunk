@@ -7,8 +7,8 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from ingest_security import (  # noqa: E402
-    normalize_hec_url,
-    validate_hec_url,
+    hec_url_for_emit,
+    validate_hec_url_admin,
     validate_ingest_index,
     validate_ingest_sourcetype,
     validate_reconcile_earliest,
@@ -17,17 +17,29 @@ from models import DEFAULT_HEC_URL  # noqa: E402
 
 
 class TestIngestSecurity(unittest.TestCase):
-    def test_hec_url_allows_local_collector(self):
+    def test_hec_url_admin_allows_local_collector(self):
         url = "https://127.0.0.1:8088/services/collector/event"
-        self.assertEqual(validate_hec_url(url), url)
+        self.assertEqual(validate_hec_url_admin(url), url)
 
-    def test_hec_url_rejects_external_host(self):
+    def test_hec_url_admin_allows_off_host_https(self):
+        url = "https://hec.example.com/services/collector/event"
+        self.assertEqual(validate_hec_url_admin(url), url)
+
+    def test_hec_url_admin_rejects_off_host_http(self):
         with self.assertRaises(ValueError):
-            validate_hec_url("https://evil.example/services/collector/event")
+            validate_hec_url_admin("http://hec.example.com/services/collector/event")
 
-    def test_normalize_hec_url_falls_back(self):
+    def test_hec_url_admin_allows_loopback_http(self):
+        url = "http://localhost:8088/services/collector/event"
+        self.assertEqual(validate_hec_url_admin(url), url)
+
+    def test_hec_url_for_emit_keeps_valid_off_host(self):
+        url = "https://hec.example.com/services/collector/event"
+        self.assertEqual(hec_url_for_emit(url), url)
+
+    def test_hec_url_for_emit_falls_back_on_invalid(self):
         self.assertEqual(
-            normalize_hec_url("https://evil.example/services/collector/event"),
+            hec_url_for_emit("http://evil.example/services/collector/event"),
             DEFAULT_HEC_URL,
         )
 
