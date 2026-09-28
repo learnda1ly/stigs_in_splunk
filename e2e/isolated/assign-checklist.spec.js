@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const { restAuthHeader, loadAdminCredentials } = require('../fixtures/credentials');
 const { EditorAssignPage } = require('../pages/EditorAssignPage');
 
 const REST_BASE =
@@ -15,17 +16,6 @@ const BASELINE_LABEL = 'Example_STIG';
 const HOSTNAME = 'web-01';
 
 test.use({ trace: 'off', video: 'off' });
-
-function restAuthHeader() {
-  const user = process.env.SPLUNK_ADMIN_USER;
-  const password = process.env.SPLUNK_ADMIN_PASSWORD;
-  if (!user || !password) {
-    throw new Error('SPLUNK_ADMIN_USER and SPLUNK_ADMIN_PASSWORD are required');
-  }
-  return {
-    Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
-  };
-}
 
 /**
  * @param {import('@playwright/test').APIRequestContext} request
@@ -53,6 +43,9 @@ async function createAssignFixture(request) {
     ignoreHTTPSErrors: true,
   });
   expect(hostRes.ok()).toBeTruthy();
+  const host = await hostRes.json();
+  const hostId = host._key;
+  expect(hostId).toBeTruthy();
 
   const xmlBody = fs.readFileSync(MINIMAL_BENCHMARK);
   const importRes = await request.post(
@@ -79,7 +72,7 @@ async function createAssignFixture(request) {
   );
   expect(defaultRes.ok()).toBeTruthy();
 
-  return { workspaceName, collectionId, baselineId };
+  return { workspaceName, collectionId, baselineId, hostId };
 }
 
 /**
@@ -111,7 +104,8 @@ test.describe('STIG editor host assign', () => {
 
       await editor.open();
       await editor.selectWorkspace(fixture.workspaceName);
-      await editor.selectHost(HOSTNAME);
+      await editor.waitForHostOption(fixture.hostId, HOSTNAME);
+      await editor.selectHost(HOSTNAME, fixture.hostId);
       await editor.openHostActions();
       await editor.selectAssignBaseline(fixture.baselineId, BASELINE_LABEL);
       await editor.assignToHost();
