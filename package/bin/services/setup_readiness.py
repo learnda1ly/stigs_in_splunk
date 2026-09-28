@@ -74,7 +74,9 @@ def assess_hec_readiness(session_key: str = "") -> Dict[str, Any]:
         return {
             "ok": True,
             "status": "configured",
-            "message": "HEC token is set on HTTP input stig_findings.",
+            "message": (
+                "HEC token is available (storage/passwords or HTTP input stig_findings)."
+            ),
             "verify_in_splunk": SPLUNK_SETTINGS_HEC,
             "next_action": "",
         }
@@ -101,8 +103,8 @@ def assess_hec_readiness(session_key: str = "") -> Dict[str, Any]:
         ),
         "verify_in_splunk": SPLUNK_SETTINGS_HEC,
         "next_action": (
-            "In Splunk Settings, enable HTTP Event Collector and create input stig_findings "
-            "with index stig and sourcetype stig:finding."
+            "Store the token in storage/passwords (realm stigs_in_splunk, name hec_stig_findings) "
+            "or create HTTP input stig_findings (index stig, sourcetype stig:finding) in Splunk Settings."
         ),
     }
 

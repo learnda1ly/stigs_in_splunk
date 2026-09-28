@@ -19,7 +19,7 @@ members = stigs_in_splunk_settings, stigs_in_splunk_workspace
 [admin_external:stigs_in_splunk_workspace]
 handlertype = python
 python.version = python3
-python.required = 3.9
+python.required = 3.9, 3.13
 handlerfile = stigs_in_splunk_rh_workspace.py
 handleractions = edit, list, remove, create
 handlerpersistentmode = true
@@ -27,7 +27,7 @@ handlerpersistentmode = true
 [admin_external:stigs_in_splunk_settings]
 handlertype = python
 python.version = python3
-python.required = 3.9
+python.required = 3.9, 3.13
 handlerfile = stigs_in_splunk_rh_settings.py
 handleractions = edit, list
 handlerpersistentmode = true
