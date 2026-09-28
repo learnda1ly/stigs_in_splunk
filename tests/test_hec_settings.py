@@ -140,6 +140,32 @@ class TestHecTokenLookup(unittest.TestCase):
             token = hec_svc._parse_stanza_token(path, hec_svc.HEC_STANZA)
             self.assertEqual(token, "abc-123-secret")
 
+    def test_emit_findings_fresh_install_uses_localhost_default(self):
+        posted = {}
+
+        def _fake_post(url, token, events, index, sourcetype, source):
+            posted["url"] = url
+            return len(events)
+
+        orig = hec_svc._post_hec
+        orig_lookup = hec_svc.lookup_hec_token
+        hec_svc._post_hec = _fake_post
+        hec_svc.lookup_hec_token = lambda session_key="": "tok"
+        try:
+            hec_svc.emit_findings(
+                [{"ruleId": "SV-1", "result": "pass"}],
+                settings={},
+                session_key="sess",
+            )
+        finally:
+            hec_svc._post_hec = orig
+            hec_svc.lookup_hec_token = orig_lookup
+        self.assertEqual(posted["url"], DEFAULT_HEC_URL)
+
+    def test_public_settings_without_saved_hec_url_use_default(self):
+        public = settings_svc._public({})
+        self.assertEqual(public["hec_url"], DEFAULT_HEC_URL)
+
     def test_emit_findings_result_has_no_token(self):
         posted = {}
         remote = "https://hec.example.com/services/collector/event"
@@ -170,8 +196,18 @@ class TestHecTokenLookup(unittest.TestCase):
         self.assertEqual(posted["token"], "server-only-token")
         self.assertEqual(posted["url"], remote)
 
-    def test_stig_user_cannot_change_hec_url(self):
-        session = {"roles": ["stig_admin", "stig_admin"], "user": "assessor"}
+    def test_stig_write_cannot_change_hec_url(self):
+        session = {"roles": ["stig_user"], "user": "assessor"}
+        with self.assertRaises(ValueError):
+            settings_svc.save_settings(
+                object(),
+                {"hec_url": "https://remote.example/services/collector/event"},
+                "assessor",
+                session,
+            )
+
+    def test_stig_admin_role_cannot_change_hec_url(self):
+        session = {"roles": ["stig_admin"], "user": "assessor"}
         with self.assertRaises(ValueError):
             settings_svc.save_settings(
                 object(),
