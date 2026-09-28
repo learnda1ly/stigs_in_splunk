@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import ssl
 import urllib.request
 from typing import Any, Dict, List, Optional
 
+logger = logging.getLogger("stigs_in_splunk.hec")
+
+from ingest_security import hec_url_for_emit
 from models import (
     APP_NAME,
     DEFAULT_HEC_URL,
@@ -40,7 +44,7 @@ def emit_findings(
     settings = settings or {}
     index = settings.get("ingest_index") or DEFAULT_INGEST_INDEX
     sourcetype = settings.get("ingest_sourcetype") or DEFAULT_INGEST_SOURCETYPE
-    url = (settings.get("hec_url") or DEFAULT_HEC_URL).strip()
+    url = hec_url_for_emit(settings.get("hec_url"))
     if not events:
         return {"indexed": 0, "via": "none"}
     token = lookup_hec_token(session_key)
@@ -55,7 +59,8 @@ def emit_findings(
             }
         except Exception as exc:
             fallback = _post_receivers(events, index, sourcetype, source, session_key)
-            fallback["hec_error"] = str(exc)
+            fallback["hec_error"] = "hec_post_failed"
+            logger.debug("hec_post_failed %s", exc)
             return fallback
     return _post_receivers(events, index, sourcetype, source, session_key)
 
@@ -103,7 +108,8 @@ def emit_indexed_events(
             }
         except Exception as exc:
             fallback = _post_receivers(events, index, sourcetype, source, session_key)
-            fallback["hec_error"] = str(exc)
+            fallback["hec_error"] = "hec_post_failed"
+            logger.debug("hec_post_failed %s", exc)
             return fallback
     return _post_receivers(events, index, sourcetype, source, session_key)
 
@@ -278,10 +284,7 @@ def _post_hec(
 
 
 def _hec_ssl_context() -> ssl.SSLContext:
-    """Verify TLS by default; set STIG_HEC_TLS_VERIFY=0 only for local dev."""
-    flag = os.environ.get("STIG_HEC_TLS_VERIFY", "1").strip().lower()
-    if flag in ("0", "false", "no", "off"):
-        return ssl._create_unverified_context()
+    """Verify TLS for HEC (certificate validation always enabled)."""
     return ssl.create_default_context()
 
 

@@ -7,6 +7,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "package", 
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+from models import DEFAULT_HEC_URL  # noqa: E402
 from services import hec as hec_svc  # noqa: E402
 from services import settings as settings_svc  # noqa: E402
 
@@ -139,8 +140,35 @@ class TestHecTokenLookup(unittest.TestCase):
             token = hec_svc._parse_stanza_token(path, hec_svc.HEC_STANZA)
             self.assertEqual(token, "abc-123-secret")
 
+    def test_emit_findings_fresh_install_uses_localhost_default(self):
+        posted = {}
+
+        def _fake_post(url, token, events, index, sourcetype, source):
+            posted["url"] = url
+            return len(events)
+
+        orig = hec_svc._post_hec
+        orig_lookup = hec_svc.lookup_hec_token
+        hec_svc._post_hec = _fake_post
+        hec_svc.lookup_hec_token = lambda session_key="": "tok"
+        try:
+            hec_svc.emit_findings(
+                [{"ruleId": "SV-1", "result": "pass"}],
+                settings={},
+                session_key="sess",
+            )
+        finally:
+            hec_svc._post_hec = orig
+            hec_svc.lookup_hec_token = orig_lookup
+        self.assertEqual(posted["url"], DEFAULT_HEC_URL)
+
+    def test_public_settings_without_saved_hec_url_use_default(self):
+        public = settings_svc._public({})
+        self.assertEqual(public["hec_url"], DEFAULT_HEC_URL)
+
     def test_emit_findings_result_has_no_token(self):
         posted = {}
+        remote = "https://hec.example.com/services/collector/event"
 
         def _fake_post(url, token, events, index, sourcetype, source):
             posted["token"] = token
@@ -154,7 +182,7 @@ class TestHecTokenLookup(unittest.TestCase):
         try:
             result = hec_svc.emit_findings(
                 [{"ruleId": "SV-1", "result": "pass"}],
-                settings={"hec_url": "https://hec.example/event"},
+                settings={"hec_url": remote},
                 session_key="sess",
             )
         finally:
@@ -166,6 +194,63 @@ class TestHecTokenLookup(unittest.TestCase):
         self.assertNotIn("hec_token", result)
         self.assertNotIn("server-only-token", str(result))
         self.assertEqual(posted["token"], "server-only-token")
+        self.assertEqual(posted["url"], remote)
+
+    def test_stig_write_cannot_change_hec_url(self):
+        session = {"roles": ["stig_user"], "user": "assessor"}
+        with self.assertRaises(ValueError):
+            settings_svc.save_settings(
+                object(),
+                {"hec_url": "https://remote.example/services/collector/event"},
+                "assessor",
+                session,
+            )
+
+    def test_stig_admin_role_cannot_change_hec_url(self):
+        session = {"roles": ["stig_admin"], "user": "assessor"}
+        with self.assertRaises(ValueError):
+            settings_svc.save_settings(
+                object(),
+                {"hec_url": "https://remote.example/services/collector/event"},
+                "assessor",
+                session,
+            )
+
+    def test_splunk_admin_can_save_off_host_hec_url(self):
+        stored = {}
+        session = {"roles": ["admin"], "user": "admin"}
+
+        class _Coll:
+            pass
+
+        def _query_all(_coll):
+            return []
+
+        def _insert(_coll, record):
+            stored.update(record)
+            stored["_key"] = "k1"
+            return dict(stored)
+
+        orig_get = settings_svc.kv_client.get_collection
+        orig_query = settings_svc.kv_client.query_all
+        orig_insert = settings_svc.kv_client.insert_record
+        settings_svc.kv_client.get_collection = lambda _svc, _name: _Coll()
+        settings_svc.kv_client.query_all = _query_all
+        settings_svc.kv_client.insert_record = _insert
+        remote = "https://remote.example/services/collector/event"
+        try:
+            out = settings_svc.save_settings(
+                object(),
+                {"hec_url": remote},
+                "admin",
+                session,
+            )
+        finally:
+            settings_svc.kv_client.get_collection = orig_get
+            settings_svc.kv_client.query_all = orig_query
+            settings_svc.kv_client.insert_record = orig_insert
+        self.assertEqual(stored.get("hec_url"), remote)
+        self.assertEqual(out.get("hec_url"), remote)
 
 
 if __name__ == "__main__":

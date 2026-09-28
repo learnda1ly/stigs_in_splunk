@@ -30,10 +30,10 @@ def _workspace_fields(rec) -> dict:
     }
 
 
-def _workspace_rows(service):
+def _workspace_rows(service, session):
     collections_svc.ensure_default_collection(service, "system")
     rows = []
-    for rec in collections_svc.list_all_collections(service):
+    for rec in collections_svc.list_collections(service, session):
         name = (rec.get("name") or rec.get("_key") or "").strip()
         if not name:
             continue
@@ -46,7 +46,7 @@ class WorkspaceRestHandler(AdminExternalHandler):
     def handleList(self, confInfo):
         # Configuration lists every workspace. Persist /stig_collections still
         # filters by access_principals for the editor.
-        rows = _workspace_rows(connect(self))
+        rows = _workspace_rows(connect(self), handler_session(self))
         want = (self.callerArgs.id or "").strip()
         if want:
             rows = [row for row in rows if row[0] == want]
