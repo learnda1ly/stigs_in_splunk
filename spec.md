@@ -1,8 +1,8 @@
-# STIG in Splunk — Build specification (PoC)
+# STIG in Splunk — Build specification
 
-This document is the **authoritative requirements spec** for the Splunk app **`stigs_in_splunk`**. It is written so an AI agent (or engineer) can **implement the app from scratch** without inferring behavior from the existing repo.
+This document is the **requirements and behavior spec** for the Splunk app **`stigs_in_splunk`**. It describes what the **shipped app does today** and records **proposed** additions that are not yet implemented. When this spec and the repo disagree, **the implementation wins** — update the spec to match (briefly note any intentional lag).
 
-**Product goal:** Store DISA STIG **baseline** content and per-host **checklist review state** (assessor findings) in the Splunk **KV store**, exposed only through a **custom REST API** (clients must not depend on raw KV REST for business logic).
+**Product goal:** Store DISA STIG **baseline** content and per-host **checklist review state** (assessor findings) in the Splunk **KV store**, exposed primarily through a **custom REST API** (clients must not depend on raw KV REST for grant-scoped business logic).
 
 **Splunk version target:** Enterprise **10.x** (developed against 10.2.x). Python **3.9** inside the app persist handler.
 
@@ -10,11 +10,11 @@ This document is the **authoritative requirements spec** for the Splunk app **`s
 
 ## 1. Scope
 
-### 1.1 In scope (Phase 1 — PoC, must implement)
+### 1.1 Current implementation (shipped app)
 
 | Area | Requirement |
 |------|-------------|
-| Persistence | Six KV collections in `default/collections.conf` with `enforceTypes = true`. |
+| Persistence | Twelve KV collections in `default/collections.conf` with `enforceTypes = true` (core entities, grants, labels, review history, editor-settings fallback, ingest assignment rules/overrides — see §6.1). |
 | API | Custom persist-conn REST handler; JSON for CRUD; raw XML/JSON for import/export bodies. |
 | Baselines | Import from **XCCDF** (primary), **CKLB**, **CKL**; **deduplicate** identical revisions; multiple **revisions** allowed. |
 | Checklists | Create checklist = one host + one baseline + workspace; spawn one **review** per baseline rule. |
@@ -28,15 +28,13 @@ This document is the **authoritative requirements spec** for the Splunk app **`s
 | Tests | Offline unit tests (parsers, fingerprint); optional Splunk integration tests (REST + KV). |
 | Search | KV lookups in `package/default/transforms.conf` so **`inputlookup`** works in Splunk Search (not raw KV REST in SPL). |
 
-### 1.2 Out of scope (Phase 2 — do not build in PoC)
+### 1.2 Not implemented (future / backlog)
 
-- Custom SplunkUI **settings** page (use the UCC Configuration page).
+- Custom SplunkUI **settings** page beyond UCC **Configuration** (editor uses `/stig_settings` adapter only for selected fields).
 - Search macros, CIM Vulnerability datamodel, eventtypes for ingested STIG events.
-- ~~Full audit **dashboard** (logs only in PoC).~~ **implemented** — see §14 and [docs/audit-index.md](docs/audit-index.md).
-- XCCDF **results** import mapping to review status (pass/fail → open/not_a_finding).
-- ~~Review **merge** across STIG revisions when `check_content_hash` matches~~ **implemented** — see §11.4 `upgrade` endpoints.
-- ~~Cascading delete of hosts/checklists when a **stig_collection** is deleted~~ **implemented** — see §11.1 `DELETE` with `?cascade=true`.
-- Baseline ACL per workspace (baselines are **global** in PoC).
+- Automatic XCCDF **results** `pass`/`fail` → assessor status mapping on import (Evaluate-STIG results import applies Watcher-shaped review fields instead).
+- **RMF packages** (authorization boundary labels) — proposed in §20; not in KV or REST today.
+- See also §19 for other deferred items.
 
 ---
 
@@ -225,6 +223,7 @@ Define in `package/default/authorize.conf`:
 | `stig_read` | GET via custom REST |
 | `stig_write` | POST / PATCH / PUT |
 | `stig_admin` | DELETE; manage `access_principals` on workspaces (owners may also edit principals via grants) |
+| `stig_review_accept` | Accept/reject submitted reviews when also allowed by workspace grant / `review_accept_principals` (see §8.1) |
 
 **Grant roles** (KV `stig_collection_grants`, REST `/stig_collections/{id}/grants`):
 
@@ -243,7 +242,7 @@ Roles:
 
 - **`stig_user`:** `stig_read`, `stig_write`
 - **`stig_admin`:** inherits `stig_user`, plus `stig_admin`
-- **`role_admin`:** enable all three for PoC admin UX
+- **`role_admin`:** enable all STIG capabilities for admin UX
 
 Map capabilities to HTTP methods in **each** `restmap.conf` stanza (see §7).
 
@@ -253,7 +252,7 @@ Map capabilities to HTTP methods in **each** `restmap.conf` stanza (see §7).
 https://<host>:8089/servicesNS/nobody/stigs_in_splunk
 ```
 
-Resources: `stig_collections`, `stig_collection_grants` (nested under collections), `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_settings` (§4.3.1, §11.7).
+Resources: `stig_collections`, `stig_collection_grants` (nested under collections), `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_findings`, `stig_imports`, `stig_settings` (§4.3.1, §11.7), `stig_assignment_rules`, `stig_host_baseline_assignments`, `stig_assignment/preview`, `stig_readiness` (§11.8).
 
 Authentication: Splunk session or Basic Auth (`-u user:pass`). TLS verify often disabled in dev (`curl -k`).
 
@@ -263,19 +262,37 @@ Authentication: Splunk session or Basic Auth (`-u user:pass`). TLS verify often 
 
 ### 6.1 `default/collections.conf`
 
-Six stanzas: `stig_collections`, `stig_hosts`, `stig_baselines`, `stig_baseline_rules`, `stig_checklists`, `stig_reviews`. **`stig_review_history`** stores append-only assessor change rows (see §7.7).
+Twelve stanzas (all `enforceTypes = true`):
 
-All: `enforceTypes = true`.
+| Stanza | Role |
+|--------|------|
+| `stig_collections` | Workspaces |
+| `stig_collection_grants` | Workspace grant roles + optional ACL |
+| `stig_labels` | Workspace asset labels |
+| `stig_hosts` | Assessed assets |
+| `stig_baselines` | STIG revision catalog headers |
+| `stig_baseline_rules` | Rules per baseline |
+| `stig_checklists` | Host × baseline bindings |
+| `stig_reviews` | Per-rule assessor state |
+| `stig_review_history` | Append-only review change log (§7.7) |
+| `stig_editor_settings` | Legacy settings KV fallback (§7.10) |
+| `stig_assignment_rules` | Ingest workspace resolver rules (§7.8) |
+| `stig_host_baseline_assignments` | Host×STIG ingest overrides (§7.9) |
 
 **Accelerated fields (for KV queries):**
 
 | Collection | Accelerated index |
 |------------|-------------------|
+| `stig_collection_grants` | `{"stig_collection_id": 1}` |
+| `stig_labels` | `{"stig_collection_id": 1}` |
 | `stig_hosts` | `{"stig_collection_id": 1}` |
-| `stig_baselines` | `{"content_fingerprint": 1}` |
+| `stig_baselines` | `{"content_fingerprint": 1}`, `{"stig_collection_id": 1}` |
 | `stig_baseline_rules` | `{"baseline_id": 1, "group_id": 1}` |
 | `stig_checklists` | `{"stig_collection_id": 1}` |
 | `stig_reviews` | `{"checklist_id": 1, "status": 1}` |
+| `stig_review_history` | `{"stig_collection_id": 1, "created_at": -1}`, `{"review_id": 1, "created_at": -1}` |
+| `stig_assignment_rules` | `{"priority": 1, "enabled": 1}` |
+| `stig_host_baseline_assignments` | `{"hostname": 1, "benchmark_id": 1}` |
 
 **`default/app.conf`:** include `[triggers] reload.collections = simple`.
 
@@ -283,13 +300,14 @@ All: `enforceTypes = true`.
 
 **Critical Splunk constraint:** only **one** `match =` per stanza; duplicate `match` keys in one stanza **overwrite** — only the last survives.
 
-Implement **five separate stanzas**, one per top-level resource path:
+Implement **one stanza per top-level persist path** (duplicate `match` keys in one stanza overwrite — only the last survives). Shipped paths include:
 
-- `[script:stig_api_collections]` → `match = /stig_collections`
-- `[script:stig_api_hosts]` → `match = /stig_hosts`
-- `[script:stig_api_baselines]` → `match = /stig_baselines`
-- `[script:stig_api_checklists]` → `match = /stig_checklists`
-- `[script:stig_api_reviews]` → `match = /stig_reviews`
+- `/stig_collections`, `/stig_findings`, `/stig_hosts`, `/stig_baselines`, `/stig_checklists`, `/stig_reviews`
+- `/stig_imports`, `/stig_settings`, `/stig_readiness`
+- `/stig_assignment_rules`, `/stig_host_baseline_assignments`, `/stig_assignment/preview`
+- `/stigs_in_splunk_baseline` — UCC Configuration baseline list/delete adapter (no zip upload on EAI)
+
+UCC **admin_external** handlers for Configuration workspaces/settings are merged at build time (see §4.1).
 
 Shared settings per stanza:
 
@@ -362,6 +380,7 @@ Foreign keys are string `_key` values unless noted. Timestamps are **epoch secon
 | `description` | string | Optional |
 | `metadata` | string | Optional JSON object string for arbitrary workspace key/value metadata (REST `GET/PATCH .../metadata`). |
 | `access_principals` | string | JSON array string, e.g. `["user:alice","role:stig_admin"]`. Empty/missing ⇒ readable by all authenticated users with caps. |
+| `review_accept_principals` | string | JSON array of `user:` / `role:` principals allowed to accept/reject submitted reviews in this workspace (in addition to grant owner/manager and `stig_admin`). |
 | `is_default` | bool | Exactly one workspace is the import default. Checklist ingest with no `stig_collection_id` / `collectionId` uses it. |
 | `created_at`, `updated_at` | time | |
 | `created_by`, `updated_by` | string | Splunk username |
@@ -463,6 +482,8 @@ REST: `GET/POST /stig_collections/{id}/labels`, `GET/PATCH/DELETE .../labels/{la
 | `check_content_hash` | string | Snapshot from baseline rule |
 | `status` | string | See §10 |
 | `finding_details`, `comments` | string | |
+| `valid` | bool | Server-computed against workspace `review_requirements` (exposed on GET/findings; updated on PATCH/submit). |
+| `package_id` | string | Optional **Evaluate-STIG / CKLB package id** on the review (ingest, PATCH, export). **Not** the proposed RMF package entity (§20). |
 | `ingest_lock` | bool | When **true**, HEC/reconcile must **not** overwrite this review. Default false; incoming is authoritative. |
 | `workflow_state` | string | `draft` \| `submitted` \| `accepted` (reject returns to `draft`; see FEATURE_PARITY.md) |
 | `submitted_at`, `submitted_by` | time / string | Set on submit |
@@ -497,6 +518,45 @@ Append-only audit of **assessor-visible** review changes (not a full document sn
 
 **Retention:** cascade workspace delete removes history rows for that `stig_collection_id`.
 
+### 7.8 `stig_assignment_rules`
+
+Global (not workspace-scoped) ordered rules that resolve **which workspace** receives HEC/checklist ingest when `trust_event_collection_id` is false. Evaluated by ascending `priority` (then `_key`); first enabled match wins when `stop_on_match` is true.
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `_key` | string | Rule id |
+| `priority` | number | Lower sorts earlier (default 100 on create) |
+| `enabled` | bool | Default true |
+| `name` | string | Display label |
+| `target_stig_collection_id` | string | FK → workspace (required) |
+| `match_json` | string | JSON object; all specified predicates must match (AND). Supported keys: `hostname` + optional `hostname_mode` (`glob`, `regex`, `exact`, `suffix`), `benchmark_id`, `package_id` (Evaluate-STIG/CKLB id on the **event**, not RMF), `source_product`, `collection_name` / `collectionName`, `ip_cidr`. Empty/absent predicate ⇒ match any. |
+| `stop_on_match` | bool | Default true |
+| `created_at`, `updated_at`, `created_by`, `updated_by` | | |
+
+REST: `GET/POST /stig_assignment_rules`, `GET/PATCH/DELETE /stig_assignment_rules/{id}`. **DELETE** requires **`stig_admin`**. Create/update require **`stig_write`**. List/get require **`stig_read`**.
+
+### 7.9 `stig_host_baseline_assignments`
+
+Hostname × logical `benchmark_id` (`stig_id`) overrides that force a target workspace before assignment rules. Optional `expires_at` (epoch seconds; 0 = never).
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `_key` | string | Override id |
+| `hostname` | string | Normalized casefold key |
+| `benchmark_id` | string | STIG id on the event (`stig.stig_id` / `benchmarkId`) |
+| `target_stig_collection_id` | string | FK → workspace |
+| `note` | string | Optional |
+| `expires_at` | number | Optional expiry |
+| `created_at`, `updated_at`, `created_by`, `updated_by` | | |
+
+REST: `GET/POST /stig_host_baseline_assignments`, `GET/PATCH/DELETE /stig_host_baseline_assignments/{id}` (same capability pattern as §7.8).
+
+**Preview:** `GET|POST /stig_assignment/preview` with JSON `{event: {...}}` (or query `event` JSON) returns resolved `stig_collection_id` and reason (`override`, `rule`, `event_collection_id`, `default`, `forced_import`). Requires **`stig_read`**.
+
+### 7.10 `stig_editor_settings`
+
+Legacy KV fallback for editor/ingest settings when `stigs_in_splunk_settings.conf` `[general]` is absent (see §4.3.1). Fields mirror public `/stig_settings` keys (no `hec_token`).
+
 ---
 
 ## 8. Access control
@@ -520,8 +580,9 @@ Evaluation (`bin/access.py`):
 | Entity | ACL |
 |--------|-----|
 | `stig_collection` | Principals on record; list filtered for GET |
-| `stig_host`, `stig_checklist`, `stig_review` | Via parent `stig_collection_id` |
-| `stig_baseline`, `stig_baseline_rule` | **No workspace ACL** in PoC |
+| `stig_host`, `stig_checklist`, `stig_review` | Via parent `stig_collection_id` (+ grant ACL dimensions) |
+| `stig_baseline`, `stig_baseline_rule` | **Global** rows (empty `stig_collection_id`) visible per catalog rules in §7.3; **workspace-scoped** baselines require read on that workspace |
+| `stig_assignment_rules`, `stig_host_baseline_assignments` | Global tables; REST list/mutate per §7.8–7.9 capabilities (not grant-filtered) |
 
 ### 8.3 DELETE
 
@@ -611,7 +672,7 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 `GET /stig_checklists/{id}/export?format=cklb|ckl|xccdf`
 
 - Join checklist + host + baseline metadata + baseline rules + reviews.
-- Match reviews to rules primarily by `group_id` (PoC).
+- Match reviews to rules primarily by `group_id` (see §17 export limitation).
 - **CKLB / CKL:** STIG Viewer–compatible checklist files (JSON or XML).
 - **XCCDF (`format=xccdf`):** OpenSCAP / Evaluate-STIG–shaped **results** XML (`TestResult` + `rule-result` per rule). Not a full SCAP source data stream or Manual STIG benchmark bundle. Baseline rules with no resolvable XCCDF rule `idref` are **omitted** (CKL/CKLB still emit those rule rows).
 - Response: JSON string (CKLB) or XML string (CKL or XCCDF); appropriate `Content-Type`.
@@ -768,7 +829,7 @@ Requires **`stig_write`**.
 |--------|------|--------|
 | GET | `/stig_reviews` | Query `checklist_id?`, `status?`, `workflow_state?`, `stig_collection_id?`, `rule_id?`, `rule_version?`, `valid?` |
 | GET | `/stig_reviews/{id}` | Single review |
-| PATCH/PUT | `/stig_reviews/{id}` | `{status?, finding_details?, comments?, ingest_lock?}` |
+| PATCH/PUT | `/stig_reviews/{id}` | `{status?, finding_details?, comments?, package_id?, ingest_lock?}` (`package_id` = Evaluate-STIG/CKLB id, not RMF — §7.6) |
 | POST | `/stig_reviews/{id}/submit` | Assessor submit (`stig_write` + workspace grant); review must be valid |
 | POST | `/stig_reviews/{id}/accept` | Owner/manager accept (`stig_review_accept`, grant role, or `review_accept_principals`) |
 | POST | `/stig_reviews/{id}/reject` | `{reject_feedback?}` — returns review to `draft` |
@@ -824,6 +885,17 @@ JSON adapter over **`stigs_in_splunk_settings.conf`** `[general]` (see §4.3.1).
 **GET response fields:** `_key` (always `general`), `vim_mode`, `trust_event_collection_id`, `ingest_index`, `ingest_sourcetype`, `hec_url`, `reconcile_earliest`, `updated_at`, `updated_by`. Missing conf values use defaults from `models.py`.
 
 **Typical callers:** STIG Editor (`vim_mode` only), classic **Editor shortcuts** view, automation scripts with **`stig_write`**. Full-form edits should use the UCC **Configuration** page so Splunk audits conf changes.
+
+### 11.8 Ingest assignment and setup readiness
+
+**Assignment** — global KV tables and REST documented in §7.8–7.9. Ingest resolution order when `trust_event_collection_id` is false: host×baseline **override** → first matching **rule** → Default workspace; when true, honor event `collectionId` before rules (legacy Watcher).
+
+**Readiness** — onboarding checks for Splunk roles, HEC input, app filesystem ownership, and `install.is_configured`:
+
+| Method | Path | Capability | Body | Response |
+|--------|------|------------|------|----------|
+| GET | `/stig_readiness` | Authenticated (no extra STIG cap) | — | `{roles, hec, ownership, is_configured, documentation_view, platform_ready, can_stig_write, can_stig_admin}` |
+| POST | `/stig_readiness` | Splunk **`admin`** / **`sc_admin`** or **`stig_admin`** | `{"action": "complete"}` | Marks `local/app.conf` `[install] is_configured = 1` when ownership checks pass |
 
 ---
 
@@ -930,7 +1002,7 @@ Script: `./scripts/run_splunk_tests.sh`
 
 | Test module | Validates |
 |-------------|-----------|
-| `test_splunk_kvstore` | All six collection stanzas exist; direct KV insert/read |
+| `test_splunk_kvstore` | All shipped collection stanzas exist; direct KV insert/read |
 | `test_splunk_integration` | REST: collection → import baseline → rules → host → checklist → reviews → PATCH review → CKLB export; **import same baseline twice** → same `_key` + `deduplicated` |
 
 Use `tests/splunk_wait.py` to poll until KV collections exist after restart.
@@ -971,7 +1043,7 @@ curl $AUTH -X POST "$BASE/stig_checklists" -H "Content-Type: application/json" \
 
 # 5 Open finding
 curl $AUTH -X PATCH "$BASE/stig_reviews/REVIEW_ID" -H "Content-Type: application/json" \
-  -d '{"status":"open","finding_details":"Example finding","comments":"PoC"}'
+  -d '{"status":"open","finding_details":"Example finding","comments":"Example"}'
 
 # 6 Export CKLB
 curl $AUTH "$BASE/stig_checklists/CHECKLIST_ID/export?format=cklb"
@@ -979,38 +1051,81 @@ curl $AUTH "$BASE/stig_checklists/CHECKLIST_ID/export?format=cklb"
 
 ---
 
-## 17. Known limitations (PoC)
+## 17. Known limitations
 
 | Limitation | Detail |
 |------------|--------|
 | Orphan data | Failed imports before KV `_key` fix may leave orphan `stig_baseline_rules` or empty baselines; no automatic GC. Admins can report and delete orphan **rules** via `GET/POST /stig_baselines/gc_orphan_rules` (does not remove empty baseline headers or checklist/review rows). |
 | No baseline dedup for legacy rows | Missing `content_fingerprint` until re-import. |
-| Global baselines | Default catalog is global; optional per-workspace rows via `stig_collection_id`. |
-| Collection delete | Blocked when children exist unless `?cascade=true`; cascades workspace hosts/checklists/reviews/grants/assignment rows; baselines stay global. UCC Configuration delete only allows empty workspaces. |
-| Export review join | By `group_id` only; empty `group_id` in XCCDF may weaken CKL/CKLB status linkage for some rules. |
+| Baseline catalog | Default catalog is global; optional per-workspace rows via `stig_collection_id` (§7.3). |
+| Collection delete | Blocked when children exist unless `?cascade=true`; cascades workspace hosts/checklists/reviews/grants/review history and **assignment rules/overrides targeting that workspace**; global baselines unchanged. UCC Configuration delete only allows empty workspaces. |
+| Export review join | By `group_id` primarily; empty `group_id` in XCCDF may weaken CKL/CKLB status linkage for some rules. |
 | Batch rule insert | Sequential inserts via `batch_save`; large STIGs (~366 rules) take seconds. |
-| Session capabilities shape | If Splunk sends `capabilities` as non-dict, admin checks may need hardening (Phase 2). |
+| Review history at scale | Workspace timeline loads all KV rows then filters in-process (§7.7). |
+| Search lookups | `inputlookup` on KV stanzas is not grant-filtered (§12). |
+| No RMF package entity | Governance grouping is workspace + labels today; `stig_reviews.package_id` is Evaluate-STIG/CKLB only (§7.6, §20). |
 
 ---
 
-## 18. Acceptance criteria (PoC done when)
+## 18. Regression smoke criteria
 
-1. App mounts and loads in Splunk 10 without symlink; six KV collections created.
-2. Custom REST CRUD works for all documented endpoints; nested `import`, `export`, `rules` work.
-3. RHEL 8 (or equivalent) XCCDF imports ~366 rules; duplicate import returns **200** + same `_key` + `deduplicated`.
-4. Checklist create spawns one review per rule with `not_reviewed`.
-5. Review PATCH persists `open` + finding text; export produces valid CKLB/CKL containing that status.
-6. ACL: user not in `access_principals` cannot read workspace hosts/checklists/reviews.
-7. `| inputlookup stig_reviews` returns rows in Search with app context.
-8. Offline unit tests pass; integration tests pass when Splunk available.
-9. App nav **Configuration** opens the UCC page. Workspaces can be created/edited/deleted there (KV `stig_collections`). Baselines can be imported from XCCDF/CKL/CKLB and deleted there. Editor & ingest settings save to `stigs_in_splunk_settings.conf` with **no HEC token field**.
+Use after releases or large changes (not a greenfield build checklist):
+
+1. App mounts in Splunk 10; all §6.1 KV collections exist after install/restart.
+2. Custom REST CRUD and documented nested routes (`import`, `export`, `rules`, reporting, grants, labels) respond.
+3. XCCDF import dedupes by `content_fingerprint` (**200** + `deduplicated` on repeat).
+4. Checklist create spawns one `not_reviewed` review per baseline rule.
+5. Review PATCH + export round-trip CKLB/CKL status.
+6. Workspace `access_principals` / grants hide hosts/checklists/reviews from unauthorized users.
+7. `| inputlookup stig_reviews` returns rows with app context.
+8. Offline unit tests pass; Splunk integration tests pass when available.
+9. UCC **Configuration** saves workspaces, baseline list/delete, and Editor & ingest settings without exposing `hec_token`.
 
 ---
 
 ## 19. Phase 2 backlog (preserve intent)
 
 - Ingested findings → CIM / macros / dashboards.
-- ~~Cross-revision review merge using `check_content_hash`~~ (see §11.4 `upgrade`).
-- ~~Workspace-scoped baselines or sharing model.~~ (`stig_collection_id` on `stig_baselines`; see §7.3).
-- ~~Stronger audit (dedicated index, UI).~~ (see §14, `stig_audit` index + **STIG audit** dashboard).
-- KV cleanup jobs; cascade deletes; bulk review update.
+- RMF packages (authorization labels) — **proposed** requirements in §20.
+- KV cleanup jobs beyond orphan-rule GC; stronger cross-entity consistency transactions.
+
+---
+
+## 20. Proposed: RMF packages (not implemented)
+
+**Status:** Product request only — **no** RMF package collection, REST, or UI in the repo today. Do **not** reuse or overload `stig_reviews.package_id` (that field remains the **Evaluate-STIG / CKLB package id**, §7.6).
+
+RMF packages are **labels** for now (organizational authorization boundary). Each has a **name** and an **id**. REST/KV shapes are out of scope here; the decisions below are product rules for a future implementation.
+
+### 20.1 Decisions
+
+| Topic | Decision |
+|-------|----------|
+| Workspace scope | An RMF package **may span workspaces** (not limited to a single `stig_collection`). |
+| Where stored | The package is stored on the **host + baseline** combination (checklist binding). **Findings inherit** it; reviews are **not** tagged one-by-one with an RMF package id. |
+| Unassigned | Rows with no package belong to the system **Unassigned** package: **name** `unassigned`, **id** `-1` (string). **Not deletable.** |
+| Bulk assign | **Bulk reassignment** is by **host/baseline combo** (not per-review). |
+| Host default | A **host** may have a **default** RMF package. The default is **one global choice per hostname** (same hostname across all workspaces shares one default). Baselines on that host **inherit** the default unless a **host/baseline combo** has an **explicit** package assignment — **explicit combo wins**. Typical case: one host → one package; a rare split across baselines on the same host remains possible. |
+| Uniqueness | A **host + baseline** combination may exist in **only one** RMF package (at most one package per pair). |
+| Administration | **`stig_admin`**, plus Splunk **`admin`** and **`sc_admin`**, may **create** packages and **assign** them (including in-app bulk assign). **`stig_write`** may **not** create packages. |
+| Reporting | **Every** report may run **across all packages** or be **filtered to one package id**: POA&M, in-app findings, HEC, and exports. |
+| Identity | Package **id** is **typed in** by an admin, must be **unique within this app**, and **may match** an id used in other Splunk inventory data. **Name** need **not** be unique. |
+| Id change | The typed package **id may change** (discouraged). A single **rename** must **bulk-update** every reference: each **host default**, each **host/baseline override**, and any **denormalized finding field** that stored the old id. |
+
+**Finding coverage:** Every finding (compliance sense: assessor review row) is in **exactly one** RMF package via inheritance from its host/baseline (or host default / Unassigned). Implementations may denormalize the effective RMF package id on finding rows for reporting; id renames must rewrite those copies (see **Id change**).
+
+### 20.2 External assignment row contract (spec-owned)
+
+Other Splunk datasets may **push** host/baseline package assignments into this app. Each row:
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `host` | yes | Hostname (global key; same as host default scope). |
+| `baseline` | no | When **omitted**, the row sets the **global host default** package for `host`. When **present**, the row sets the **host/baseline override** for that pair. |
+| `package_id` | yes | Target RMF package **id** (string). |
+
+Rules:
+
+- **`package_id` must already exist** as a defined RMF package in this app. An unknown id is a **row error**; ingest **does not** auto-create packages.
+- **Package creation** remains limited to **`stig_admin`** / Splunk **`admin`** / **`sc_admin`** (not available via this row contract).
+- Transport (HEC, `| rest`, saved-search adapter, etc.) is an implementation detail; the **row shape above** is what this spec guarantees.
