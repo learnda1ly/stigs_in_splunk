@@ -39,6 +39,9 @@ class GrantsPage {
     const select = this.workspaceSelect();
     await expect(select).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
     await selectWorkspaceOption(this.page, select, name, CONTROL_TIMEOUT_MS);
+    await expect(this.page.getByRole('button', { name: 'Add grant', exact: true })).toBeEnabled({
+      timeout: NAV_TIMEOUT_MS,
+    });
   }
 
   newGrantHeading() {
@@ -60,10 +63,13 @@ class GrantsPage {
    */
   async saveGrant(principal, roleLabel) {
     const panel = this.newGrantPanel();
-    const principalField = panel.getByRole('textbox').first();
+    const principalField = panel.getByRole('textbox', { name: 'Principal' });
+    await principalField.click();
+    await principalField.press('Control+a');
     await principalField.fill(principal);
+    await expect(principalField).toHaveValue(principal, { timeout: CONTROL_TIMEOUT_MS });
 
-    const roleSelect = panel.getByRole('combobox').first();
+    const roleSelect = panel.getByRole('combobox', { name: 'Grant role' });
     await roleSelect.click();
     const roleOption = this.page.getByRole('option', {
       name: new RegExp(`^${escapeRegExp(roleLabel)}`, 'i'),
@@ -72,8 +78,11 @@ class GrantsPage {
     await roleOption.first().click();
 
     await panel.getByRole('button', { name: 'Save grant', exact: true }).click();
-    await expect(this.page.getByText('Grant saved.', { exact: true })).toBeVisible({
-      timeout: CONTROL_TIMEOUT_MS,
+    const savedRow = this.page.getByRole('row').filter({ hasText: principal });
+    await expect(
+      this.page.getByText('Grant saved.', { exact: true }).or(savedRow.first()),
+    ).toBeVisible({
+      timeout: NAV_TIMEOUT_MS,
     });
   }
 

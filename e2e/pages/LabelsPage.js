@@ -59,6 +59,9 @@ class LabelsPage {
         timeout: CONTROL_TIMEOUT_MS,
       },
     );
+    await expect(this.page.getByRole('button', { name: 'Add label' })).toBeEnabled({
+      timeout: NAV_TIMEOUT_MS,
+    });
   }
 
   /**
@@ -82,6 +85,9 @@ class LabelsPage {
    */
   async setHostLabelToggle(hostname, labelName, assign = true) {
     const table = this.hostAssignmentTable();
+    const header = table.getByRole('columnheader', { name: labelName });
+    await expect(header).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
+
     const row = table.getByRole('row').filter({ hasText: hostname }).first();
     await expect(row).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
 
