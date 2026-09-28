@@ -83,6 +83,7 @@ Use this script to validate onboarding without reading Playwright tests. Mirrors
 | UCC cannot save settings | `chown -R splunk:splunk` on app directory |
 | Cannot delete workspace | Remove hosts/checklists/grants or REST `?cascade=true` with `stig_admin` |
 | Import OK, search empty | HEC token on `stig_findings`; wait for reconcile (~5 min) |
+| Trusted-session / KV errors after custom `server.conf` | **`trustedIP` is a Splunk platform setting** (`$SPLUNK_HOME/etc/system/local/server.conf` or deployment server), not an app setting. Do not ship `[general] trustedIP` in the app package; Splunk Cloud and AppInspect reject it. |
 
 ---
 
