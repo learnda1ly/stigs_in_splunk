@@ -16,4 +16,12 @@ PACKAGE_CHECK="$ROOT/.cursor/skills/splunk-development/scripts/package-check.sh"
 "$PACKAGE_CHECK" "$BUILT"
 
 "$UCC_GEN" package --path "$BUILT" -o "$ROOT/output"
-echo "Package written under $ROOT/output/"
+
+TGZ="$(ls -t "$ROOT/output"/stigs_in_splunk-*.tar.gz 2>/dev/null | head -1 || true)"
+if [[ -z "$TGZ" || ! -f "$TGZ" ]]; then
+  echo "ERROR: expected tarball under $ROOT/output/" >&2
+  exit 1
+fi
+
+"$ROOT/scripts/run_appinspect_package.sh" "$TGZ"
+echo "Package written: $TGZ"

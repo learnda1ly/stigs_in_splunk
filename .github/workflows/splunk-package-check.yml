@@ -37,17 +37,11 @@ jobs:
       - name: Build Splunk app
         run: ./scripts/build_ucc.sh
 
-      - name: Package and run layout check
+      - name: Package, layout check, and AppInspect
         run: ./scripts/package_ucc.sh
 
       - name: slim validate
         run: |
           TGZ="$(ls -t output/stigs_in_splunk-*.tar.gz | head -1)"
           echo "Validating $TGZ"
-          slim validate "$TGZ"
-
-      - name: AppInspect (offline CLI)
-        run: |
-          TGZ="$(ls -t output/stigs_in_splunk-*.tar.gz | head -1)"
-          echo "AppInspect $TGZ (cloud + future tags)"
-          splunk-appinspect inspect "$TGZ" --included-tags cloud,future
+          .venv-ucc/bin/slim validate "$TGZ"
