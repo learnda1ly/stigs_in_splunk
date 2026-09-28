@@ -1093,24 +1093,30 @@ Use after releases or large changes (not a greenfield build checklist):
 
 ## 20. Proposed: RMF packages (not implemented)
 
-**Status:** Product request only — **no** `stig_rmf_packages` collection, REST, or UI in the repo today. Do not overload `stig_reviews.package_id` (that field is the **Evaluate-STIG / CKLB package id**, §7.6).
+**Status:** Product request only — **no** RMF package collection, REST, or UI in the repo today. Do **not** reuse or overload `stig_reviews.package_id` (that field remains the **Evaluate-STIG / CKLB package id**, §7.6).
 
-**Stated requirements (Stephen):**
+RMF packages are **labels** for now (organizational authorization boundary). Each has a **name** and an **id**. REST/KV shapes are out of scope here; the decisions below are product rules for a future implementation.
 
-- RMF packages are **labels** for now (organizational authorization boundary), each with a **name** and an **id**.
-- **Every finding** (compliance sense: assessor review row) ties to **exactly one** RMF package.
-- A **host + baseline** combination may exist in **only one** RMF package (at most one package per host/baseline pair).
-- **Reporting** works **across** RMF packages and can be **filtered** to a single RMF package.
+### 20.1 Decisions
 
-This section does **not** specify schema, REST shapes, or UI beyond the bullets above.
+| Topic | Decision |
+|-------|----------|
+| Workspace scope | An RMF package **may span workspaces** (not limited to a single `stig_collection`). |
+| Where stored | The package is stored on the **host + baseline** combination (checklist binding). **Findings inherit** it; reviews are **not** tagged one-by-one with an RMF package id. |
+| Unassigned | Rows with no package belong to a system **Unassigned** package. **Proposed** reserved id: `unassigned` (not deletable). That reserved id is **proposed, not confirmed**. |
+| Bulk assign | **Bulk reassignment** is by **host/baseline combo** (not per-review). |
+| Host default | A **host** may have a **default** RMF package. Baselines on that host **inherit** the default unless a **host/baseline combo** has an **explicit** package assignment — **explicit combo wins**. Typical case: one host → one package; a rare split across baselines on the same host remains possible. |
+| Uniqueness | A **host + baseline** combination may exist in **only one** RMF package (at most one package per pair). |
+| Administration | **`stig_admin`**, plus Splunk **`admin`** and **`sc_admin`**, may **create and assign** packages. **`stig_write`** may **not**. (Rename/delete rules are not specified beyond Unassigned being not deletable.) |
+| Reporting | **Every** report may run **across all packages** or be **filtered to one package id**: POA&M, in-app findings, HEC, and exports. |
+| Identity | Package **id** is **typed in** by an admin, must be **unique within this app**, and **may match** an id used in other Splunk inventory data. **Name** need **not** be unique. |
 
-### 20.1 Open questions (unanswered)
+**Finding coverage:** Every finding (compliance sense: assessor review row) is in **exactly one** RMF package via inheritance from its host/baseline (or host default / Unassigned).
+
+### 20.2 Open questions (unanswered)
 
 | Question | Notes |
 |----------|--------|
-| Workspace scope | Does an RMF package live inside **one workspace** or **span workspaces**? |
-| Storage model | Is the package stored on the **host/baseline** (checklist) with findings **inheriting** it, or stored directly on each review? |
-| Existing data | What happens to **existing findings** that have **no** RMF package when the feature ships? |
-| Administration | Who may **create, rename, and assign** packages — Splunk **`admin`** / **`sc_admin`**, **`stig_admin`**, or **`stig_write`**? |
-| Report coverage | Which reports must support the RMF filter — **POA&M**, in-app **findings**, **HEC** events, **exports** (CKL/CKLB/archive), others? |
-| Identity rules | Is the package **id** system-generated or **user-supplied**? Must the **name** be **unique** (globally, per workspace, or per package set)? |
+| Host default scope | Is a host’s **default package** global for the same **hostname** across workspaces, or **per workspace** (`stig_collection_id`)? |
+| Id mutability | Is the typed package **id immutable** after create? |
+| Unassigned id | **Confirm** the reserved Unassigned id is **`unassigned`** (currently proposed only). |
