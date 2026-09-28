@@ -1,5 +1,6 @@
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const { restAuthHeader, loadAdminCredentials } = require('../fixtures/credentials');
 const { ImportPage, SELECTORS: importSelectors } = require('../pages/ImportPage');
 const { LibraryPage, SELECTORS: librarySelectors } = require('../pages/LibraryPage');
 
@@ -15,22 +16,11 @@ const MINIMAL_BENCHMARK = path.resolve(
 const STIG_ID = 'Example_STIG';
 const BENCHMARK_TITLE = 'Example STIG for PoC';
 
-function restAuthHeader() {
-  const user = process.env.SPLUNK_ADMIN_USER;
-  const password = process.env.SPLUNK_ADMIN_PASSWORD;
-  if (!user || !password) {
-    return null;
-  }
-  return {
-    Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
-  };
-}
-
 async function listCollections(request) {
-  const headers = restAuthHeader();
-  if (!headers) {
+  if (!loadAdminCredentials().password) {
     return [];
   }
+  const headers = restAuthHeader();
   const response = await request.get(
     `${REST_BASE}/servicesNS/nobody/stigs_in_splunk/stig_collections?output_mode=json`,
     { headers, ignoreHTTPSErrors: true },
