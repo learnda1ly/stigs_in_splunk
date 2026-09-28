@@ -21,6 +21,7 @@
     <view name="stig_workspace_defaults_ui" label="Default revisions" icon="star"/>
     <view name="stig_grants_ui" label="Workspace grants" icon="circlesfour"/>
     <view name="stig_labels_ui" label="Asset labels" icon="tag"/>
+    <view name="stig_rmf_packages_ui" label="RMF packages" icon="bookmark"/>
     <view name="stig_transfer_ui" label="Transfer assets" icon="forwarderuniversal"/>
     <view name="stig_review_requirements_ui" label="Review requirements" icon="bookmark"/>
   </collection>

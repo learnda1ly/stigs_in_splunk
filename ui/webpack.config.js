@@ -23,6 +23,7 @@ module.exports = {
         review_requirements: path.join(__dirname, "src/review_requirements.jsx"),
         grants: path.join(__dirname, "src/grants.jsx"),
         labels: path.join(__dirname, "src/labels.jsx"),
+        rmf_packages: path.join(__dirname, "src/rmf_packages.jsx"),
         library: path.join(__dirname, "src/library.jsx"),
         hosts: path.join(__dirname, "src/hosts.jsx"),
         transfer: path.join(__dirname, "src/transfer.jsx"),
