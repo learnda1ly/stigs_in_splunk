@@ -254,7 +254,7 @@ def _ensure_setup_app_conf(app_conf_path: str) -> None:
 
 
 def additional_packaging(ta_name=None):
-    """Append KV reload triggers to generated app.conf; restore custom nav/views."""
+    """Append allowed reload triggers to generated app.conf; restore custom nav/views."""
     if not ta_name:
         return
     app_root = join(_LAST_OUTPUT_PATH, ta_name)
@@ -271,8 +271,6 @@ def additional_packaging(ta_name=None):
     with open(app_conf, encoding="utf-8") as handle:
         content = handle.read()
     extra = ""
-    if "reload.collections" not in content:
-        extra += "reload.collections = simple\n"
     if "reload.nav" not in content:
         extra += "reload.nav = simple\n"
     if extra:
