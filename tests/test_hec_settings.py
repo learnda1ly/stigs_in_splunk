@@ -7,6 +7,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "package", 
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+from models import DEFAULT_HEC_URL  # noqa: E402
 from services import hec as hec_svc  # noqa: E402
 from services import settings as settings_svc  # noqa: E402
 
@@ -166,6 +167,15 @@ class TestHecTokenLookup(unittest.TestCase):
         self.assertNotIn("hec_token", result)
         self.assertNotIn("server-only-token", str(result))
         self.assertEqual(posted["token"], "server-only-token")
+        self.assertEqual(posted["url"], DEFAULT_HEC_URL)
+
+    def test_save_rejects_off_host_hec_url(self):
+        with self.assertRaises(ValueError):
+            settings_svc.save_settings(
+                object(),
+                {"hec_url": "https://evil.example/services/collector/event"},
+                "admin",
+            )
 
 
 if __name__ == "__main__":

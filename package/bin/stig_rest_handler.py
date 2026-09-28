@@ -1689,6 +1689,8 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error("method not allowed", status=405)
             body = _body_json(payload)
             earliest = query.get("earliest") or body.get("earliest") or None
+            if earliest and not access.user_has_stig_admin(session):
+                return _error("earliest override requires stig_admin", status=403)
             rec = reconcile_svc.reconcile_from_index(
                 service, session, username, earliest=earliest
             )

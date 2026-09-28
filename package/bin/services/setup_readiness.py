@@ -221,13 +221,34 @@ def assess_ownership_readiness() -> Dict[str, Any]:
         }
 
 
+def _ownership_for_session(session: Dict[str, Any]) -> Dict[str, Any]:
+    ownership = assess_ownership_readiness()
+    if access.user_has_stig_admin(session) or (
+        access.user_roles(session) & access.ADMIN_ROLES
+    ):
+        return ownership
+    if ownership.get("ok"):
+        return {
+            "ok": True,
+            "message": ownership.get("message") or "",
+            "next_action": "",
+        }
+    return {
+        "ok": False,
+        "message": (
+            "App filesystem setup must be verified by a Splunk administrator."
+        ),
+        "next_action": "Ask a Splunk admin to open Set up from Manage Apps.",
+    }
+
+
 def build_readiness_report(
     session: Dict[str, Any], service: Any = None
 ) -> Dict[str, Any]:
     session_key = session.get("authtoken") or ""
     roles = assess_role_readiness(session)
     hec = assess_hec_readiness(session_key)
-    ownership = assess_ownership_readiness()
+    ownership = _ownership_for_session(session)
     configured = is_app_configured()
     can_write = access.user_can_edit_findings(service, session)
     return {

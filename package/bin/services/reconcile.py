@@ -7,6 +7,11 @@ import time
 from typing import Any, Dict, List, Optional
 from xml.etree import ElementTree as ET
 
+from ingest_security import (
+    validate_ingest_index,
+    validate_ingest_sourcetype,
+    validate_reconcile_earliest,
+)
 from models import DEFAULT_INGEST_INDEX, DEFAULT_INGEST_SOURCETYPE, DEFAULT_RECONCILE_EARLIEST
 from services import apply as apply_svc
 from services import settings as settings_svc
@@ -39,9 +44,13 @@ def _search_events(
 ) -> List[Dict[str, Any]]:
     if not _HAS_SPLUNK_REST:
         raise RuntimeError("index search is only available inside Splunk")
+    index = validate_ingest_index(index)
+    sourcetype = validate_ingest_sourcetype(sourcetype)
+    earliest = validate_reconcile_earliest(earliest)
+    latest = validate_reconcile_earliest(latest)
     query = (
-        f'search index={index} sourcetype="{sourcetype}" '
-        f"earliest={earliest} latest={latest} | sort 0 _time"
+        f'search index="{index}" sourcetype="{sourcetype}" '
+        f'earliest="{earliest}" latest="{latest}" | sort 0 _time'
     )
     response, content = splunk.rest.simpleRequest(
         "/services/search/jobs",

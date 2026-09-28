@@ -10,6 +10,13 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 import kv_client
+from ingest_security import (
+    normalize_hec_url,
+    validate_hec_url,
+    validate_ingest_index,
+    validate_ingest_sourcetype,
+    validate_reconcile_earliest,
+)
 from models import (
     APP_NAME,
     DEFAULT_HEC_URL,
@@ -96,7 +103,7 @@ def _public(rec: Dict[str, Any], username: str = "") -> Dict[str, Any]:
         "trust_event_collection_id": bool(as_bool(rec.get("trust_event_collection_id"))),
         "ingest_index": rec.get("ingest_index") or DEFAULT_INGEST_INDEX,
         "ingest_sourcetype": rec.get("ingest_sourcetype") or DEFAULT_INGEST_SOURCETYPE,
-        "hec_url": rec.get("hec_url") or DEFAULT_HEC_URL,
+        "hec_url": normalize_hec_url(rec.get("hec_url")),
         "reconcile_earliest": rec.get("reconcile_earliest") or DEFAULT_RECONCILE_EARLIEST,
         "ui_color_scheme": _normalize_ui_color_scheme(
             rec.get("ui_color_scheme")
@@ -236,18 +243,24 @@ def save_settings(service, body: Dict[str, Any], username: str) -> Dict[str, Any
         if "governance_enabled" in body
         else as_bool(existing.get("governance_enabled"))
     )
+    ingest_index = validate_ingest_index(
+        _pick(body, existing, "ingest_index", DEFAULT_INGEST_INDEX)
+    )
+    ingest_sourcetype = validate_ingest_sourcetype(
+        _pick(body, existing, "ingest_sourcetype", DEFAULT_INGEST_SOURCETYPE)
+    )
+    hec_url = validate_hec_url(_pick(body, existing, "hec_url", DEFAULT_HEC_URL))
+    reconcile_earliest = validate_reconcile_earliest(
+        _pick(body, existing, "reconcile_earliest", DEFAULT_RECONCILE_EARLIEST)
+    )
     record = {
         "governance_enabled": bool(gov) if gov is not None else True,
         "vim_mode": bool(vim) if vim is not None else False,
         "trust_event_collection_id": bool(trust) if trust is not None else False,
-        "ingest_index": _pick(body, existing, "ingest_index", DEFAULT_INGEST_INDEX),
-        "ingest_sourcetype": _pick(
-            body, existing, "ingest_sourcetype", DEFAULT_INGEST_SOURCETYPE
-        ),
-        "hec_url": _pick(body, existing, "hec_url", DEFAULT_HEC_URL),
-        "reconcile_earliest": _pick(
-            body, existing, "reconcile_earliest", DEFAULT_RECONCILE_EARLIEST
-        ),
+        "ingest_index": ingest_index,
+        "ingest_sourcetype": ingest_sourcetype,
+        "hec_url": hec_url,
+        "reconcile_earliest": reconcile_earliest,
         "ui_color_scheme": _normalize_ui_color_scheme(
             body.get("ui_color_scheme")
             if "ui_color_scheme" in body
