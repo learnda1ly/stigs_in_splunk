@@ -1103,20 +1103,29 @@ RMF packages are **labels** for now (organizational authorization boundary). Eac
 |-------|----------|
 | Workspace scope | An RMF package **may span workspaces** (not limited to a single `stig_collection`). |
 | Where stored | The package is stored on the **host + baseline** combination (checklist binding). **Findings inherit** it; reviews are **not** tagged one-by-one with an RMF package id. |
-| Unassigned | Rows with no package belong to a system **Unassigned** package. **Proposed** reserved id: `unassigned` (not deletable). That reserved id is **proposed, not confirmed**. |
+| Unassigned | Rows with no package belong to the system **Unassigned** package: **name** `unassigned`, **id** `-1` (string). **Not deletable.** |
 | Bulk assign | **Bulk reassignment** is by **host/baseline combo** (not per-review). |
-| Host default | A **host** may have a **default** RMF package. Baselines on that host **inherit** the default unless a **host/baseline combo** has an **explicit** package assignment — **explicit combo wins**. Typical case: one host → one package; a rare split across baselines on the same host remains possible. |
+| Host default | A **host** may have a **default** RMF package. The default is **one global choice per hostname** (same hostname across all workspaces shares one default). Baselines on that host **inherit** the default unless a **host/baseline combo** has an **explicit** package assignment — **explicit combo wins**. Typical case: one host → one package; a rare split across baselines on the same host remains possible. |
 | Uniqueness | A **host + baseline** combination may exist in **only one** RMF package (at most one package per pair). |
-| Administration | **`stig_admin`**, plus Splunk **`admin`** and **`sc_admin`**, may **create and assign** packages. **`stig_write`** may **not**. (Rename/delete rules are not specified beyond Unassigned being not deletable.) |
+| Administration | **`stig_admin`**, plus Splunk **`admin`** and **`sc_admin`**, may **create** packages and **assign** them (including in-app bulk assign). **`stig_write`** may **not** create packages. |
 | Reporting | **Every** report may run **across all packages** or be **filtered to one package id**: POA&M, in-app findings, HEC, and exports. |
 | Identity | Package **id** is **typed in** by an admin, must be **unique within this app**, and **may match** an id used in other Splunk inventory data. **Name** need **not** be unique. |
+| Id change | The typed package **id may change** (discouraged). A single **rename** must **bulk-update** every reference: each **host default**, each **host/baseline override**, and any **denormalized finding field** that stored the old id. |
 
-**Finding coverage:** Every finding (compliance sense: assessor review row) is in **exactly one** RMF package via inheritance from its host/baseline (or host default / Unassigned).
+**Finding coverage:** Every finding (compliance sense: assessor review row) is in **exactly one** RMF package via inheritance from its host/baseline (or host default / Unassigned). Implementations may denormalize the effective RMF package id on finding rows for reporting; id renames must rewrite those copies (see **Id change**).
 
-### 20.2 Open questions (unanswered)
+### 20.2 External assignment row contract (spec-owned)
 
-| Question | Notes |
-|----------|--------|
-| Host default scope | Is a host’s **default package** global for the same **hostname** across workspaces, or **per workspace** (`stig_collection_id`)? |
-| Id mutability | Is the typed package **id immutable** after create? |
-| Unassigned id | **Confirm** the reserved Unassigned id is **`unassigned`** (currently proposed only). |
+Other Splunk datasets may **push** host/baseline package assignments into this app. Each row:
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `host` | yes | Hostname (global key; same as host default scope). |
+| `baseline` | no | When **omitted**, the row sets the **global host default** package for `host`. When **present**, the row sets the **host/baseline override** for that pair. |
+| `package_id` | yes | Target RMF package **id** (string). |
+
+Rules:
+
+- **`package_id` must already exist** as a defined RMF package in this app. An unknown id is a **row error**; ingest **does not** auto-create packages.
+- **Package creation** remains limited to **`stig_admin`** / Splunk **`admin`** / **`sc_admin`** (not available via this row contract).
+- Transport (HEC, `| rest`, saved-search adapter, etc.) is an implementation detail; the **row shape above** is what this spec guarantees.
