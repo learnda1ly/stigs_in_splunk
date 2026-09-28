@@ -16,6 +16,7 @@ from services import collections as collections_svc
 from services import grants as grants_svc
 from services import hec as hec_svc
 from services import settings as settings_svc
+from services import rmf_packages as rmf_packages_svc
 
 MAX_BATCH_FILES = 500
 
@@ -134,6 +135,14 @@ def import_checklist_file(
         source_product=source_product,
         collection_name=collection_name,
     )
+    for event in findings:
+        resolved = rmf_packages_svc.resolve_package_id(
+            service,
+            event.get("assetName") or "",
+            event.get("baselineId") or "",
+            event.get("benchmarkId") or "",
+        )
+        event["rmf_package_id"] = resolved
     settings = settings_svc.get_settings(service)
     indexed = hec_svc.emit_findings(
         findings,

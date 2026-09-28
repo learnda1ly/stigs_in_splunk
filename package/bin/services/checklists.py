@@ -33,6 +33,7 @@ from services import baselines as baselines_svc
 from services import baseline_defaults as baseline_defaults_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
+from services import rmf_packages as rmf_packages_svc
 from services import hosts as hosts_svc
 from services import review_history as review_history_svc
 from services import settings as settings_svc
@@ -272,6 +273,8 @@ def _spawn_checklist_with_reviews(
     )
     stored_checklist = kv_client.insert_record(checklist_coll, checklist_record)
     checklist_id = stored_checklist["_key"]
+    baseline_stig_id = str(baseline.get("stig_id") or "")
+    host_hostname = host.get("hostname") or ""
 
     review_records = []
     for rule in rules:
@@ -292,6 +295,13 @@ def _spawn_checklist_with_reviews(
             "updated_at": ts,
             "updated_by": username,
         }
+        rmf_packages_svc.stamp_review_rmf_package_id(
+            service,
+            review,
+            hostname=host_hostname,
+            baseline_id=baseline_id,
+            baseline_stig_id=baseline_stig_id,
+        )
         review["valid"] = validation.persistable_valid(review)
         review_records.append(kv_record(review))
     kv_client.batch_insert(reviews_coll, review_records)
@@ -518,6 +528,11 @@ def ensure_review(
             return rec, False
     seed = seed or {}
     ts = now_epoch()
+    host_rec = None
+    if checklist.get("host_id"):
+        hosts_coll = kv_client.get_collection(service, KV_STIG_HOSTS)
+        host_rec = kv_client.get_by_key(hosts_coll, checklist.get("host_id"))
+    baseline = baselines_svc.get_baseline(service, checklist.get("baseline_id") or "") or {}
     review = {
         "checklist_id": checklist_id,
         "baseline_id": checklist.get("baseline_id"),
@@ -534,6 +549,13 @@ def ensure_review(
         "updated_at": ts,
         "updated_by": username,
     }
+    rmf_packages_svc.stamp_review_rmf_package_id(
+        service,
+        review,
+        hostname=(host_rec or {}).get("hostname") or "",
+        baseline_id=str(checklist.get("baseline_id") or ""),
+        baseline_stig_id=str(baseline.get("stig_id") or ""),
+    )
     review["valid"] = validation.persistable_valid(review)
     stored = kv_client.insert_record(reviews_coll, kv_record(review))
     return stored, True

@@ -23,6 +23,12 @@ KV_STIG_REVIEW_HISTORY = "stig_review_history"
 KV_STIG_EDITOR_SETTINGS = "stig_editor_settings"
 KV_STIG_ASSIGNMENT_RULES = "stig_assignment_rules"
 KV_STIG_HOST_BASELINE_ASSIGNMENTS = "stig_host_baseline_assignments"
+KV_STIG_RMF_PACKAGES = "stig_rmf_packages"
+KV_STIG_HOST_RMF_DEFAULTS = "stig_host_rmf_defaults"
+KV_STIG_HOST_BASELINE_RMF_OVERRIDES = "stig_host_baseline_rmf_overrides"
+
+RMF_SYSTEM_PACKAGE_ID = "-1"
+RMF_SYSTEM_PACKAGE_NAME = "unassigned"
 
 DEFAULT_INGEST_INDEX = "stig"
 DEFAULT_INGEST_SOURCETYPE = "stig:finding"

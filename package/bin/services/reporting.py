@@ -391,6 +391,7 @@ def _enrich_finding(
         "ingest_lock": bool(review.get("ingest_lock")),
         "updated_at": review.get("updated_at"),
         "updated_by": review.get("updated_by") or "",
+        "rmf_package_id": review.get("rmf_package_id") or "",
     }
 
 
@@ -436,6 +437,7 @@ def _parse_findings_filters(query: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "hostname_filter": (query.get("hostname") or "").strip().casefold(),
         "baseline_filter": (query.get("baseline_id") or "").strip(),
         "rule_id_filter": (query.get("rule_id") or "").strip(),
+        "rmf_package_id_filter": (query.get("rmf_package_id") or "").strip(),
         "raw": query,
     }
 
@@ -449,6 +451,7 @@ def _filters_response(parsed: Dict[str, Any]) -> Dict[str, Any]:
         "hostname": query.get("hostname") or None,
         "baseline_id": parsed["baseline_filter"] or None,
         "rule_id": parsed["rule_id_filter"] or None,
+        "rmf_package_id": parsed["rmf_package_id_filter"] or None,
     }
 
 
@@ -467,6 +470,7 @@ def _list_collection_findings(
     hostname_filter = parsed["hostname_filter"]
     baseline_filter = parsed["baseline_filter"]
     rule_id_filter = parsed["rule_id_filter"]
+    rmf_package_id_filter = parsed["rmf_package_id_filter"]
 
     if ctx is None:
         ctx = _collection_workspace_context(service, collection_id, session)
@@ -496,6 +500,10 @@ def _list_collection_findings(
                 continue
             if rule_id_filter and review.get("rule_id") != rule_id_filter:
                 continue
+            if rmf_package_id_filter:
+                review_rmf = str(review.get("rmf_package_id") or "").strip()
+                if review_rmf != rmf_package_id_filter:
+                    continue
             sev = review_severity(review, ctx["severity_index"])
             if severity_filter and sev != severity_filter:
                 continue
@@ -681,7 +689,11 @@ def splunk_poam_alternative(collection_id: str) -> Dict[str, Any]:
             "POA&M columns (rule title, CCI) require joining stig_baseline_rules; "
             "use GET /stig_collections/{id}/poam for enriched export."
         ),
-        "findings_table_spl": base + "| table hostname baseline_id group_id rule_id finding_details comments",
+        "findings_table_spl": base
+        + "| table hostname baseline_id group_id rule_id rmf_package_id finding_details comments",
+        "rmf_package_filter_example": base
+        + '| search rmf_package_id="YOUR_PACKAGE_ID" '
+        + "| table hostname baseline_id group_id rule_id rmf_package_id finding_details",
         "outputcsv_example": base + "| outputcsv stig_governance_open_findings.csv",
         "enriched_spl": (
             base
