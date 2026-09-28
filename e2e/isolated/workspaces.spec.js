@@ -1,4 +1,5 @@
 const { test } = require('@playwright/test');
+const { restAuthHeader, loadAdminCredentials } = require('../fixtures/credentials');
 const { WorkspacesPage } = require('../pages/WorkspacesPage');
 const { EditorPage } = require('../pages/EditorPage');
 
@@ -6,22 +7,11 @@ const REST_BASE =
   process.env.SPLUNK_MGMT_URL ||
   (process.env.SPLUNK_BASE_URL || 'https://127.0.0.1:8000').replace(':8000', ':8089');
 
-function restAuthHeader() {
-  const user = process.env.SPLUNK_ADMIN_USER;
-  const password = process.env.SPLUNK_ADMIN_PASSWORD;
-  if (!user || !password) {
-    return null;
-  }
-  return {
-    Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
-  };
-}
-
 async function listCollections(request) {
-  const headers = restAuthHeader();
-  if (!headers) {
+  if (!loadAdminCredentials().password) {
     return [];
   }
+  const headers = restAuthHeader();
   const response = await request.get(
     `${REST_BASE}/servicesNS/nobody/stigs_in_splunk/stig_collections?output_mode=json`,
     { headers, ignoreHTTPSErrors: true },
@@ -33,10 +23,10 @@ async function listCollections(request) {
 }
 
 async function restoreDefaultImportWorkspace(request) {
-  const headers = restAuthHeader();
-  if (!headers) {
+  if (!loadAdminCredentials().password) {
     return;
   }
+  const headers = restAuthHeader();
   const collections = await listCollections(request);
   const builtin = collections.find((row) => row.name === 'Default');
   if (!builtin?._key) {
