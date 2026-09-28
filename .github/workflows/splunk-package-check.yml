@@ -1,0 +1,53 @@
+name: Splunk package verify
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  package-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-ucc.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install UCC build venv
+        run: |
+          python3 -m venv .venv-ucc
+          .venv-ucc/bin/pip install -r requirements-ucc.txt
+          .venv-ucc/bin/pip install splunk-packaging-toolkit splunk-appinspect
+
+      - name: Install SplunkUI dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Build Splunk app
+        run: ./scripts/build_ucc.sh
+
+      - name: Package and run layout check
+        run: ./scripts/package_ucc.sh
+
+      - name: slim validate
+        run: |
+          TGZ="$(ls -t output/stigs_in_splunk-*.tar.gz | head -1)"
+          echo "Validating $TGZ"
+          slim validate "$TGZ"
+
+      - name: AppInspect (offline CLI)
+        run: |
+          TGZ="$(ls -t output/stigs_in_splunk-*.tar.gz | head -1)"
+          echo "AppInspect $TGZ (cloud + future tags)"
+          splunk-appinspect inspect "$TGZ" --included-tags cloud,future

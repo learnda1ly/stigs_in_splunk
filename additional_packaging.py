@@ -74,6 +74,29 @@ def cleanup_output_files(output_path, ta_name):
     _ensure_configuration_fallback(app_root, os.path.isfile(
         join(app_root, "appserver", "static", "js", "build", "entry_page.js")
     ))
+    _strip_non_shippable_artifacts(app_root)
+
+
+def strip_ship_tree(app_root: str) -> None:
+    """Public entry for scripts: remove local/, local.meta, and bytecode."""
+    _strip_non_shippable_artifacts(app_root)
+
+
+def _strip_non_shippable_artifacts(app_root: str) -> None:
+    """Remove runtime local/ metadata and bytecode before tarball packaging."""
+    local_dir = join(app_root, "local")
+    if os.path.isdir(local_dir):
+        shutil.rmtree(local_dir)
+    local_meta = join(app_root, "metadata", "local.meta")
+    if os.path.isfile(local_meta):
+        os.remove(local_meta)
+    for dirpath, dirnames, filenames in os.walk(app_root):
+        if "__pycache__" in dirnames:
+            shutil.rmtree(join(dirpath, "__pycache__"))
+            dirnames.remove("__pycache__")
+        for name in filenames:
+            if name.endswith((".pyc", ".pyo")):
+                os.remove(join(dirpath, name))
 
 
 def _restore_nav_and_views(app_root: str) -> None:
@@ -260,3 +283,4 @@ def additional_packaging(ta_name=None):
             if "reload.stig_editor" not in content:
                 handle.write("reload.stig_editor = simple\n")
     _ensure_setup_app_conf(app_conf)
+    _strip_non_shippable_artifacts(app_root)
