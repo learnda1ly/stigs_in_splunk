@@ -12,7 +12,7 @@ The Documentation page covers these topics (also in `package/appserver/static/do
 
 1. **Overview** — What the app does (KV review state, not STIG Manager).
 2. **Before you begin** — Splunk 9.x, KV, indexes, admin access.
-3. **Install** — Tarball / Manage Apps; **`chown -R splunk:splunk`** after root install.
+3. **Install** — Tarball / Manage Apps; **`chown -R splunk:splunk`** after root install. The tarball must not include **`metadata/local.meta`**; Splunk writes that at runtime (dev bind-mount: **`./scripts/link-splunk-app.sh`** seeds an empty file).
 4. **Access control** — Capabilities and `stig_user` / `stig_admin` roles (`authorize.conf`).
 5. **HEC** — Input `stig_findings`, index `stig`, sourcetype `stig:finding`; token only in Splunk Data inputs.
 6. **Quick start (~15 min)** — Numbered path below.
