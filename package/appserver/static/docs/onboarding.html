@@ -80,6 +80,7 @@
     <li>UCC save errors — fix <code>chown</code> on app directory.</li>
     <li>Delete workspace 409 — remove dependents or REST cascade delete.</li>
     <li>Search empty after import — verify HEC token on <code>stig_findings</code>.</li>
+    <li><code>trustedIP</code> / trusted-session issues — configure <code>trustedIP</code> on the <strong>Splunk platform</strong> (<code>server.conf</code> under <code>etc/system/local</code> or your deployment server), not in the app. The installable app does not ship <code>server.conf</code>; Cloud vetting disallows app-level global server settings.</li>
   </ul>
 
   <h2 id="further-reading">10. Further reading (repository)</h2>
