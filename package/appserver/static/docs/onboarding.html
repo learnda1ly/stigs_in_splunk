@@ -33,6 +33,7 @@
   <h2 id="install">3. Install</h2>
   <p>Install tarball via Manage Apps or extract to <code>$SPLUNK_HOME/etc/apps/stigs_in_splunk</code>.</p>
   <pre>chown -R splunk:splunk $SPLUNK_HOME/etc/apps/stigs_in_splunk</pre>
+  <p>The installable app does <strong>not</strong> ship <code>metadata/local.meta</code> (instance permissions belong in runtime <code>local/</code> on the Splunk box). Splunk creates or updates that file when you save object permissions; ensure <code>local/</code> and <code>metadata/</code> are owned by the <code>splunk</code> user after install. For bind-mount dev, <code>./scripts/link-splunk-app.sh</code> seeds an empty <code>metadata/local.meta</code> so UCC settings can save.</p>
   <p class="muted">Production installs use the tarball; developer builds use <code>./scripts/build_ucc.sh</code>.</p>
 
   <h2 id="access-control">4. Access control</h2>

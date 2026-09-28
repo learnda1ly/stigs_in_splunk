@@ -15,3 +15,6 @@ __pycache__/
 *.py[cod]
 .Python
 *.egg-info/
+
+# Runtime Splunk metadata — never commit (see app-structure.md)
+package/metadata/local.meta

@@ -40,7 +40,7 @@ Optional (integration tests / scripts only — not shipped in the built app):
 
 ```bash
 ./scripts/build_ucc.sh              # -> output/stigs_in_splunk/
-./scripts/package_ucc.sh            # -> output/stigs_in_splunk-0.1.0.tar.gz
+./scripts/package_ucc.sh            # -> output/stigs_in_splunk-0.1.0.tar.gz (fails if metadata/local.meta is present)
 ```
 
 Install on Splunk: extract the tarball into `$SPLUNK_HOME/etc/apps/` or use Splunk Web → Manage Apps → Install app from file.
