@@ -131,50 +131,50 @@ export default function RmfPackagesApp() {
     }, []);
 
     const loadHosts = useCallback(async (cid, workspaceList) => {
-            const list = workspaceList || workspaces;
-            if (!cid || isAllWorkspaces(cid)) {
-                const ids = (list || [])
-                    .map((w) => w._key)
-                    .filter(Boolean);
-                const chunks = await Promise.all(
-                    ids.map((id) =>
-                        apiGet("stig_hosts", { stig_collection_id: id }).then(
-                            (rows) => (Array.isArray(rows) ? rows : [])
-                        )
+        const list = workspaceList || [];
+        if (!cid || isAllWorkspaces(cid)) {
+            const ids = list.map((w) => w._key).filter(Boolean);
+            const chunks = await Promise.all(
+                ids.map((id) =>
+                    apiGet("stig_hosts", { stig_collection_id: id }).then((rows) =>
+                        Array.isArray(rows) ? rows : []
                     )
-                );
-                setHosts(chunks.reduce((acc, part) => acc.concat(part), []));
-                return;
-            }
-            const rows = await apiGet("stig_hosts", workspaceScopeQuery(cid));
-            setHosts(Array.isArray(rows) ? rows : []);
-        },
-        [workspaces]
-    );
+                )
+            );
+            setHosts(chunks.reduce((acc, part) => acc.concat(part), []));
+            return;
+        }
+        const rows = await apiGet("stig_hosts", workspaceScopeQuery(cid));
+        setHosts(Array.isArray(rows) ? rows : []);
+    }, []);
 
-    const load = useCallback(async () => {
+    const refresh = useCallback(async () => {
         setLoading(true);
         setError("");
         try {
-            const colls = await loadCore();
-            const def = defaultWorkspaceId(colls);
-            const cid = collectionId || def || "";
-            if (!collectionId && cid) {
-                setCollectionId(cid);
-            }
-            if (cid) {
-                await loadHosts(cid, colls);
-            }
+            await loadCore();
         } catch (err) {
             setError(String(err.message || err));
         } finally {
             setLoading(false);
         }
-    }, [collectionId, loadCore, loadHosts]);
+    }, [loadCore]);
 
     useEffect(() => {
-        load();
-    }, [load]);
+        refresh();
+    }, [refresh]);
+
+    useEffect(() => {
+        if (!workspaces.length) {
+            return;
+        }
+        setCollectionId((prev) => {
+            if (prev && workspaces.some((w) => w._key === prev)) {
+                return prev;
+            }
+            return defaultWorkspaceId(workspaces) || "";
+        });
+    }, [workspaces]);
 
     useEffect(() => {
         apiGet("stig_readiness")
@@ -189,11 +189,12 @@ export default function RmfPackagesApp() {
     }, []);
 
     useEffect(() => {
-        if (collectionId && workspaces.length) {
-            loadHosts(collectionId, workspaces).catch((err) =>
-                setError(String(err.message || err))
-            );
+        if (!collectionId || !workspaces.length) {
+            return;
         }
+        loadHosts(collectionId, workspaces).catch((err) =>
+            setError(String(err.message || err))
+        );
     }, [collectionId, workspaces, loadHosts]);
 
     const uniqueHostnames = useMemo(() => {
@@ -511,7 +512,7 @@ export default function RmfPackagesApp() {
                         includeAllWorkspaces
                         label="Hosts scope (resolution preview)"
                     />
-                    <Button label="Refresh" onClick={load} disabled={loading} />
+                    <Button label="Refresh" onClick={refresh} disabled={loading} />
                 </Toolbar>
             </Header>
             <PagePad>

@@ -17,6 +17,7 @@
     <view name="stig_audit_dashboard" label="Audit" icon="pulse"/>
   </collection>
   <collection label="Admin" icon="cog">
+    <view name="stig_configuration_ui" label="Configuration" icon="gear"/>
     <view name="stig_assignment_ui" label="Assignment" icon="networkconnector"/>
     <view name="stig_workspace_defaults_ui" label="Default revisions" icon="star"/>
     <view name="stig_grants_ui" label="Workspace grants" icon="circlesfour"/>
