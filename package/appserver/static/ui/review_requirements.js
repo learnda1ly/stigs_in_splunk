@@ -259,7 +259,7 @@
         color: #fff;
         border-color: #1e3a5f;
     }
-`;const fe={not_reviewed:"Not Reviewed",open:"Open",not_a_finding:"Not a Finding",not_applicable:"Not Applicable"};re.default.span`
+`;const fe={not_reviewed:"Not Reviewed",open:"Open",not_a_finding:"Not a Finding",not_applicable:"Not Applicable",informational:"Informational"};re.default.span`
     display: inline-block;
     max-width: 100%;
     padding: 2px 8px;

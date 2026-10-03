@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional, Tuple
 
 from cklb_shape import parse_disa_description
-from models import check_content_hash, dumps_json, strip_ns
+from models import check_content_hash, dumps_json, normalize_benchmark_status, strip_ns
 
 
 def _text(element: Optional[ET.Element]) -> str:
@@ -67,8 +67,10 @@ def parse_xccdf(content: bytes | str, source_uri: str = "") -> Tuple[Dict[str, A
     benchmark_id = benchmark.get("id") or ""
 
     status_el = benchmark.find("{*}status")
-    release_info = _text(status_el) if status_el is not None else ""
+    status_text = _text(status_el) if status_el is not None else ""
+    release_info = status_text
     benchmark_date = status_el.get("date", "") if status_el is not None else ""
+    benchmark_status = normalize_benchmark_status(status_text)
 
     version_el = benchmark.find("{*}version")
     version = _text(version_el)
@@ -110,6 +112,7 @@ def parse_xccdf(content: bytes | str, source_uri: str = "") -> Tuple[Dict[str, A
         "version": version,
         "release_info": release_info,
         "benchmark_date": benchmark_date,
+        "benchmark_status": benchmark_status,
         "xccdf_benchmark_id": benchmark_id,
         "source_type": "xccdf",
         "source_uri": source_uri,

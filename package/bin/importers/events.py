@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from importers.ingest import result_from_status, status_from_result
-from models import check_content_hash, now_epoch, parse_json_field
+from models import check_content_hash, normalize_result_engine, now_epoch, parse_json_field
 
 
 EXPORT_RULE_FIELDS = (
@@ -231,7 +231,9 @@ def build_finding_event(
         "detail": review.get("detail") or review.get("finding_details") or "",
         "comment": review.get("comment") or review.get("comments") or "",
         "status": review.get("status") or "saved",
-        "resultEngine": review.get("resultEngine"),
+        "resultEngine": normalize_result_engine(
+            review.get("resultEngine") or review.get("result_engine")
+        ),
         "rule": _rule_payload(rule),
         "hostId": host_id,
         "checklistId": checklist_id,

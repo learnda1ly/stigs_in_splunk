@@ -12,7 +12,7 @@ import xml.etree.ElementTree as ET
 from typing import Any, Dict, List
 
 from cklb_shape import index_reviews, lookup_review, resolve_stig_id, viewer_rule_ids
-from models import STATUS_TO_RESULT
+from models import STATUS_TO_RESULT, normalize_result_engine
 
 XCCDF_NS = "http://checklists.nist.gov/xccdf/1.2"
 EXPORT_TEST_SYSTEM = "stigs_in_splunk:collection-archive-export"
@@ -92,6 +92,10 @@ def export_xccdf_results(
         if detail:
             msg = ET.SubElement(rr, f"{{{XCCDF_NS}}}message", {"severity": "info"})
             msg.text = detail
+        engine = normalize_result_engine(review.get("result_engine"))
+        if engine and engine.get("product"):
+            check = ET.SubElement(rr, f"{{{XCCDF_NS}}}check")
+            check.set("system", str(engine.get("product")))
 
     xml_body = ET.tostring(root, encoding="unicode", xml_declaration=True)
     if not xml_body.startswith("<?xml"):
