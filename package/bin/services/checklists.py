@@ -290,6 +290,7 @@ def _spawn_checklist_with_reviews(
             "finding_details": seed.get("finding_details") or "",
             "comments": seed.get("comments") or "",
             "package_id": str(seed.get("package_id") or ""),
+            "result_engine": seed.get("result_engine") or "",
             "ingest_lock": False,
             "workflow_state": "draft",
             "updated_at": ts,
@@ -453,6 +454,8 @@ def apply_review_seeds(
             patch["comments"] = seed["comments"] or ""
         if "package_id" in seed:
             patch["package_id"] = seed["package_id"] or ""
+        if "result_engine" in seed:
+            patch["result_engine"] = seed["result_engine"] or ""
         patch["valid"] = validation.persistable_valid(patch)
         patch["updated_at"] = ts
         patch["updated_by"] = username
@@ -544,6 +547,7 @@ def ensure_review(
         "finding_details": seed.get("finding_details") or "",
         "comments": seed.get("comments") or "",
         "package_id": str(seed.get("package_id") or ""),
+        "result_engine": seed.get("result_engine") or "",
         "ingest_lock": False,
         "workflow_state": "draft",
         "updated_at": ts,

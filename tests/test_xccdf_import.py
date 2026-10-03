@@ -16,6 +16,7 @@ class TestXccdfImport(unittest.TestCase):
             content = handle.read()
         meta, rules = xccdf.parse_xccdf(content, source_uri="minimal_benchmark.xml")
         self.assertEqual(meta["source_type"], "xccdf")
+        self.assertEqual(meta.get("benchmark_status"), "accepted")
         self.assertEqual(len(rules), 1)
         rule = rules[0]
         self.assertEqual(rule["group_id"], "V-000001")

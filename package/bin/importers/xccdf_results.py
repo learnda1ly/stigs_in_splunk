@@ -16,7 +16,7 @@ XCCDF_RESULT_TO_WATCHER = {
     "notselected": "notchecked",
     "unknown": "notchecked",
     "error": "notchecked",
-    "informational": "notchecked",
+    "informational": "informational",
     "fixed": "pass",
 }
 

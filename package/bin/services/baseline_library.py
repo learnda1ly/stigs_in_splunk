@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import kv_client
 from models import KV_STIG_BASELINE_RULES
 from services import baselines as baselines_svc
+from models import is_selectable_catalog_baseline
 from services.revision_upgrade import parse_dis_version
 
 
@@ -43,6 +44,7 @@ def revision_summary(rec: Dict[str, Any]) -> Dict[str, Any]:
         "version": rec.get("version") or "",
         "release_info": rec.get("release_info") or "",
         "benchmark_date": rec.get("benchmark_date") or "",
+        "benchmark_status": rec.get("benchmark_status") or "accepted",
         "content_fingerprint": rec.get("content_fingerprint") or "",
         "rule_count": rule_count,
         "imported_at": rec.get("imported_at"),
@@ -59,7 +61,8 @@ def revision_summary(rec: Dict[str, Any]) -> Dict[str, Any]:
 
 def _benchmark_entry(stig_id: str, revisions: List[Dict[str, Any]]) -> Dict[str, Any]:
     ordered = sorted(revisions, key=_revision_sort_key, reverse=True)
-    latest = ordered[0]
+    selectable = [rec for rec in ordered if is_selectable_catalog_baseline(rec)]
+    latest = selectable[0] if selectable else ordered[0]
     return {
         "stig_id": stig_id,
         "title": latest.get("title") or latest.get("stig_name") or stig_id,

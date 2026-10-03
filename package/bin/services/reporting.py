@@ -12,8 +12,10 @@ from models import (
     KV_STIG_BASELINE_RULES,
     KV_STIG_CHECKLISTS,
     KV_STIG_HOSTS,
+    KV_STIG_LABELS,
     KV_STIG_REVIEWS,
     STATUSES,
+    STATUS_TO_RESULT,
     now_epoch,
     parse_json_field,
 )
@@ -38,9 +40,24 @@ UNREVIEWED_STATUS = "not_reviewed"
 UNREVIEWED_DEFINITION = (
     "A review counts as unreviewed when its assessor status is not_reviewed "
     "(CKL Not Reviewed / STIG Manager notchecked). Rows with open, not_a_finding, "
-    "or not_applicable are excluded. Governance workflow (submitted/accepted/rejected) "
+    "informational, or not_applicable are excluded. Governance workflow (submitted/accepted/rejected) "
     "does not override status; only not_reviewed rows appear in these reports. "
     "Host and checklist visibility follows the same grant ACL filters as metrics and findings."
+)
+
+METRICS_EXPORT_GROUPINGS = frozenset(
+    {"collection", "asset", "stig", "label", "ungrouped"}
+)
+METRICS_RESULT_KEYS = (
+    "pass",
+    "fail",
+    "notapplicable",
+    "notchecked",
+    "notselected",
+    "informational",
+    "unknown",
+    "error",
+    "fixed",
 )
 
 
@@ -1139,3 +1156,317 @@ def collection_unreviewed_rules(
         "rules": rules,
         "splunk_alternative": splunk_unreviewed_alternative(collection_id),
     }
+
+
+def _metrics_export_result_counts(reviews: List[Dict[str, Any]]) -> Dict[str, int]:
+    counts = {key: 0 for key in METRICS_RESULT_KEYS}
+    for review in reviews:
+        status = review.get("status") or "not_reviewed"
+        result = STATUS_TO_RESULT.get(status, "notchecked")
+        if result not in counts:
+            result = "notchecked"
+        counts[result] += 1
+    return counts
+
+
+def _metrics_export_workflow_counts(
+    reviews: List[Dict[str, Any]], *, governance_enabled: bool
+) -> Dict[str, int]:
+    out = {"saved": 0, "submitted": 0, "accepted": 0, "rejected": 0}
+    for review in reviews:
+        state = review_workflow.workflow_state(review)
+        if state == "draft":
+            out["saved"] += 1
+        elif state == "submitted":
+            out["submitted"] += 1
+        elif state == "accepted":
+            out["accepted"] += 1
+        elif state == "rejected":
+            out["rejected"] += 1
+    return out
+
+
+def _metrics_export_review_ages(reviews: List[Dict[str, Any]]) -> Dict[str, Any]:
+    stamps = []
+    for review in reviews:
+        try:
+            val = float(review.get("updated_at") or 0)
+        except (TypeError, ValueError):
+            continue
+        if val > 0:
+            stamps.append(val)
+    if not stamps:
+        return {
+            "oldest_review_at": None,
+            "newest_review_at": None,
+            "oldest_review_age_seconds": None,
+            "newest_review_age_seconds": None,
+        }
+    oldest = min(stamps)
+    newest = max(stamps)
+    now = now_epoch()
+    return {
+        "oldest_review_at": oldest,
+        "newest_review_at": newest,
+        "oldest_review_age_seconds": round(now - oldest, 3),
+        "newest_review_age_seconds": round(now - newest, 3),
+    }
+
+
+def _metrics_export_row(
+    reviews: List[Dict[str, Any]],
+    *,
+    governance_enabled: bool,
+    group_key: str,
+    labels: Dict[str, Any],
+) -> Dict[str, Any]:
+    ages = _metrics_export_review_ages(reviews)
+    return {
+        **labels,
+        "group_key": group_key,
+        "review_count": len(reviews),
+        "results": _metrics_export_result_counts(reviews),
+        "workflow": _metrics_export_workflow_counts(
+            reviews, governance_enabled=governance_enabled
+        ),
+        **ages,
+    }
+
+
+def _collect_collection_reviews(
+    service,
+    collection_id: str,
+    session: Dict[str, Any],
+    query: Optional[Dict[str, Any]] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    query = query or {}
+    ctx = _collection_workspace_context(service, collection_id, session)
+    reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
+    reviews: List[Dict[str, Any]] = []
+    rmf_filter = (query.get("rmf_package_id") or "").strip()
+    for checklist_id, checklist in ctx["checklist_by_id"].items():
+        for review in kv_client.query_all(reviews_coll, {"checklist_id": checklist_id}):
+            if rmf_filter:
+                if str(review.get("rmf_package_id") or "").strip() != rmf_filter:
+                    continue
+            review = dict(review)
+            review["_checklist"] = checklist
+            review["_host"] = ctx["host_by_id"].get(checklist.get("host_id") or "", {})
+            review["_baseline"] = ctx["baselines"].get(
+                review.get("baseline_id") or checklist.get("baseline_id") or "", {}
+            )
+            reviews.append(review)
+    return reviews, ctx
+
+
+def _metrics_export_rows(
+    reviews: List[Dict[str, Any]],
+    grouping: str,
+    *,
+    collection_id: str,
+    collection_name: str,
+    governance_enabled: bool,
+    service,
+) -> List[Dict[str, Any]]:
+    buckets: Dict[str, List[Dict[str, Any]]] = {}
+    bucket_labels: Dict[str, Dict[str, Any]] = {}
+
+    def _add(key: str, labels: Dict[str, Any], review: Dict[str, Any]) -> None:
+        buckets.setdefault(key, []).append(review)
+        if key not in bucket_labels:
+            bucket_labels[key] = labels
+
+    if grouping == "collection":
+        buckets[collection_id] = list(reviews)
+        bucket_labels[collection_id] = {
+            "stig_collection_id": collection_id,
+            "collection_name": collection_name,
+        }
+    elif grouping == "ungrouped":
+        for review in reviews:
+            checklist = review.get("_checklist") or {}
+            host = review.get("_host") or {}
+            baseline = review.get("_baseline") or {}
+            key = "|".join(
+                [
+                    str(checklist.get("_key") or ""),
+                    str(host.get("_key") or ""),
+                    str(baseline.get("_key") or ""),
+                ]
+            )
+            _add(
+                key,
+                {
+                    "checklist_id": checklist.get("_key") or "",
+                    "host_id": host.get("_key") or "",
+                    "hostname": host.get("hostname") or "",
+                    "baseline_id": baseline.get("_key") or "",
+                    "stig_id": baseline.get("stig_id") or "",
+                    "baseline_title": baseline.get("title") or "",
+                },
+                review,
+            )
+    elif grouping == "asset":
+        for review in reviews:
+            host = review.get("_host") or {}
+            host_id = str(host.get("_key") or "")
+            if not host_id:
+                continue
+            _add(
+                host_id,
+                {
+                    "host_id": host_id,
+                    "hostname": host.get("hostname") or "",
+                },
+                review,
+            )
+    elif grouping == "stig":
+        for review in reviews:
+            baseline = review.get("_baseline") or {}
+            baseline_id = str(baseline.get("_key") or review.get("baseline_id") or "")
+            if not baseline_id:
+                continue
+            _add(
+                baseline_id,
+                {
+                    "baseline_id": baseline_id,
+                    "stig_id": baseline.get("stig_id") or "",
+                    "baseline_title": baseline.get("title") or "",
+                    "baseline_version": baseline.get("version") or "",
+                },
+                review,
+            )
+    elif grouping == "label":
+        labels_coll = kv_client.get_collection(service, KV_STIG_LABELS)
+        label_names = {
+            str(rec.get("_key") or ""): rec.get("name") or ""
+            for rec in kv_client.query_all(labels_coll, {"stig_collection_id": collection_id})
+        }
+        for review in reviews:
+            host = review.get("_host") or {}
+            label_ids = parse_json_field(host.get("label_ids"), default=[]) or []
+            if not isinstance(label_ids, list) or not label_ids:
+                _add(
+                    "__unlabeled__",
+                    {"label_id": "", "label_name": "(unlabeled)"},
+                    review,
+                )
+                continue
+            for label_id in label_ids:
+                lid = str(label_id or "").strip()
+                if not lid:
+                    continue
+                _add(
+                    lid,
+                    {
+                        "label_id": lid,
+                        "label_name": label_names.get(lid) or lid,
+                    },
+                    review,
+                )
+    else:
+        raise ValueError(f"invalid grouping: {grouping}")
+
+    rows: List[Dict[str, Any]] = []
+    for key in sorted(buckets.keys()):
+        rows.append(
+            _metrics_export_row(
+                buckets[key],
+                governance_enabled=governance_enabled,
+                group_key=key,
+                labels=bucket_labels.get(key) or {},
+            )
+        )
+    return rows
+
+
+def metrics_export_to_csv(rows: List[Dict[str, Any]]) -> str:
+    headers = [
+        "group_key",
+        "stig_collection_id",
+        "collection_name",
+        "host_id",
+        "hostname",
+        "baseline_id",
+        "stig_id",
+        "baseline_title",
+        "label_id",
+        "label_name",
+        "checklist_id",
+        "review_count",
+        "oldest_review_at",
+        "newest_review_at",
+        "oldest_review_age_seconds",
+        "newest_review_age_seconds",
+    ] + [f"result_{k}" for k in METRICS_RESULT_KEYS] + [
+        "workflow_saved",
+        "workflow_submitted",
+        "workflow_accepted",
+        "workflow_rejected",
+    ]
+    lines = [",".join(headers)]
+    for row in rows:
+        results = row.get("results") or {}
+        workflow = row.get("workflow") or {}
+        values = []
+        for col in headers:
+            if col.startswith("result_"):
+                values.append(str(results.get(col[len("result_") :], 0)))
+            elif col == "workflow_saved":
+                values.append(str(workflow.get("saved", 0)))
+            elif col == "workflow_submitted":
+                values.append(str(workflow.get("submitted", 0)))
+            elif col == "workflow_accepted":
+                values.append(str(workflow.get("accepted", 0)))
+            elif col == "workflow_rejected":
+                values.append(str(workflow.get("rejected", 0)))
+            else:
+                val = row.get(col, "")
+                text = "" if val is None else str(val)
+                if any(ch in text for ch in '",\n\r'):
+                    text = '"' + text.replace('"', '""') + '"'
+                values.append(text)
+        lines.append(",".join(values))
+    return "\n".join(lines) + "\n"
+
+
+def collection_metrics_export(
+    service,
+    collection_id: str,
+    session: Dict[str, Any],
+    query: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    query = query or {}
+    grouping = (query.get("grouping") or "collection").strip().lower()
+    if grouping not in METRICS_EXPORT_GROUPINGS:
+        raise ValueError(
+            f"grouping must be one of: {', '.join(sorted(METRICS_EXPORT_GROUPINGS))}"
+        )
+    fmt = (query.get("format") or "json").strip().lower()
+    collection = _require_read_collection(service, collection_id, session)
+    reviews, _ctx = _collect_collection_reviews(service, collection_id, session, query)
+    governance_enabled = settings_svc.is_governance_enabled(
+        settings_svc.get_settings(service)
+    )
+    rows = _metrics_export_rows(
+        reviews,
+        grouping,
+        collection_id=collection_id,
+        collection_name=collection.get("name") or "",
+        governance_enabled=governance_enabled,
+        service=service,
+    )
+    payload: Dict[str, Any] = {
+        "stig_collection_id": collection_id,
+        "collection_name": collection.get("name") or "",
+        "grouping": grouping,
+        "generated_at": now_epoch(),
+        "row_count": len(rows),
+        "rows": rows,
+    }
+    if fmt == "csv":
+        payload["format"] = "csv"
+        payload["csv"] = metrics_export_to_csv(rows)
+    elif fmt not in ("json", ""):
+        raise ValueError("format must be json or csv")
+    return payload

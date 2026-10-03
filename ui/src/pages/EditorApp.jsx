@@ -66,6 +66,18 @@ import { useGovernanceEnabled } from "../governance/settings";
 import { VimGlobalStyle } from "../vim/styles";
 import { useEditorKeys } from "../vim/useEditorKeys";
 
+function formatResultEngine(raw) {
+    if (raw == null || raw === "") {
+        return "—";
+    }
+    try {
+        const obj = typeof raw === "string" ? JSON.parse(raw) : raw;
+        return JSON.stringify(obj, null, 2);
+    } catch (err) {
+        return String(raw);
+    }
+}
+
 function parseDisVersion(version) {
     const text = String(version || "").trim().replace(/\s+/g, "");
     const match = text.match(/^v?(\d+)r(\d+)$/i);
@@ -1792,6 +1804,11 @@ export default function EditorApp() {
                                 >
                                     Lock this finding — do not override from HEC
                                 </Switch>
+                            </ControlGroup>
+                            <ControlGroup label="Result engine (scan / override provenance)">
+                                <PreBlock>
+                                    {formatResultEngine(selected.review.result_engine)}
+                                </PreBlock>
                             </ControlGroup>
                             <ControlGroup label="Check content">
                                 <PreBlock>

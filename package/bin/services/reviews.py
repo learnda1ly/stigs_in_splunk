@@ -9,7 +9,16 @@ import audit
 import kv_client
 import review_workflow
 import validation
-from models import KV_STIG_REVIEWS, STATUSES, as_bool, kv_record, now_epoch, normalize_status
+from models import (
+    KV_STIG_REVIEWS,
+    STATUSES,
+    as_bool,
+    kv_record,
+    normalize_result_engine,
+    normalize_status,
+    now_epoch,
+    serialize_result_engine,
+)
 from models import KV_STIG_CHECKLISTS, KV_STIG_COLLECTIONS
 from services import checklists as checklists_svc
 from services import collections as collections_svc
@@ -372,7 +381,14 @@ def update_review(
     if not access.user_can_write_collection(workspace, session, grants):
         raise PermissionError("stig_write required")
 
-    content_keys = {"status", "finding_details", "comments", "package_id", "ingest_lock"}
+    content_keys = {
+        "status",
+        "finding_details",
+        "comments",
+        "package_id",
+        "result_engine",
+        "ingest_lock",
+    }
     governance_enabled = _governance_enabled(service)
     if any(k in body for k in content_keys):
         _ensure_editable(
@@ -394,6 +410,14 @@ def update_review(
         patch["comments"] = body["comments"]
     if "package_id" in body:
         patch["package_id"] = "" if body["package_id"] is None else str(body["package_id"])
+    if "result_engine" in body:
+        if body["result_engine"] is None:
+            patch["result_engine"] = ""
+        else:
+            engine = normalize_result_engine(body["result_engine"])
+            if engine is None:
+                raise ValueError("result_engine must be a JSON object")
+            patch["result_engine"] = serialize_result_engine(engine)
     if "ingest_lock" in body:
         locked = as_bool(body["ingest_lock"])
         if locked is None:

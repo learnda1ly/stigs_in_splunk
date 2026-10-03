@@ -53,7 +53,7 @@ VALID_UI_THEME_PRESETS = frozenset(
 )
 
 STATUSES = frozenset(
-    {"not_reviewed", "open", "not_a_finding", "not_applicable"}
+    {"not_reviewed", "open", "not_a_finding", "not_applicable", "informational"}
 )
 
 STATUS_TO_CKLB = {
@@ -61,6 +61,7 @@ STATUS_TO_CKLB = {
     "open": "open",
     "not_a_finding": "not_a_finding",
     "not_applicable": "not_applicable",
+    "informational": "informational",
 }
 
 STATUS_TO_CKL = {
@@ -68,6 +69,7 @@ STATUS_TO_CKL = {
     "open": "Open",
     "not_a_finding": "NotAFinding",
     "not_applicable": "Not_Applicable",
+    "informational": "Informational",
 }
 
 CKLB_TO_STATUS = {v: k for k, v in STATUS_TO_CKLB.items()}
@@ -79,13 +81,14 @@ STATUS_TO_RESULT = {
     "open": "fail",
     "not_a_finding": "pass",
     "not_applicable": "notapplicable",
+    "informational": "informational",
 }
 RESULT_TO_STATUS = {
     "notchecked": "not_reviewed",
     "notselected": "not_reviewed",
     "unknown": "not_reviewed",
     "error": "not_reviewed",
-    "informational": "not_reviewed",
+    "informational": "informational",
     "fail": "open",
     "fixed": "not_a_finding",
     "pass": "not_a_finding",
@@ -160,6 +163,39 @@ def parse_json_field(value: Any, default: Any = None) -> Any:
 
 def dumps_json(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"))
+
+
+def normalize_benchmark_status(value: Optional[str]) -> str:
+    """XCCDF Benchmark status text (accepted, draft, …)."""
+    text = str(value or "").strip().lower()
+    if text in ("draft", "interim"):
+        return "draft"
+    if not text or text in ("accepted", "approved"):
+        return "accepted"
+    return text
+
+
+def is_selectable_catalog_baseline(baseline: Optional[Dict[str, Any]]) -> bool:
+    """Draft benchmark revisions are not used for unpinned latest resolution."""
+    if not baseline:
+        return False
+    return normalize_benchmark_status(baseline.get("benchmark_status")) != "draft"
+
+
+def normalize_result_engine(value: Any) -> Optional[Dict[str, Any]]:
+    if value is None or value == "":
+        return None
+    if isinstance(value, dict):
+        return dict(value)
+    parsed = parse_json_field(value, default=None)
+    return parsed if isinstance(parsed, dict) else None
+
+
+def serialize_result_engine(value: Any) -> str:
+    engine = normalize_result_engine(value)
+    if not engine:
+        return ""
+    return dumps_json(engine)
 
 
 def normalize_status(value: Optional[str], source: str = "internal") -> Optional[str]:
