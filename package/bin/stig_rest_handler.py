@@ -27,6 +27,7 @@ from services import baseline_jobs as baseline_jobs_svc
 from services import checklists as checklists_svc
 from services import baseline_defaults as baseline_defaults_svc
 from services import review_aging as review_aging_svc
+from services import review_aging_actions as review_aging_actions_svc
 from services import review_requirements as review_requirements_svc
 from services import collection_metadata as collection_metadata_svc
 from services import collection_clone as collection_clone_svc
@@ -398,6 +399,38 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     return _error("not found", status=404)
                 except PermissionError as exc:
                     return _error(str(exc), status=403)
+            if len(parts) == 3 and parts[2] == "apply":
+                if method not in ("GET", "POST"):
+                    return _error("method not allowed", status=405)
+                body = _body_json(payload)
+                execute = False
+                if method == "POST":
+                    execute = review_aging_actions_svc.parse_execute_flag(query, body)
+                try:
+                    limit = int(query.get("limit") or body.get("limit") or 500)
+                except (TypeError, ValueError):
+                    limit = 500
+                if limit < 1:
+                    limit = 1
+                if limit > 2000:
+                    limit = 2000
+                try:
+                    return _json_response(
+                        review_aging_actions_svc.apply_collection_rules(
+                            service,
+                            key,
+                            username,
+                            session,
+                            execute=execute,
+                            limit=limit,
+                        )
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+                except ValueError as exc:
+                    return _error(str(exc), status=400)
             return _error("not found", status=404)
 
         if len(parts) >= 2 and parts[1] == "metadata":
@@ -1738,6 +1771,31 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 service, session, query
             )
             return _json_response(rec)
+        if parts == ["review_aging_apply"]:
+            if method not in ("GET", "POST"):
+                return _error("method not allowed", status=405)
+            if not review_aging_svc.is_review_aging_job_enabled(service):
+                return _json_response(
+                    {
+                        "dry_run": True,
+                        "job_enabled": False,
+                        "note": (
+                            "Review aging job is disabled. Enable via "
+                            "PATCH /stig_settings/review_aging_job (stig_admin)."
+                        ),
+                    }
+                )
+            body = _body_json(payload)
+            execute = False
+            if method == "POST":
+                execute = review_aging_actions_svc.parse_execute_flag(query, body)
+            rec = review_aging_actions_svc.apply_all_workspaces(
+                service,
+                username,
+                session,
+                execute=execute,
+            )
+            return _json_response(rec)
         if parts:
             return _error("not found", status=404)
         if method != "POST":
@@ -2068,6 +2126,21 @@ class StigRestHandler(PersistentServerConnectionApplication):
         session: Dict[str, Any],
         username: str,
     ) -> Dict[str, Any]:
+        if parts == ["review_aging_job"]:
+            if method == "GET":
+                if not access.user_has_stig_admin(session):
+                    return _error("stig_admin required", status=403)
+                return _json_response(review_aging_svc.get_review_aging_job(service))
+            if method in ("PATCH", "POST", "PUT"):
+                if not access.user_has_stig_admin(session):
+                    return _error("stig_admin required", status=403)
+                body = _body_json(payload)
+                return _json_response(
+                    review_aging_svc.patch_review_aging_job(
+                        service, body, username
+                    )
+                )
+            return _error("method not allowed", status=405)
         if parts:
             return _error("not found", status=404)
         if method == "GET":

@@ -479,6 +479,41 @@ paths:
               schema:
                 type: object
 
+  /stig_collections/{collectionId}/review_aging/apply:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collections, Reviews]
+      summary: Dry-run review aging action rules for a workspace
+      operationId: previewReviewAgingApply
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      tags: [Collections, Reviews]
+      summary: Execute review aging action rules (dry-run unless dry_run=false)
+      operationId: applyReviewAging
+      x-splunk-capability: stig_write
+      parameters:
+        - name: dry_run
+          in: query
+          schema:
+            type: boolean
+            default: true
+        - name: confirm
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
   /stig_collections/{collectionId}/review-history:
     parameters:
       - $ref: "#/components/parameters/collectionId"
