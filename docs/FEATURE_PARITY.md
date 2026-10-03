@@ -1,246 +1,210 @@
 # Feature parity backlog: `stigs_in_splunk` vs STIG Manager
 
-This document compares **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manager)** (reference product; read-only) with **`stigs_in_splunk`** (Splunk-native port: KV store, custom persist REST, UCC Configuration, SplunkUI React). It is a **gap backlog** for iterative parity work—one feature PR per row (or per grouped epic), not an implementation plan for this repo.
+Gap backlog comparing **[STIG Manager](https://github.com/NUWCDIVNPT/stig-manager)** (reference product; read-only) with **`stigs_in_splunk`** (Splunk-native port: KV store, custom persist REST, UCC Configuration, SplunkUI React). One feature PR per row or epic—not an implementation plan for application code in this file.
 
-**Independence:** `stigs_in_splunk` is not a fork of STIG Manager and is not affiliated with NUWCDIVNPT or NAVSEA. STIG Manager is a **behavioral and UX reference only**—this project reimplements capabilities in Splunk (KV store, persist REST, SplunkUI React) and does **not** port STIG Manager Node/Express server code or the GPL-3.0 ExtJS client. See [NOTICE](../NOTICE) and [LICENSE](../LICENSE).
+**Rescored 2026-10-03** (America/Chicago) against:
 
-**Authoritative references**
+- STIG Manager docs **latest** (Read the Docs sitemap `lastmod` 2026-09-29): https://stig-manager.readthedocs.io/en/latest/
+- App commit [`122f7c49`](https://github.com/learnda1ly/stigs_in_splunk/commit/122f7c49e2ed31606dc5e3a50b9c094a11406540) (`master` at rescore time)
 
-| Source | URL |
-|--------|-----|
-| STIG Manager docs | https://stig-manager.readthedocs.io/en/latest/index.html |
-| STIG Manager OpenAPI 3.0 | https://github.com/NUWCDIVNPT/stig-manager/blob/main/api/source/specification/stig-manager.yaml |
-| STIG Manager user walkthrough | https://stig-manager.readthedocs.io/en/latest/user-guide/user-quickstart.html |
-| `stigs_in_splunk` spec | [spec.md](../spec.md) |
-| `stigs_in_splunk` OpenAPI 3 | [docs/openapi.yaml](openapi.yaml) (human index [docs/api.md](api.md)) |
-| `stigs_in_splunk` REST | `https://<host>:8089/servicesNS/nobody/stigs_in_splunk` — `stig_collections`, `stig_hosts`, `stig_baselines`, `stig_checklists`, `stig_reviews`, `stig_imports`, `stig_settings` |
+**Repo references:** [spec.md](../spec.md), [docs/openapi.yaml](openapi.yaml), [docs/api.md](api.md), [docs/automation.md](automation.md), [docs/watcher-hec.md](watcher-hec.md).
 
-**Concept mapping (Splunk-shaped)**
+The prior `docs/FEATURE_PARITY.md` on that commit scored **59 done / 0 partial / 0 missing / 8 n/a** and treated the P0–P1 assessor path as closed. That core path is still in the code (workspaces, grants, editor, collection review, submit/accept/reject, findings, POA&M, CKL/CKLB/XCCDF import and archive export, revision upgrade merge). This rescore does **not** reopen those rows. It downgrades rows whose “done” no longer matches the current user/admin guide, and adds features the old backlog never listed.
 
-| STIG Manager | `stigs_in_splunk` |
-|--------------|-------------------|
-| Collection | `stig_collection` (workspace) in KV `stig_collections` |
-| Asset | `stig_host` in KV `stig_hosts` |
-| STIG on asset / checklist | `stig_checklist` (host + baseline + workspace) |
-| Review | `stig_review` (per rule, per checklist) |
-| STIG library / benchmark revision | `stig_baseline` + `stig_baseline_rules` (global catalog) |
-| Collection grant + ACL | KV `stig_collection_grants` + legacy `access_principals`; Splunk capabilities `stig_read` / `stig_write` / `stig_admin` |
-| Watcher / scan ingest | HEC `stig:finding` + `POST /stig_imports` + `stigkvreconcile` saved search |
-| Metrics / reports | Intended: Splunk dashboards, `inputlookup`, and (future) REST aggregations |
+**Independence:** `stigs_in_splunk` is not a fork. STIG Manager is a behavioral reference only. Do not copy Node/Express or the GPL-3.0 ExtJS client. See [NOTICE](../NOTICE) and [LICENSE](../LICENSE) (MIT, Stephen Quinlan, 2026).
 
----
-
-## How to use this backlog
-
-1. Pick a row with **Priority P0 or P1** and **Status** `partial` or `missing`.
-2. Open **one GitHub issue** (or epic) per row; link this file and the STIG Manager doc/API pointers in the issue.
-3. Implement **one PR** against that issue. Acceptance criteria should come from the **Splunk-shaped “Done when”** column below.
-4. After merge, update **Status** and **Gap notes** in this file (follow-up PR).
-5. Do not port STIG Manager Node/Express/client code; reimplement behavior against KV + persist REST + Splunk Web.
-
-**Legend — Status**
+## How statuses were judged
 
 | Status | Meaning |
 |--------|---------|
-| **done** | Meets PoC / current spec for this capability |
-| **partial** | Core path exists; material UX, API, or policy gaps remain |
-| **missing** | Not implemented |
-| **n/a** | No sensible Splunk equivalent, or owned by the Splunk platform |
+| **done** | Behavior from the current docs exists in Splunk-shaped REST and/or SplunkUI, verified in this tree |
+| **partial** | A path exists; a material behavior from the current docs does not |
+| **missing** | No implementation found |
+| **n/a** | Splunk platform owns it, or this port **intentionally** decided not to build it (see not-applicable table) |
+| **unverified** | Not opened in this pass |
 
-**Legend — Priority**
+Priorities and sizes match the existing legend: **P0** blocks single-collection assessment, **P1** teams/automation/RMF reporting, **P2** polish and secondary admin. **S** under about a week, **M** several layers, **L** cross-cutting.
 
-| Priority | Guidance |
-|----------|----------|
-| **P0** | Blocks day-to-day assessment workflows comparable to STIG Manager for a single collection |
-| **P1** | Important for teams, automation, or RMF-adjacent reporting; can follow P0 |
-| **P2** | Polish, admin ergonomics, or parity with secondary STIG Manager features |
+## Summary (counts, this pass)
 
-**Legend — Size (rough)**
+| Status | Count | Notes |
+|--------|------:|-------|
+| done | 20 | Core assessor/admin path; see “Still done” table |
+| partial | 8 | Material doc gaps on existing paths |
+| missing | 10 | No implementation found |
+| n/a | 8 | Platform-owned or **intentionally out of scope** |
+| unverified | 3 | Listed at end of doc |
 
-| Size | Guidance |
-|------|----------|
-| **S** | REST + KV or UI only, &lt; ~1 week human effort |
-| **M** | Multiple layers (REST + UI + tests) or non-trivial data model |
-| **L** | Cross-cutting (metrics suite, workflow engine, large UI surface) |
-
----
-
-## Summary (counts)
-
-| Status | Count |
-|--------|-------|
-| done | 59 |
-| partial | 0 |
-| missing | 0 |
-| n/a | 8 |
-
-Priorities are suggestions for **this** Splunk port; adjust per your deployment (e.g. heavy automation → bump XCCDF results).
+P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide alignment and hygiene (engineer-day estimates below).
 
 ---
 
-## Backlog
+## What changed vs prior `docs/FEATURE_PARITY.md`
 
-### A. Organization & access control
+| Row | Was | Now | Why |
+|-----|-----|-----|-----|
+| Default STIG revision per collection | done | **partial** | Pin map exists (`baseline_defaults.py`). Unpinned “latest” is highest `imported_at`, not highest version/release, and draft revisions are not held back. Docs: [user guide §2.9.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Collection dashboard metrics | done | **partial** | `GET /stig_collections/{id}/metrics` and the dashboard exist. Missing grouped export (collection / asset / STIG / label / ungrouped), summary vs detail fields, result-engine splits, and oldest/newest review ages. Docs: [§2.4.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). CORA stays **n/a** (see below). |
+| Review aging | done | **partial** | Stale **report** only (`review_aging.py`: threshold + status/severity filters; saved search `stigkvreviewaging`). Docs now specify **action rules** (delete, set Saved/Submitted, set result to Not Checked or Informational), ordinal, enable/disable, and targets (collection, asset, STIG, label). App Manager job **Update Aged Reviews**. Docs: [§2.9.1.7](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [admin §2.2.5](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
+| Result engine (automated / manual / override) | not a row | **partial** | Parsers emit `resultEngine` (`importers/ingest.py`). `review_seed_payload` does **not** write it onto the KV review. Editor has no automated/manual/override badge. Docs: [§2.7.1 and §2.7.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Informational result | folded into status enum | **partial** | `STATUSES` / `STATUS_TO_RESULT` are `not_reviewed`, `open`, `not_a_finding`, `not_applicable`. `informational` XCCDF maps to `not_reviewed` (`models.py`). Docs treat Informational as its own result. |
+| Collection import options | not a row | **missing** | No per-workspace policy for status-per-result, include-unreviewed, empty detail/comment, or locking those options for Watcher. Docs: [§2.9.1.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Compare STIG revisions | not a row | **missing** | Library browses revisions (`LibraryApp.jsx`). No field-level diff of two revisions. Upgrade merge is a different feature and remains **done**. Docs: [§2.3.2.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [review handling](https://stig-manager.readthedocs.io/en/latest/user-guide/review-handling.html). |
+| Review attachments | not a row | **missing** | No review image store. The word “attachment” in the REST handler is not this feature. Docs: [§2.6.5.2 and §2.7.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Asset CSV import/export | not a row | **missing** | Host CRUD is JSON REST, not the documented CSV columns (name, description, IP, FQDN, MAC, non-computing, STIGs, labels, metadata). Docs: [§2.9.2.2–2.9.2.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Copy results to another collection | not a row | **missing** | `POST .../export-to/{dst}` **moves** hosts (`collection_transfer.py`). It does not copy results onto a same-named asset in the destination (100-asset cap in the docs). Docs: [§2.9.2.5.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Multi-STIG `.ckl` in an archive | not a row | **missing** | Export is one checklist file per host+baseline (`exporters/ckl.py`). Docs offer single-STIG vs multi-STIG `.ckl` vs XCCDF. Docs: [§2.9.2.5.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Unsubmit | not a row | **missing** | States are `draft` / `submitted` / `accepted` / `rejected` (`review_workflow.py`). Reject returns to draft. There is no unsubmit of a submitted review. Docs: [§2.6.3.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Review history retention | done (append + GET) | **partial** | History is append-only. `limit` is a query page size (default 100, max 500), not a per-workspace cap (docs default 15) and history cannot be turned off. Docs: [§2.9.1.4.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| `.ckl` web/database asset identity | not a row | **partial** | `WEB_DB_SITE` / `WEB_DB_INSTANCE` are stored. Host match in `apply.py` is hostname only, not host + site + instance when `WEB_OR_DATABASE` is true. Docs: [§2.10](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Effective access preview | not a row | **missing** | Grants and ACL filters exist. No UI/API that expands a grant to every asset×STIG the user can actually touch. `GrantsApp.jsx` has no effective-access view. Docs: [§2.9.1.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Delete unmapped reviews | not a row | **missing** | Orphan **baseline rule** GC exists. No job deletes reviews whose rule or STIG assignment is gone. Docs: [admin §2.2.5](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html) (Delete Unmapped Reviews / Delete Unmapped Asset Reviews). |
+| Replace existing STIG revision on import | not a row | **missing** | Fingerprint dedup keeps the existing revision. No “replace existing revisions” switch. Docs: [admin §2.2.4](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
+| Clone: pin every STIG + async status | done (sync clone flags) | **partial** | `POST /stig_collections/{id}/clone` copies hosts, checklists, reviews, grants, labels, metadata, baseline defaults, review requirements. It does not offer “pin all STIGs to the source defaults” as its own switch, and it is not a background job with a status bar. Docs: [§2.9.1.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 
-| Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
-|---------|-------------------------|--------|-----------|-----------------------------|-----|------|
-| Collections (workspaces) | UI: Nav tree, Collection Configuration. API: `GET/POST /collections`, `GET/PATCH/DELETE /collections/{collectionId}` | **done** | Splunk uses `stig_collections`; UCC Workspaces tab + `GET/POST /stig_collections`. Default workspace for imports. | CRUD via REST and Configuration; default workspace enforced; delete rules documented. | P0 | — |
-| Collection metadata | API: `/collections/{id}/metadata`, `/metadata/keys/...` | **done** | KV `metadata` JSON on `stig_collections`; REST `GET/PATCH .../metadata` (merge, replace, clear); `inputlookup stig_collections` exposes `metadata` for SPL. | Optional JSON metadata on `stig_collections`; GET/PATCH documented; searchable via lookup if needed. | P2 | S |
-| Collection grants (users & roles) | UI: Grants panel, New Grant. API: `/collections/{id}/grants`, `.../grants/{grantId}` | **done** | KV `stig_collection_grants` with **owner / manager / member / restricted**; REST under `/stig_collections/{id}/grants`; SplunkUI **Workspace grants** page. Legacy `access_principals` still honored (dual-read). | Grant CRUD + role capability matrix documented in spec; tests for roles. | P1 | M |
-| Grant ACL (asset/STIG/label scoped) | UI: target icon on grant. API: `PUT .../grants/{grantId}/acl` | **done** | Host, baseline, and **label** id filters on restricted grants (empty `[]` = no filter per dimension; dimensions **AND**). Enforced on REST list/get/patch, `list_reviews`, metrics/findings/unreviewed/export, and SplunkUI host/finding lists. | `PUT/PATCH .../grants/{id}/acl`; restricted users see only allowed hosts/checklists/reviews/metrics (including label scope). | P1 | L |
-| Labels on assets | UI: label assignment, filter. API: `/collections/{id}/labels`, `.../labels/{labelId}/assets` | **done** | KV `stig_labels` + host `label_ids`; REST CRUD + `POST .../labels/{id}/assets`; `GET /stig_hosts?label_id=`; STIG Editor label filter; SplunkUI **Asset labels** page (create/rename/delete, per-host and bulk assign/unassign); Workspace grants shows label names in ACL picker. | KV collection or embedded labels; filter `GET /stig_hosts` and editor by label; SplunkUI label catalog + host assignment. | P2 | M |
-| Transfer assets between collections | UI: transfer workflow. API: `POST /collections/{id}/export-to/{dstCollectionId}` | **done** | `PATCH /stig_hosts/{id}` with `stig_collection_id` moves one host (checklists follow). Bulk: `POST /stig_collections/{src}/export-to/{dst}` with `host_ids[]`; SplunkUI **Transfer assets**; `transfer` audit per host; labels sanitized to destination workspace. | Bulk move API + UI; audit log per host. | P2 | M |
-| Clone collection | API: `POST /collections/{collectionId}/clone` | **done** | `POST /stig_collections/{id}/clone` with boolean flags (`copy_hosts`, `copy_checklists`, `copy_reviews`, `copy_grants`, `copy_labels`, `copy_metadata`, `copy_baseline_defaults`, `copy_review_requirements`; defaults documented in spec). SplunkUI **Transfer assets** clone panel. Global baselines not copied; host/checklist/review/label ids remapped. | Clone workspace with hosts, checklists, reviews (optional flags). | P2 | M |
-| Meta-collection dashboard | UI: org-wide metrics. API: `/collections/meta/metrics/...` | **done** | SplunkUI **All workspaces** (`stig_meta_collection_dashboard_ui`) + `GET /stig_collections/meta/metrics` (and `/summary`); grant-filtered like `list_collections`. SPL `inputlookup` still not ACL-safe for cross-workspace use. | Splunk dashboard or `GET` meta-metrics across workspaces user can read. | P2 | L |
-| Splunk capabilities / roles | Splunk `authorize.conf` | **done** | `stig_user`, `stig_admin`, caps on REST methods. | Parity doc lists cap matrix; integration test for 403 paths. | P0 | — |
-| OIDC / IdP authentication | Keycloak, Okta, etc.; API OAuth scopes `stig-manager:collection:*` | **n/a** | Splunk Web + `requireAuthentication` on REST; use Splunk SSO/SAML. | Document “use Splunk auth”; no parallel IdP in app. | — | — |
-| User & user-group admin API | API: `/users`, `/user-groups`, `/user` | **n/a** | Splunk native users/roles. | Map STIG Manager privileges to Splunk roles in admin guide. | — | — |
-
-### B. Assets (hosts) & STIG assignment
-
-| Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
-|---------|-------------------------|--------|-----------|-----------------------------|-----|------|
-| Asset CRUD | API: `/assets`, `/assets/{assetId}`; bulk `PATCH /assets` delete | **done** | `stig_hosts` CRUD; DELETE needs `stig_admin`. | Documented fields align with CKL target_data. | P0 | — |
-| Asset metadata API | API: `/assets/{id}/metadata/...` | **done** | KV `metadata` JSON on `stig_hosts`; REST `GET/PATCH /stig_hosts/{id}/metadata` (merge, replace, clear — same body semantics as workspace metadata); restricted grant `acl_host_ids` enforced (404 when host out of scope). Audit `stig_host_metadata` on PATCH. Host document PATCH still accepts full `metadata` object for bulk field updates. | `GET/PATCH` metadata keys or documented JSON patch pattern. | P2 | S |
-| Attach STIG to asset (assignment) | UI: Assign STIG on asset. API: `POST /assets/{id}/stigs`, `/collections/{id}/stigs/...` | **done** | **`POST /stig_hosts/{hostId}/stigs`** (idempotent checklist create + review spawn); **`GET .../checklists`**. STIG Editor **Assign STIG** when a host is selected. Duplicate assign returns **200** with `"created": false`. | Explicit “assign baseline to host” UX; idempotent create checklist. | P1 | S |
-| Remove STIG from asset | API: `DELETE .../stigs/{benchmarkId}` | **done** | **`DELETE /stig_hosts/{id}/stigs/{baselineIdOrStigId}`** or delete checklist (cascades reviews). | UI/API delete checklist by host+baseline. | P1 | — |
-| Bulk asset create / import builder | UI: Import CKL/XCCDF builds collection. API: `POST /collections/{id}/assets` | **done** | SplunkUI **Import → Checklists**: workspace picker (default workspace), multi-file queue, per-file status, `.zip` archive ingest. REST: `POST /stig_collections/{id}/imports` (`files[]` batch), `POST /stig_imports?format=zip` (mixed checklists + XCCDF results) or `format=xccdf-results-zip` (scan-only archives — see [automation.md](automation.md)). Idempotent host/checklist updates via existing ingest apply. **Gap:** no STIG Manager–style async multi-run import job API (collection zip import stays synchronous). | Collection import wizard parity for CKL/CKLB and XCCDF results zip; document automation paths. | P1 | M |
-| Asset checklist retrieval | API: `/assets/{id}/checklists`, by STIG | **done** | **`GET /stig_hosts/{id}/checklists`** (ACL-aware). Filter by STIG only via client or `GET /stig_checklists?stig_collection_id=` + baseline metadata. | `GET /stig_hosts/{id}/checklists` or documented query pattern. | P2 | S |
-
-### C. STIG library (baselines / revisions)
-
-| Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
-|---------|-------------------------|--------|-----------|-----------------------------|-----|------|
-| STIG library browse | UI: STIG Library in nav. API: `/stigs`, `/stigs/{benchmarkId}/revisions/...` | **done** | SplunkUI **STIG library** nav view; persist `GET /stig_baselines/hierarchy`, `GET /stig_baselines/by_stig/{stigId}`, `GET /stig_baselines/rule/{ruleKey}`, `GET /stig_baselines/{id}/rules/{ruleRef}` (optional `group_id`). Flat `GET /stig_baselines` unchanged. | List baselines with revision metadata; rule detail endpoint stable for UI. | P0 | — |
-| Import benchmark content (XCCDF) | API: import flows; DISA Manual XCCDF | **done** | XCCDF parser, dedup via `content_fingerprint`, zip-of-zips via `/stig_baselines/jobs`. | RHEL-scale rule count integration test; dedup 200 response. | P0 | — |
-| Import from CKL/CKLB as **baseline** | Supported in SM for content | **done** | `format=ckl|cklb` on baseline import. | Unit tests + Configuration list. | P1 | — |
-| Skip SRG/SCAP in library zip | SM library behavior | **done** | Spec: Manual-xccdf only from DISA zips. | Documented in README/spec. | P2 | — |
-| Default STIG revision per collection | UI: Collection Settings. User guide: [default revision](https://stig-manager.readthedocs.io/en/latest/index.html) | **done** | `default_baseline_map` on workspace; REST `GET/POST/DELETE .../baseline_defaults`; SplunkUI **Default revisions**; checklist create accepts `stig_id` when default set. Precedence: explicit `baseline_id` &gt; workspace default &gt; catalog match. | Per-workspace default baseline per `stig_id`; new assignments use default. | P1 | M |
-| Intelligent revision upgrade / review merge | README feature; API behavior on new revision | **done** | Explicit `POST /stig_checklists/{id}/upgrade` and workspace `POST /stig_collections/{id}/upgrade_checklists` (bulk gated with `require_workspace_write`); composite `(group_id, rule_id)` match; newer `VxRy` required; merges on matching `check_content_hash`; editable drafts with changed hash reset (`finding_details`, `comments`, `reject_feedback` cleared); `ingest_lock` and non-draft `workflow_state` preserved on hash mismatch. Non-atomic KV updates documented. STIG Editor confirm + newer-only picker. | On new baseline revision, merge reviews where hash matches; re-evaluate changed rules only. | P1 | L |
-| Delete baseline / revision | API: admin on library | **done** | DELETE baseline + rules; UCC table. | Admin cap; orphan checklist handling documented. | P1 | — |
-| CCI / group / rule reference APIs | API: `/stigs/.../rules/{ruleId}`, `/stigs/ccis/{cci}`, groups | **done** | Persist REST: `GET /stig_baselines/rules/{ruleRef}`, `/ccis/{cci}`, `/groups/{groupId}`, `/rule/{ruleKey}` (KV `_key`). CCI values come from imported XCCDF/CKL/CKLB `ident` fields on `stig_baseline_rules`; rules without CCI in source content return empty CCI lookups. Optional `stig_id` query filter. No STIG Manager–style global `/stigs/rules` path (Splunk-shaped catalog). | `GET` rule by id across baselines or Splunk lookup export. | P2 | M |
-| SCAP benchmark maps | API: `/stigs/scap-maps` | **n/a** | Splunk port targets Manual STIG + checklist workflows; SCAP scanner mapping is optional. | If needed: static map table or n/a documented. | P2 | S |
-
-### D. Reviews & assessment UX
-
-| Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
-|---------|-------------------------|--------|-----------|-----------------------------|-----|------|
-| Asset review workspace (single STIG) | UI: Evaluation tab. API: `GET/PATCH .../reviews/{assetId}/{ruleId}` | **done** | STIG Editor (React): rule list, status, details, comments, progress. | Status immediate save; details/comments require write; keyboard/vim optional. | P0 | — |
-| Collection review workspace (one rule, many assets) | UI: Collection Review. API: batch-oriented review GETs | **done** | SplunkUI **Collection review** view (`stig_collection_review_ui`); batch field PATCH + governance batch (submit/accept/reject on selected or all eligible hosts). | New SplunkUI view: pick baseline+rule, edit rows per host; batch PATCH API. | P0 | L |
-| Review status enum | Open / NAF / N/A / Not Reviewed | **done** | Same canonical statuses; CKL/CKLB mapping on export. | Round-trip export tests. | P0 | — |
-| Review detail & comments | API: review body fields | **done** | `finding_details`, `comments`; `valid` / `validation_errors` from workspace `review_requirements`. | Required-field policy configurable per workspace (see Collection review requirements). | P0 | — |
-| Save vs submit vs accept/reject | UI: Submit, Accept, Reject with feedback | **done** | `workflow_state` on `stig_reviews`; REST submit/accept/reject + governance batch; STIG Editor + Collection review UIs; owner/manager grants + `review_accept_principals`; ingest skips non-draft rows; metrics use governance open findings. | Optional workflow fields on `stig_reviews` + UI actions; owner-only accept/reject. | P1 | L |
-| Collection review requirements | UI: Collection Settings `(?)` | **done** | KV `review_requirements` JSON on `stig_collections`; REST `GET/PATCH .../review_requirements`; SplunkUI **Review requirements**; server validation on review PATCH/submit; Editor + Collection review read policy. Default preserves legacy “details or comments” rule. | Workspace settings for required fields, min comment length, etc. | P1 | M |
-| Review history | API: `/collections/{id}/review-history`, stats | **done** | KV `stig_review_history` append-only rows on REST PATCH/submit/accept/reject/batch, checklist ingest apply, and baseline upgrade when assessor fields change; `GET /stig_reviews/{id}/history` and `GET /stig_collections/{id}/review-history` (filters + pagination); STIG Editor **Review history** timeline. Splunk audit log (`stigs_in_splunk.audit`) remains separate. **Gap:** no cross-workspace stats subpath; HEC/reconcile still skips history when ingest does not mutate KV (locked/non-draft rows). | History collection or indexed audit; UI timeline per rule. | P2 | L |
-| Review aging rules | API: `/collections/{id}/tasks/review-aging/config` | **done** | KV `review_aging_config` on `stig_collections` with `rules[]` (ordinal, enable, trigger, interval, action, target). REST `GET/PATCH .../review_aging`, `GET .../stale`, `GET/POST .../apply` (dry-run default). App job `GET/PATCH /stig_settings/review_aging_job` + saved search **STIG review aging apply** (`\| stigkvreviewagingapply`). Report search unchanged. Audits mutations; deletes require execute (no silent delete). UI task grid still minimal (dashboard shows legacy stale sample). | Full Collection Management task UI + task output log. | P1 | M |
-| Cross-asset review resources (drag-drop) | UI: Review Resources panel | **done** | `GET /stig_reviews/{id}/peers` lists other hosts in the workspace with the same rule on a visible checklist (same baseline or same `stig_id` across revisions); grant ACL via checklist/host scope. `POST /stig_reviews/{id}/copy_from/{peerReviewId}` copies `status`, `finding_details`, and `comments` into the anchor review when it is an editable draft (`stig_write` + `review_requirements` validation). STIG Editor **Peer hosts (same rule)** panel with **Copy** (drag-drop not required). | Show other hosts’ same rule review in editor sidebar; copy action. | P2 | M |
-| Bulk review update | API: `POST .../reviews` batch, `postReviewBatch` | **done** | `POST /stig_reviews/batch` (partial success, max 500 rows). | `POST /stig_reviews/batch` with cap checks. | P1 | M |
-| Ingest lock (manual override) | SM: manual authoritative reviews | **done** | `ingest_lock` on review; HEC/reconcile skips. | UI toggle in editor; tests in `test_checklist_ingest`. | P1 | — |
-
-### E. Import / export / automation
-
-| Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
-|---------|-------------------------|--------|-----------|-----------------------------|-----|------|
-| Import CKL/CKLB checklist | UI: Checklist menu. API: asset/collection import | **done** | `POST /stig_imports`; Import UI; Watcher-shaped events. | HEC + KV apply; workspace default. | P0 | — |
-| Import XCCDF **results** (scan) | Multi-source integration in README | **done** | Single-file `format=xccdf-results`, multi-file `format=zip` / `xccdf-results-zip` (OpenSCAP `*-results.xml` / Evaluate-STIG `TestResult` XML; nested zips; per-file batch errors). HEC + KV apply; baseline catalog or workspace default. **n/a:** full SCAP source data stream bundle as one ingest artifact (import Manual STIG baselines via `/stig_baselines`). | Map pass/fail to review status; document Evaluate-STIG/SCAP path via HEC or REST. | P1 | L |
-| Collection archive export CKL | API: `POST .../archive/ckl` | **done** | `POST /stig_collections/{id}/archive/ckl` (optional `host_id` / `baseline_id` filters); `POST /stig_checklists/export_bulk` with `stig_collection_id`; per-checklist `GET .../export?format=ckl`. Zip entry names `{hostname}_{stig_id}_{version}.ckl` (tests). | Workspace-scoped bulk export; filename conventions (tests). | P1 | — |
-| Collection archive export CKLB | API: `POST .../archive/cklb` | **done** | Same as CKL for CKLB (`.../archive/cklb`, `.cklb` filenames). SplunkUI Export uses archive route for **Download all in view** when a workspace is selected. | Bulk zip includes all checklists in workspace filter. | P1 | — |
-| Collection archive export XCCDF | API: `POST .../archive/xccdf` | **done** | `POST /stig_collections/{id}/archive/xccdf` (optional `host_id` / `baseline_id` filters); per-checklist `GET .../export?format=xccdf`. Zip of OpenSCAP-shaped `TestResult` XML from KV reviews (not full SCAP data stream bundles). SplunkUI Export adds **XCCDF results** format. | Round-trip ingest via `format=xccdf-results`; document gaps vs Manual STIG benchmark XML. | P2 | — |
-| STIGMan Watcher integration | [stigman-watcher](https://github.com/NUWCDIVNPT/stigman-watcher) | **done** | HEC + `events.py` fat events; reconcile every 5m. Event schema and Watcher POST field parity documented in [watcher-hec.md](watcher-hec.md). | Document event schema; parity with Watcher POST fields. | P1 | S |
-| Async import/export jobs | API: `/jobs`, `/jobs/{jobId}/runs`, tasks | **done** | **Splunk-shaped:** `POST /stig_baselines/jobs` (chunked DISA library zip upload + finalize/import); `POST /stig_collections/{id}/jobs` with `operation=archive_export` and `format=ckl\|cklb\|xccdf` returns `job_id` → poll `GET .../jobs/{jobId}` (`pending\|running\|succeeded\|failed`) → `GET .../jobs/{jobId}/download` for zip JSON (`content_base64`). Job dirs under `$SPLUNK_HOME/var/run/stigs_in_splunk/{baseline_jobs,collection_jobs}/` with **6h TTL** (see `spec.md`). Creator-only read/delete (same as baseline jobs); workspace export read ACL on create. **Gap:** collection zip **import** remains synchronous (`POST .../imports`); no STIG Manager `/jobs/{id}/runs` task list or SSE. | Pollable jobs for large collection archive export; baseline chunk upload unchanged. | P2 | M |
-| Evaluate-STIG / API automation | OpenAPI entire surface | **done** | [docs/openapi.yaml](openapi.yaml) + [docs/api.md](api.md) (versioning policy); [docs/automation.md](automation.md) for Evaluate-STIG / OpenSCAP → `POST /stig_imports` (`xccdf-results`, `xccdf-results-zip`) and HEC `stig:finding` ([watcher-hec.md](watcher-hec.md)). **Remaining gaps (documented):** not STIG Manager URL/schema parity; no generated client SDK; OpenAPI field schemas are indicative — see `spec.md` and KV records for full shapes. | Published [openapi.yaml](openapi.yaml) + [api.md](api.md) versioning policy; [automation.md](automation.md) for scan/checklist ingest. | P2 | M |
-
-### F. Findings, metrics, POA&M, reporting
-
-| Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
-|---------|-------------------------|--------|-----------|-----------------------------|-----|------|
-| Collection dashboard metrics | UI: completion, severity, CORA. API: `/collections/{id}/metrics/summary|detail` (+ aggregations) | **done** | SplunkUI **Collection dashboard** + `GET /stig_collections/{id}/metrics`; optional lookup dashboard `stig_collection_metrics_lookup`. No CORA scoring. | SPL dashboard or `GET /stig_collections/{id}/metrics` with counts by status/severity. | P0 | L |
-| Findings report (open reviews) | UI: Findings report. API: `GET .../findings` | **done** | SplunkUI findings tab + CSV export; `GET /stig_collections/{id}/findings` and `GET /stig_findings?stig_collection_id=` with pagination. | Dedicated findings endpoint or saved report + CSV export in UI. | P0 | M |
-| POA&M spreadsheet generation | UI: Generate POA&M. API: `GET .../poam` | **done** | SplunkUI **POA&M CSV/XLSX** on Collection dashboard; `GET /stig_collections/{id}/poam?format=json\|csv\|xlsx` from governance-open findings; JSON includes SPL `outputcsv` alternative (spec §11.6 / README). eMASS template reference only. | Export CSV/XLSX template from open findings; Splunk `outputcsv` alternative documented. | P1 | M |
-| CORA risk scoring | README / dashboard screenshots | **n/a** | No product requirement for CORA in this Splunk port. Severity breakdowns are available via `GET /stig_collections/{id}/metrics` and findings reports; teams can weight severities in SPL/`inputlookup` if needed. STIG Manager CORA UI is reference-only. | **n/a** unless product explicitly requests CORA scoring in this app. | P2 | L |
-| Aggregated findings by rule/group/CCI | UI: Aggregated Findings panel | **done** | SplunkUI **Aggregated findings** tab; `GET /stig_collections/{id}/findings/aggregate` with `group_by=group_id,rule_id,cci` (governance-open counts; CCI from `stig_baseline_rules`). | `stats` SPL or REST aggregation by `group_id`, `rule_id`, CCI from rules lookup. | P1 | M |
-| Unreviewed rules/assets reports | API: `/collections/{id}/unreviewed/rules`, `.../assets` | **done** | SplunkUI **Unreviewed** tab on Collection dashboard; REST `GET /stig_collections/{id}/unreviewed/rules` and `.../assets` with `status=not_reviewed` definition and grant ACL filtering (same as metrics/findings). | REST or saved search returning unreviewed counts per host/baseline. | P1 | M |
-| Splunk search / lookups | SM: API-only for reports | **done** | `transforms.conf` + `inputlookup`; spec §12. | Document example SPL in README. | P1 | — |
-| CIM / vulnerability datamodel | — | **n/a** | Spec Phase 2. | Optional `stig:finding` CIM mapping. | P2 | M |
-| Dedicated audit index / dashboard | SM operational logs | **done** | Indexed `stig:audit` events in `stig_audit` (HEC input `stig_audit` + receivers/simple fallback); splunkd log retained. Simple XML dashboard **STIG audit** (`stig_audit_dashboard`). **Gap:** clustered/indexer deploys must distribute `indexes.conf`; HTTP input token is runtime-generated (see [audit-index.md](audit-index.md)). | Index audit events; simple dashboard. | P2 | M |
-
-### G. Platform, operations, API infrastructure
-
-| Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
-|---------|-------------------------|--------|-----------|-----------------------------|-----|------|
-| OpenAPI 3 contract | `stig-manager.yaml` | **done** | [docs/openapi.yaml](openapi.yaml) + [docs/api.md](api.md); version tracks `app.manifest`. **Gap:** response schemas are not exhaustive for every KV field; UCC-generated Configuration REST stanzas outside persist handler are not listed; `by_stig/{id}` path may include slashes — encode per Splunk REST rules. | Publish Splunk REST OpenAPI or markdown reference generated from handler. | P2 | M |
-| Live state / SSE | API: `/op/state/sse` | **n/a** | Splunk Web polling or custom SSE if needed. | Document refresh strategy in UI. | P2 | S |
-| App configuration API | API: `/op/configuration` | **done** | UCC `stigs_in_splunk_settings.conf` `[general]` + `GET/POST|PATCH /stig_settings` JSON adapter (`services/settings.py`). **HEC token** only on `[http://stig_findings]` input — never in conf or REST. Field catalog: `globalConfig.json` tab **Editor & ingest**, spec §4.3.1 / §11.7, README. Legacy KV `stig_editor_settings` fallback documented. | Settings documented in globalConfig + spec. | P1 | — |
-| Horizontal scale / stateless API | Container scale-out | **n/a** | Splunk KV on search head; scale via Splunk architecture. | Deployment guide for SHC/KV. | — | — |
-| MySQL persistence | Required | **n/a** | KV store collections. | — | — | — |
-| Packaging & install | Docker / binaries | **done** | UCC build, tarball, `link-splunk-app.sh`. | Reproducible CI build artifact. | P0 | — |
-| Offline & Splunk integration tests | — | **done** | `tests/test_*.py`, `run_splunk_tests.sh`. | Keep parity-sensitive paths covered when adding features. | P0 | — |
-
-### H. Data lifecycle & admin hygiene
-
-| Feature | STIG Manager (UI + API) | Status | Gap notes | Done when (Splunk-shaped) | Pri | Size |
-|---------|-------------------------|--------|-----------|-----------------------------|-----|------|
-| Cascade delete collection | SM collection delete semantics | **done** | `DELETE /stig_collections/{id}` blocks with **409** when children exist unless `cascade=true`; removes workspace hosts, checklists, reviews, grants, assignment rules/overrides; global baselines unchanged; UCC blocks non-empty workspace delete (REST cascade). | Defined cascade or block delete with children. | P1 | M |
-| Orphan baseline rule GC | — | **done** | Admin `GET/POST /stig_baselines/gc_orphan_rules` with dry-run default; execute via `dry_run=false` or `confirm=true`; audit on delete. Does not cascade to checklists/reviews. | Admin REST job to clean orphans. | P2 | S |
-| Workspace-scoped baseline catalog | KV `stig_baselines.stig_collection_id`; REST list/import/hierarchy | **done** | Optional workspace scope on baseline rows (empty = global). List/hierarchy/catalog search honor workspace read ACL; `?stig_collection_id=` filters to globals + that workspace. Import accepts scope with workspace **write**. Checklist assign + default resolution prefer workspace catalog then global. | Optional `stig_collection_id` on baselines or sharing ACL. | P2 | L |
-
-### I. Splunk-specific enhancements (not in STIG Manager)
-
-| Feature | STIG Manager | Status | Notes |
-|---------|--------------|--------|-------|
-| Vim-style editor shortcuts | — | **done** | Extra UX in React editor; optional. |
-| Indexed `stig:finding` events for replay | — | **done** | Enables reconstructing checklists from index + KV. |
-| Scheduled KV reconcile | — | **done** | `savedsearches.conf` + `\| stigkvreconcile`. |
+Rows left **done** were re-checked against code, not just the old table: collections, grants and ACL (host, baseline, label), labels, host transfer, asset CRUD and metadata, assign/remove STIG, checklist import wizard (sync, not SM’s async job), STIG library browse, XCCDF/CKL baseline import, revision **upgrade merge**, rule/CCI/group lookups, asset and collection review workspaces, status workflow submit/accept/reject, review requirements, peer copy, batch review PATCH, ingest lock, CKL/CKLB/XCCDF archive export, Watcher-shaped HEC, baseline chunk jobs and collection archive jobs, findings, aggregate findings, unreviewed reports, POA&M CSV/XLSX, OpenAPI file, settings adapter, cascade delete, orphan rule GC, workspace-scoped baselines, vim editor, `stig:finding` index, reconcile saved search, RMF **package** labels (`services/rmf_packages.py`, commit message “Implement RMF packages”). Those RMF packages are a Splunk ingest-routing feature. They are **not** STIG Manager rule exceptions.
 
 ---
 
-## Suggested iteration order (P0 first)
+## Status table (this pass)
 
-1. **Collection review workspace** + batch review API (unblocks multi-asset assessors).
-2. **Collection metrics** + **findings report** (dashboard or REST + CSV).
-3. **Default baseline per workspace** + **XCCDF results import** (automation-heavy sites).
-4. **Grants / ACL refinement** (restricted users with asset filters).
-5. **Submit / accept / reject** workflow (governance-heavy sites).
-6. **POA&M export** and **aggregated findings** (RMF reporting).
-7. **Cross-revision review merge** (operational cost when DISA publishes updates).
+### Still done (evidence, one line)
+
+| Feature | Evidence |
+|---------|----------|
+| Collections, metadata, cascade delete | `services/collections.py`, UCC workspaces |
+| Grants owner/manager/member/restricted + ACL | `services/grants.py`, `ui/src/pages/GrantsApp.jsx` |
+| Labels, host transfer | `services/labels.py`, `services/collection_transfer.py` (move, not copy) |
+| Asset CRUD, assign/remove STIG | `services/hosts.py`, `POST /stig_hosts/{id}/stigs` |
+| STIG library, baseline import, rule/CCI/group GET | `services/baseline_library.py`, `services/baselines.py` |
+| Revision upgrade / hash merge | `services/revision_upgrade.py` |
+| Asset review + collection review + batch | `ui/src/pages/EditorApp.jsx`, `CollectionReviewApp.jsx`, `POST /stig_reviews/batch` |
+| Submit / accept / reject, requirements, ingest lock | `review_workflow.py`, editor + collection review UI |
+| Peer copy | `services/review_peers.py` |
+| CKL/CKLB/XCCDF results import and archive export | `services/imports.py`, `exporters/ckl.py`, `cklb.py`, `xccdf_results.py` |
+| Watcher-shaped HEC | [docs/watcher-hec.md](watcher-hec.md), `importers/events.py` |
+| Findings, aggregate, unreviewed, POA&M file | `services/reporting.py`, `exporters/poam.py`, dashboard tabs |
+| Metrics counts (not the export matrix) | `aggregate_metrics` in `reporting.py` |
+| History timeline (not retention policy) | `services/review_history.py`, editor timeline |
+| Async baseline upload + collection archive jobs | `services/baseline_jobs.py`, `services/collection_jobs.py` |
+| OpenAPI + settings | [docs/openapi.yaml](openapi.yaml), `services/settings.py` |
+| Splunk caps, audit index | `access.py`, [docs/audit-index.md](audit-index.md) |
+| RMF package labels (Splunk-only) | `services/rmf_packages.py` |
+
+### Partial or missing
+
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| Default revision “latest” semantics | partial | Pin works; latest = `imported_at` in `find_baseline_by_stig` |
+| Dashboard metrics export + ages | partial | Counts only; no group-by export, no min/max timestamps |
+| Review aging actions | partial | Report/config only; no mutating rules |
+| Result engine on the review | partial | Parsed, dropped in `review_seed_payload` |
+| Informational result | partial | Collapsed to `not_reviewed` |
+| Import options | missing | No workspace import policy module |
+| Compare revisions | missing | No diff UI or API |
+| Review image attachments | missing | Not in review model |
+| Asset CSV | missing | No CSV importer |
+| Copy results across collections | missing | export-to moves the host |
+| Multi-STIG CKL | missing | One file per checklist |
+| Unsubmit | missing | No transition |
+| History retention cap / off switch | partial | Page `limit` only |
+| Web/DB asset match | partial | Fields stored; match is hostname |
+| Effective access preview | missing | ACL enforced, not explained in UI |
+| Delete unmapped reviews | missing | Rule GC ≠ review GC |
+| Replace existing benchmark revision | missing | Dedup keeps current |
+| Clone pin-all + async | partial | Sync clone with copy flags |
+
+### Not applicable (intentionally out of scope unless product reverses)
+
+| Feature | Why |
+|---------|-----|
+| OIDC / user directory / user groups / “unavailable” users | Splunk SSO, roles, and accounts. Map grants to Splunk principals. Docs: [authentication](https://stig-manager.readthedocs.io/en/latest/installation-and-setup/authentication.html), [admin users/groups](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
+| MySQL, stateless API scale-out, `ANALYZE TABLE` | KV store on the search head. |
+| Live SSE `/op/state/sse` and experimental log WebSocket | Splunk Web refresh and `splunkd` / `stig_audit`. |
+| Experimental full-database JSONL replace (`STIGMAN_EXPERIMENTAL_APPDATA`) | Destructive instance clone. Use Splunk backup. Not an assessor feature. |
+| SCAP benchmark maps | Prior decision: Manual STIG + checklist/results, not scanner maps. |
+| CORA score | Prior decision in earlier parity docs. Formula is now documented (CAT I/II/III weights 10/4/1; Very High ≥20%, High ≥10%, Low if CAT I = 0 and CAT II/III each &lt;5%). Build only if you explicitly want that rating. [§2.4.1.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Republished-rule “latest review wins on old revisions” | [Rule exceptions](https://stig-manager.readthedocs.io/en/latest/user-guide/rule-exceptions.html) says STIG Manager is still designing the real approach (0.014% of rules). Do not port the quirk. |
+| CIM vulnerability datamodel | Still called Phase 2 in the old backlog. Not required for STIG Manager parity. |
+
+### Unverified this pass
+
+- OpenAPI tag operation counts in the old appendix (external `stig-manager.yaml` not re-counted).
+- Whether collection-review column choices persist across sessions (UI code not line-audited for that).
+- Full npm transitive license scan (`ui/package-lock.json` not license-audited). No STIG Manager or GPL client tree was found under `package/bin` or `ui/src`.
 
 ---
 
-## Appendix: STIG Manager API tag coverage
+## Remaining work
 
-OpenAPI **tags** (approximate operation counts from `stig-manager.yaml`): Collection (49), Asset (23), Metrics (16), STIG (15), Review (15), User (13), Job (11), Operation (9).
+No new **P0**. Day-to-day assess (open a workspace, assign a STIG, save, submit, accept/reject, export CKL, findings/POA&M) is still implemented.
 
-**Splunk persist resources implemented today** (see `package/bin/stig_rest_handler.py`, [openapi.yaml](openapi.yaml), `spec.md` §11):
+### Must do before calling the port aligned with the current user guide (P1)
 
-| Resource | Notes |
-|----------|--------|
-| `stig_collections` | Workspace CRUD; `POST .../archive/ckl`, `.../archive/cklb`, and `.../archive/xccdf` collection archive export |
-| `stig_hosts` | Asset CRUD, move workspace, **assign STIG** (`POST .../stigs`), list host checklists |
-| `stig_baselines` | List, import, rules, delete, `jobs` chunk import; **orphan rule GC** (`/gc_orphan_rules`); **library browse** (`/hierarchy`, `/by_stig/{stigId}`, `/rule/{ruleKey}`, `/{id}/rules/{ruleRef}`); **catalog ref** (`/rules/{ruleRef}`, `/ccis/{cci}`, `/groups/{groupId}`) |
-| `stig_checklists` | CRUD, export, `export_bulk` (by `checklist_ids` or `stig_collection_id` + filters) |
-| `stig_reviews` | List, get, patch (`ingest_lock`), batch (`/batch`); **`/{id}/history`** timeline; **`/{id}/peers`** + **`/{id}/copy_from/{peerId}`** cross-asset copy |
-| `stig_review_history` | Append-only KV (via service layer); queried through review/collection history GET routes |
-| `stig_imports` | CKL/CKLB ingest, zip archive, reconcile |
-| `stig_collections/{id}/imports` | Collection import builder batch (`files[]`) or zip body |
-| `stig_settings` | Editor settings adapter |
-| `stig_findings` | Paginated workspace findings report (`stig_collection_id` query param) |
-| `stig_collections/{id}/metrics` | Workspace metrics subpath on collections handler |
-| `stig_collections/{id}/findings` | Workspace findings subpath on collections handler |
-| `stig_collections/{id}/findings/aggregate` | Governance-open findings counts by group, rule, CCI |
-| `stig_collections/{id}/baseline_defaults` | Workspace default baseline per STIG id |
-| `stig_collections/{id}/review_requirements` | Workspace review validation policy (GET/PATCH) |
-| `stig_collections/{id}/review_aging` | Review aging policy (GET/PATCH); `.../review_aging/stale` lists stale reviews under ACL |
-| `stig_imports/review_aging_report` | Scheduled-search report of stale reviews (grant-visible workspaces only) |
-| `stig_collections/{id}/metadata` | Workspace arbitrary JSON metadata (GET/PATCH) |
-| `stig_hosts/{id}/metadata` | Asset arbitrary JSON metadata (GET/PATCH; grant ACL on host id) |
-| `stig_collections/{id}/poam` | POA&M-style CSV/XLSX/JSON export |
-| `stig_collections/{id}/unreviewed/rules` | Unreviewed rule counts with host coverage |
-| `stig_collections/{id}/unreviewed/assets` | Unreviewed counts per host with per-baseline breakdown |
-| `stig_collections/{id}/labels` | Workspace label catalog CRUD; `POST .../labels/{id}/assets` bulk assign |
-| UCC `stigs_in_splunk_baseline` | Configuration table adapter |
+| Item | Size | Engineer-days | Notes |
+|------|------|----------------|-------|
+| Persist result engine and show manual / automated / override | M | 3–5 | Seed, export, metrics detail, editor sprite |
+| Collection import options, including Watcher/HEC | M | 5–8 | Touches every ingest path |
+| Informational as its own status | S | 2–3 | Enum, CKL/XCCDF round-trip, metrics, UI |
+| Revision compare (rule/field diff) | M | 4–6 | Read-only report; do not copy ExtJS |
+| “Latest” revision = version/release, skip draft | S | 1–2 | `find_baseline_by_stig` |
+| Review aging **actions** + saved search that mutates | M | 6–10 | Audit every change; do not silent-delete without a dry run |
+| Metrics export groupings + review ages (not CORA) | M | 3–5 | CSV/JSON from existing metrics service |
 
-For any new capability, prefer **adding Splunk-shaped endpoints** under these resources (or `stig_collections/{id}/...` subpaths implemented in the persist handler) rather than mirroring STIG Manager URL literals, while keeping response shapes familiar to API migrators.
+**P1 total: about 24–39 engineer-days (about 5–8 weeks for one person).**
+
+The wide end is import options plus aging actions. Those two touch ingest and can corrupt reviews if wrong.
+
+### Nice to have (P2)
+
+| Item | Size | Engineer-days |
+|------|------|----------------|
+| Review image attachments | M | 4–8 |
+| Copy results to another collection (not a move) | M | 4–7 |
+| Asset CSV import/export | M | 3–5 |
+| Multi-STIG CKL in the zip | S | 2–4 |
+| Unmapped-review cleanup job | S | 2–4 |
+| Web/DB site+instance asset identity | S | 2–3 |
+| Effective-access preview | S | 2–3 |
+| Clone: pin-all switch + async status | S | 2–4 |
+| History cap and disable | S | 1–2 |
+| Replace-existing revision on library import | S | 1–2 |
+| Unsubmit | S | 1 |
+
+**P2 total: about 24–43 engineer-days.**
+
+Attachments and cross-collection copy dominate that range (KV size, ACL, partial failure).
+
+### Do not schedule
+
+Everything in the n/a table, including CORA, unless you reverse that decision (CORA itself is about 2–4 days on top of the metrics export work).
+
+**All remaining, P1+P2: about 48–82 engineer-days (about 10–16 weeks).** That is the “major work” if the goal is the current user guide plus admin hygiene, not the already-finished P0 path.
 
 ---
 
-*Generated for parity planning; STIG Manager is reference only. Update this file when closing gap issues.*
+## License / attribution
+
+| Item | State |
+|------|--------|
+| App license | MIT, `LICENSE`, copyright 2026 Stephen Quinlan |
+| Independence notice | `NOTICE` (not a fork; no GPL client; Watcher is schema-only; no DISA library in-repo) |
+| Shipped third-party | `package/LICENSES/MIT License.txt`; Python `lib/*/LICENSE*` for packaging, deprecation, Splunk SDK |
+| STIG Manager source in tree | Not found |
+| Still open | Transitive npm licenses not re-audited this pass. No other attribution gap found in app source. |
+
+---
+
+## Doc map used
+
+- [Introduction and features](https://stig-manager.readthedocs.io/en/latest/features/index.html)
+- [User guide](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html)
+- [Grants, roles, ACL](https://stig-manager.readthedocs.io/en/latest/user-guide/roles-and-access.html) (linked from the user-guide TOC; behavior checked via the user-guide grants sections)
+- [Review handling](https://stig-manager.readthedocs.io/en/latest/user-guide/review-handling.html)
+- [Rule exceptions](https://stig-manager.readthedocs.io/en/latest/user-guide/rule-exceptions.html)
+- [Admin guide](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html)
+- [Home / common tasks](https://stig-manager.readthedocs.io/en/latest/index.html)
+
+---
+
+*STIG Manager is reference only. Update this file when closing gap issues; rescored 2026-10-03 against commit `122f7c49`.*

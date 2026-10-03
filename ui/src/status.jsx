@@ -6,6 +6,7 @@ export const STATUS_LABELS = {
     open: "Open",
     not_a_finding: "Not a Finding",
     not_applicable: "Not Applicable",
+    informational: "Informational",
 };
 
 export const WORKFLOW_LABELS = {
@@ -20,6 +21,7 @@ const PALETTE = {
     open: { bg: "#f8d7da", fg: "#721c24" },
     not_a_finding: { bg: "#d4edda", fg: "#155724" },
     not_applicable: { bg: "#cce5ff", fg: "#004085" },
+    informational: { bg: "#e2d5f5", fg: "#4a2c6a" },
 };
 
 const Pill = styled.span`

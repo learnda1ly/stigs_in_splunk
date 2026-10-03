@@ -10,7 +10,13 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
-from models import RESULT_TO_STATUS, STATUS_TO_RESULT, normalize_status
+from models import (
+    RESULT_TO_STATUS,
+    STATUS_TO_RESULT,
+    normalize_result_engine,
+    normalize_status,
+    serialize_result_engine,
+)
 
 EMPTY_STATS = {
     "pass": 0,
@@ -169,6 +175,11 @@ def review_seed_payload(review: Dict[str, Any]) -> Dict[str, Any]:
     package_id = review.get("package_id") or review.get("packageId")
     if package_id is not None and str(package_id).strip():
         payload["package_id"] = str(package_id).strip()
+    engine = normalize_result_engine(
+        review.get("resultEngine") or review.get("result_engine")
+    )
+    if engine is not None:
+        payload["result_engine"] = serialize_result_engine(engine)
     return payload
 
 

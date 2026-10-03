@@ -81,6 +81,16 @@ class TestSlimHecApply(unittest.TestCase):
         self.assertEqual(seed["package_id"], "9")
         self.assertEqual(seed["status"], "open")
 
+    def test_review_seed_payload_carries_result_engine(self):
+        seed = review_seed_payload(
+            {
+                "result": "pass",
+                "resultEngine": {"product": "Evaluate-STIG", "version": "1.0"},
+            }
+        )
+        self.assertIn("result_engine", seed)
+        self.assertIn("Evaluate-STIG", seed["result_engine"])
+
 
 if __name__ == "__main__":
     unittest.main()

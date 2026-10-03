@@ -496,6 +496,40 @@ export default function CollectionDashboardApp() {
         [metrics]
     );
 
+    const [metricsExportGrouping, setMetricsExportGrouping] = useState("collection");
+
+    const exportMetricsCsv = () => {
+        if (!collectionId) {
+            return;
+        }
+        setBanner(null);
+        apiFetch(
+            "stig_collections/" +
+                collectionId +
+                "/metrics/export?grouping=" +
+                encodeURIComponent(metricsExportGrouping) +
+                "&format=json"
+        )
+            .then((data) => {
+                const csv = (data && data.csv) || "";
+                if (!csv) {
+                    setBanner({ type: "warning", message: "Metrics export returned no CSV." });
+                    return;
+                }
+                downloadText(
+                    "stig_metrics_" + metricsExportGrouping + ".csv",
+                    csv,
+                    "text/csv"
+                );
+            })
+            .catch((err) =>
+                setBanner({
+                    type: "error",
+                    message: err.message || "Metrics export failed.",
+                })
+            );
+    };
+
     const exportCsv = () => {
         if (!findings.length) {
             setBanner({ type: "warning", message: "No findings to export." });
@@ -826,6 +860,34 @@ export default function CollectionDashboardApp() {
                                             ) : null}
                                         </>
                                     ) : null}
+                                    <Heading level={4}>Metrics export</Heading>
+                                    <Actions style={{ marginBottom: 12 }}>
+                                        <ControlGroup label="Grouping" labelPosition="top">
+                                            <Select
+                                                value={metricsExportGrouping}
+                                                onChange={(e, { value }) =>
+                                                    setMetricsExportGrouping(value)
+                                                }
+                                            >
+                                                <Select.Option
+                                                    label="Collection"
+                                                    value="collection"
+                                                />
+                                                <Select.Option label="Asset" value="asset" />
+                                                <Select.Option label="STIG" value="stig" />
+                                                <Select.Option label="Label" value="label" />
+                                                <Select.Option
+                                                    label="Ungrouped (per checklist)"
+                                                    value="ungrouped"
+                                                />
+                                            </Select>
+                                        </ControlGroup>
+                                        <Button
+                                            label="Download metrics CSV"
+                                            onClick={exportMetricsCsv}
+                                            disabled={!collectionId}
+                                        />
+                                    </Actions>
                                     <Heading level={4}>By status</Heading>
                                     <Table>
                                         <Table.Head>

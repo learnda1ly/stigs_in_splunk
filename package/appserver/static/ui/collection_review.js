@@ -259,7 +259,7 @@
         color: #fff;
         border-color: #1e3a5f;
     }
-`;const be={not_reviewed:"Not Reviewed",open:"Open",not_a_finding:"Not a Finding",not_applicable:"Not Applicable"},me={draft:"Draft",submitted:"Submitted",accepted:"Accepted",rejected:"Rejected"},he={not_reviewed:{bg:"#e8eaed",fg:"#3c444d"},open:{bg:"#f8d7da",fg:"#721c24"},not_a_finding:{bg:"#d4edda",fg:"#155724"},not_applicable:{bg:"#cce5ff",fg:"#004085"}},ye=ne.default.span`
+`;const be={not_reviewed:"Not Reviewed",open:"Open",not_a_finding:"Not a Finding",not_applicable:"Not Applicable",informational:"Informational"},me={draft:"Draft",submitted:"Submitted",accepted:"Accepted",rejected:"Rejected"},he={not_reviewed:{bg:"#e8eaed",fg:"#3c444d"},open:{bg:"#f8d7da",fg:"#721c24"},not_a_finding:{bg:"#d4edda",fg:"#155724"},not_applicable:{bg:"#cce5ff",fg:"#004085"},informational:{bg:"#e2d5f5",fg:"#4a2c6a"}},ye=ne.default.span`
     display: inline-block;
     max-width: 100%;
     padding: 2px 8px;

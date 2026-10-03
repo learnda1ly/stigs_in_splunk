@@ -5,6 +5,7 @@ const STATUS_KEYS = {
     2: "open",
     3: "not_a_finding",
     4: "not_applicable",
+    5: "informational",
 };
 
 const QUICK = {
@@ -12,6 +13,7 @@ const QUICK = {
     n: "not_reviewed",
     f: "not_a_finding",
     a: "not_applicable",
+    i: "informational",
 };
 
 function isEditingField(el) {

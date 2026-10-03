@@ -14,10 +14,12 @@ from models import (
     KV_STIG_BASELINE_RULES,
     baseline_content_fingerprint,
     dumps_json,
+    is_selectable_catalog_baseline,
     kv_record,
     now_epoch,
     parse_json_field,
 )
+from services.revision_upgrade import parse_dis_version
 
 def normalize_cci(value: Any) -> str:
     text = str(value or "").strip().upper()
@@ -482,6 +484,13 @@ def list_baseline_rules(service, baseline_id: str) -> List[Dict[str, Any]]:
     return kv_client.query_all(coll, {"baseline_id": baseline_id})
 
 
+def _revision_sort_key(rec: Dict[str, Any]) -> tuple:
+    ver = parse_dis_version(rec.get("version"))
+    if ver:
+        return (ver[0], ver[1], float(rec.get("imported_at") or 0), "")
+    return (0, 0, float(rec.get("imported_at") or 0), str(rec.get("version") or ""))
+
+
 def find_baseline_by_stig(
     service,
     stig_id: str,
@@ -502,10 +511,12 @@ def find_baseline_by_stig(
             continue
         if want_ver and str(rec.get("version") or "").strip() != want_ver:
             continue
+        if not want_ver and not is_selectable_catalog_baseline(rec):
+            continue
         matches.append(rec)
     if not matches:
         return None
-    matches.sort(key=lambda r: float(r.get("imported_at") or 0), reverse=True)
+    matches.sort(key=_revision_sort_key, reverse=True)
     return matches[0]
 
 
@@ -610,6 +621,7 @@ def import_parsed_baseline(
             "version": meta.get("version"),
             "release_info": meta.get("release_info"),
             "benchmark_date": meta.get("benchmark_date"),
+            "benchmark_status": meta.get("benchmark_status") or "accepted",
             "xccdf_benchmark_id": meta.get("xccdf_benchmark_id"),
             "display_name": meta.get("display_name") or "",
             "reference_identifier": meta.get("reference_identifier") or "",
