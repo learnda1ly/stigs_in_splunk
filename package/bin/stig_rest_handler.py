@@ -1266,6 +1266,9 @@ class StigRestHandler(PersistentServerConnectionApplication):
             body = _body_bytes(payload)
             if not body:
                 return _error("empty import body")
+            replace_existing = baselines_svc.parse_replace_existing_revisions_flag(
+                query, body_json
+            )
             results = baselines_svc.import_baselines_payload(
                 service,
                 body,
@@ -1273,6 +1276,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 username,
                 source_uri,
                 stig_collection_id=scope,
+                replace_existing_revisions=replace_existing,
             )
             created_any = any(item.get("created") for item in results)
             payload_out = {
@@ -1563,10 +1567,14 @@ class StigRestHandler(PersistentServerConnectionApplication):
             if method != "POST":
                 return _error("method not allowed", status=405)
             body = _body_json(payload)
+            replace_existing = baselines_svc.parse_replace_existing_revisions_flag(
+                query, body
+            )
             rec = baseline_jobs_svc.create_job(
                 body.get("filename") or "",
                 int(body.get("size") or 0),
                 username,
+                replace_existing_revisions=replace_existing,
             )
             return _json_response(rec, status=201)
         job_id = parts[0]
@@ -1589,8 +1597,19 @@ class StigRestHandler(PersistentServerConnectionApplication):
             rec = baseline_jobs_svc.finalize_job(job_id, username)
             return _json_response(rec)
         if action == "import":
+            replace_existing = baselines_svc.resolve_replace_existing_revisions(
+                query,
+                body,
+                job_default=baseline_jobs_svc.job_replace_existing_revisions(
+                    job_id, username
+                ),
+            )
             rec = baseline_jobs_svc.import_member(
-                service, job_id, username, body.get("path") or ""
+                service,
+                job_id,
+                username,
+                body.get("path") or "",
+                replace_existing_revisions=replace_existing,
             )
             payload_out = dict(rec.get("record") or {})
             payload_out["created"] = bool(rec.get("created"))
