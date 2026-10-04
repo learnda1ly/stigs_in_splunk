@@ -1418,6 +1418,34 @@ paths:
               schema:
                 $ref: "#/components/schemas/BaselineImportResult"
 
+  /stig_baselines/compare:
+    get:
+      tags: [Baselines]
+      summary: Compare two baseline revisions (read-only)
+      operationId: compareBaselineRevisions
+      parameters:
+        - name: from_baseline_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: to_baseline_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Rule add/remove/change report with per-field from/to values on changed rows
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /stig_baselines/hierarchy:
     get:
       tags: [Baselines]

@@ -34,6 +34,164 @@ function revisionLabel(rev) {
     return parts.join(" · ");
 }
 
+function CompareFieldDiff({ fields }) {
+    if (!fields || !Object.keys(fields).length) {
+        return null;
+    }
+    return (
+        <div style={{ marginTop: "0.5rem" }}>
+            {Object.entries(fields).map(([name, pair]) => (
+                <div key={name} style={{ marginBottom: "0.75rem" }}>
+                    <strong>{name}</strong>
+                    <div style={{ display: "flex", gap: "1rem", marginTop: "0.25rem" }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="muted" style={{ fontSize: 12 }}>
+                                From
+                            </div>
+                            <pre style={textBlockStyle}>{pair.from || "—"}</pre>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="muted" style={{ fontSize: 12 }}>
+                                To
+                            </div>
+                            <pre style={textBlockStyle}>{pair.to || "—"}</pre>
+                        </div>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function CompareReport({ report, expandedKey, onToggleExpand }) {
+    if (!report) {
+        return null;
+    }
+    const summary = report.summary || {};
+    return (
+        <div style={{ marginTop: "1.5rem" }} data-testid="revision-compare-report">
+            <Heading level={3}>Revision compare</Heading>
+            <Message appearance="info">
+                From {report.from_baseline?.version || "—"} → to{" "}
+                {report.to_baseline?.version || "—"}: {summary.added || 0} added,{" "}
+                {summary.removed || 0} removed, {summary.changed || 0} changed,{" "}
+                {summary.unchanged || 0} unchanged.
+            </Message>
+            {summary.changed ? (
+                <>
+                    <Heading level={4} style={{ marginTop: "1rem" }}>
+                        Changed rules
+                    </Heading>
+                    <Table>
+                        <Table.Head>
+                            <Table.HeadCell>Rule</Table.HeadCell>
+                            <Table.HeadCell>Fields</Table.HeadCell>
+                            <Table.HeadCell>Check hash</Table.HeadCell>
+                        </Table.Head>
+                        <Table.Body>
+                            {(report.changed || []).map((row) => {
+                                const key =
+                                    row.group_id + "|" + row.rule_id;
+                                const open = expandedKey === key;
+                                return (
+                                    <React.Fragment key={key}>
+                                        <Table.Row
+                                            onClick={() => onToggleExpand(key)}
+                                        >
+                                            <Table.Cell>
+                                                <strong>{row.rule_id}</strong>
+                                                <div>{row.rule_title}</div>
+                                            </Table.Cell>
+                                            <Table.Cell>
+                                                {(row.changed_fields || []).join(
+                                                    ", "
+                                                )}
+                                            </Table.Cell>
+                                            <Table.Cell>
+                                                {row.check_content_hash_changed
+                                                    ? "changed"
+                                                    : "same"}
+                                            </Table.Cell>
+                                        </Table.Row>
+                                        {open ? (
+                                            <Table.Row>
+                                                <Table.Cell colSpan={3}>
+                                                    <CompareFieldDiff
+                                                        fields={row.fields}
+                                                    />
+                                                    {row.review_would_carry_forward ? (
+                                                        <Message
+                                                            appearance="info"
+                                                            style={{
+                                                                marginTop: "0.5rem",
+                                                            }}
+                                                        >
+                                                            Check content hash
+                                                            unchanged — reviews
+                                                            would carry forward on
+                                                            upgrade.
+                                                        </Message>
+                                                    ) : null}
+                                                </Table.Cell>
+                                            </Table.Row>
+                                        ) : null}
+                                    </React.Fragment>
+                                );
+                            })}
+                        </Table.Body>
+                    </Table>
+                </>
+            ) : null}
+            {summary.added ? (
+                <>
+                    <Heading level={4} style={{ marginTop: "1rem" }}>
+                        Added rules
+                    </Heading>
+                    <Table>
+                        <Table.Head>
+                            <Table.HeadCell>Rule</Table.HeadCell>
+                            <Table.HeadCell>Title</Table.HeadCell>
+                        </Table.Head>
+                        <Table.Body>
+                            {(report.added || []).map((row) => (
+                                <Table.Row
+                                    key={row.rule_key || row.rule_id}
+                                >
+                                    <Table.Cell>{row.rule_id}</Table.Cell>
+                                    <Table.Cell>{row.rule_title}</Table.Cell>
+                                </Table.Row>
+                            ))}
+                        </Table.Body>
+                    </Table>
+                </>
+            ) : null}
+            {summary.removed ? (
+                <>
+                    <Heading level={4} style={{ marginTop: "1rem" }}>
+                        Removed rules
+                    </Heading>
+                    <Table>
+                        <Table.Head>
+                            <Table.HeadCell>Rule</Table.HeadCell>
+                            <Table.HeadCell>Title</Table.HeadCell>
+                        </Table.Head>
+                        <Table.Body>
+                            {(report.removed || []).map((row) => (
+                                <Table.Row
+                                    key={row.rule_key || row.rule_id}
+                                >
+                                    <Table.Cell>{row.rule_id}</Table.Cell>
+                                    <Table.Cell>{row.rule_title}</Table.Cell>
+                                </Table.Row>
+                            ))}
+                        </Table.Body>
+                    </Table>
+                </>
+            ) : null}
+        </div>
+    );
+}
+
 function RuleDetailPanel({ detail }) {
     if (!detail) {
         return null;
@@ -82,6 +240,11 @@ export default function LibraryApp() {
     const [rulesLoading, setRulesLoading] = useState(false);
     const [error, setError] = useState("");
     const [checklistModal, setChecklistModal] = useState(null);
+    const [compareFrom, setCompareFrom] = useState("");
+    const [compareTo, setCompareTo] = useState("");
+    const [compareReport, setCompareReport] = useState(null);
+    const [compareLoading, setCompareLoading] = useState(false);
+    const [compareExpanded, setCompareExpanded] = useState("");
 
     const benchmarks = hierarchy?.benchmarks || [];
 
@@ -169,11 +332,44 @@ export default function LibraryApp() {
         setSelectedStig(row.stig_id);
         setSelectedBaseline(row.latest_baseline_id);
         setRuleDetail(null);
+        setCompareReport(null);
+        setCompareExpanded("");
+        const revs = row.revisions || [];
+        if (revs.length >= 2) {
+            setCompareFrom(revs[1].baseline_id);
+            setCompareTo(revs[0].baseline_id);
+        } else {
+            setCompareFrom("");
+            setCompareTo("");
+        }
     }
 
     function selectRevision(rev) {
         setSelectedBaseline(rev.baseline_id);
         setRuleDetail(null);
+    }
+
+    async function runRevisionCompare() {
+        if (!compareFrom || !compareTo) {
+            return;
+        }
+        setCompareLoading(true);
+        setError("");
+        setCompareReport(null);
+        setCompareExpanded("");
+        try {
+            const qs =
+                "?from_baseline_id=" +
+                encodeURIComponent(compareFrom) +
+                "&to_baseline_id=" +
+                encodeURIComponent(compareTo);
+            const data = await apiGet("stig_baselines/compare" + qs);
+            setCompareReport(data);
+        } catch (err) {
+            setError(String(err.message || err));
+        } finally {
+            setCompareLoading(false);
+        }
     }
 
     function openCreateChecklist(rev, bench) {
@@ -394,6 +590,146 @@ export default function LibraryApp() {
                                                 )}
                                             </Table.Body>
                                         </Table>
+                                        {activeBench.revisions.length >= 2 ? (
+                                            <div
+                                                style={{
+                                                    marginTop: "1rem",
+                                                    padding: "0.75rem",
+                                                    border: "1px solid var(--splunk-color-border, #3c444d)",
+                                                    borderRadius: 4,
+                                                }}
+                                                data-testid="revision-compare-panel"
+                                            >
+                                                <Heading level={4}>
+                                                    Compare revisions
+                                                </Heading>
+                                                <p
+                                                    style={{
+                                                        fontSize: 13,
+                                                        marginTop: 0,
+                                                    }}
+                                                >
+                                                    Read-only report of rules
+                                                    added, removed, or changed
+                                                    between two catalog
+                                                    revisions (matched by V-id /
+                                                    SV-id).
+                                                </p>
+                                                <div
+                                                    style={{
+                                                        display: "flex",
+                                                        flexWrap: "wrap",
+                                                        gap: "0.75rem",
+                                                        alignItems: "flex-end",
+                                                    }}
+                                                >
+                                                    <div>
+                                                        <div
+                                                            style={{
+                                                                fontSize: 12,
+                                                                marginBottom: 4,
+                                                            }}
+                                                        >
+                                                            From (older)
+                                                        </div>
+                                                        <Select
+                                                            value={compareFrom}
+                                                            onChange={(
+                                                                _,
+                                                                { value }
+                                                            ) =>
+                                                                setCompareFrom(
+                                                                    value
+                                                                )
+                                                            }
+                                                        >
+                                                            {activeBench.revisions.map(
+                                                                (rev) => (
+                                                                    <Select.Option
+                                                                        key={
+                                                                            rev.baseline_id
+                                                                        }
+                                                                        label={revisionLabel(
+                                                                            rev
+                                                                        )}
+                                                                        value={
+                                                                            rev.baseline_id
+                                                                        }
+                                                                    />
+                                                                )
+                                                            )}
+                                                        </Select>
+                                                    </div>
+                                                    <div>
+                                                        <div
+                                                            style={{
+                                                                fontSize: 12,
+                                                                marginBottom: 4,
+                                                            }}
+                                                        >
+                                                            To (newer)
+                                                        </div>
+                                                        <Select
+                                                            value={compareTo}
+                                                            onChange={(
+                                                                _,
+                                                                { value }
+                                                            ) =>
+                                                                setCompareTo(
+                                                                    value
+                                                                )
+                                                            }
+                                                        >
+                                                            {activeBench.revisions.map(
+                                                                (rev) => (
+                                                                    <Select.Option
+                                                                        key={
+                                                                            rev.baseline_id +
+                                                                            "-to"
+                                                                        }
+                                                                        label={revisionLabel(
+                                                                            rev
+                                                                        )}
+                                                                        value={
+                                                                            rev.baseline_id
+                                                                        }
+                                                                    />
+                                                                )
+                                                            )}
+                                                        </Select>
+                                                    </div>
+                                                    <Button
+                                                        appearance="primary"
+                                                        label="Compare"
+                                                        disabled={
+                                                            !compareFrom ||
+                                                            !compareTo ||
+                                                            compareFrom ===
+                                                                compareTo ||
+                                                            compareLoading
+                                                        }
+                                                        onClick={
+                                                            runRevisionCompare
+                                                        }
+                                                    />
+                                                    {compareLoading ? (
+                                                        <WaitSpinner />
+                                                    ) : null}
+                                                </div>
+                                                <CompareReport
+                                                    report={compareReport}
+                                                    expandedKey={compareExpanded}
+                                                    onToggleExpand={(key) =>
+                                                        setCompareExpanded(
+                                                            compareExpanded ===
+                                                                key
+                                                                ? ""
+                                                                : key
+                                                        )
+                                                    }
+                                                />
+                                            </div>
+                                        ) : null}
                                         {selectedBaseline ? (
                                             <>
                                                 <Heading
