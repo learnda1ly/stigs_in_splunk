@@ -85,6 +85,7 @@ class _TransferKv:
             },
             "stig_baselines": {},
             "stig_baseline_rules": {},
+            "stig_review_history": {},
         }
 
     def get_collection(self, _service, name: str) -> _MemColl:
@@ -110,6 +111,13 @@ class _TransferKv:
         coll._rows[key] = stored
         return stored
 
+    def insert_record(self, coll: _MemColl, record: Dict[str, Any]) -> Dict[str, Any]:
+        key = (record.get("_key") or "").strip() or f"k{len(coll._rows) + 1}"
+        stored = dict(record)
+        stored["_key"] = key
+        coll._rows[key] = stored
+        return stored
+
 
 def _session(user: str = "alice", *, write: bool = True) -> Dict[str, Any]:
     caps = {"stig_read": True}
@@ -118,23 +126,37 @@ def _session(user: str = "alice", *, write: bool = True) -> Dict[str, Any]:
     return {"user": user, "roles": [], "capabilities": caps}
 
 
-def _patch_kv(kv: _TransferKv):
+def _patch_kv(kv: _TransferKv, extra_modules=()):
     modules = (
         "services.collections.kv_client",
         "services.grants.kv_client",
         "services.hosts.kv_client",
         "services.labels.kv_client",
         "services.checklists.kv_client",
+        "services.reviews.kv_client",
+        "services.review_history.kv_client",
+        "services.baselines.kv_client",
+        "services.settings.kv_client",
+        *extra_modules,
     )
     patches = []
     for mod in modules:
         patches.append(patch(f"{mod}.get_collection", side_effect=kv.get_collection))
         patches.append(patch(f"{mod}.query_all", side_effect=kv.query_all))
         patches.append(patch(f"{mod}.get_by_key", side_effect=kv.get_by_key))
-    patches.append(
-        patch("services.hosts.kv_client.update_record", side_effect=kv.update_record)
-    )
+    for mod in (
+        "services.hosts.kv_client",
+        "services.checklists.kv_client",
+        "services.review_history.kv_client",
+    ):
+        patches.append(
+            patch(f"{mod}.update_record", side_effect=kv.update_record)
+        )
+        patches.append(
+            patch(f"{mod}.insert_record", side_effect=kv.insert_record)
+        )
     patches.append(patch("services.hosts.kv_record", side_effect=lambda r: r))
+    patches.append(patch("services.checklists.kv_record", side_effect=lambda r: r))
     return patches
 
 
@@ -382,6 +404,163 @@ class TestCollectionTransferService(unittest.TestCase):
             resp = handler.handle(json.dumps(payload))
         self.assertEqual(resp["status"], 201)
         mock_export.assert_called_once()
+
+
+class TestCopyResultsToCollection(unittest.TestCase):
+    def setUp(self) -> None:
+        self.service = MagicMock()
+        self.kv = _TransferKv()
+        self.kv.tables["stig_hosts"]["h_src"] = {
+            "_key": "h_src",
+            "stig_collection_id": "ws1",
+            "hostname": "alpha",
+            "label_ids": "[]",
+        }
+        self.kv.tables["stig_hosts"]["h_dst"] = {
+            "_key": "h_dst",
+            "stig_collection_id": "ws2",
+            "hostname": "alpha",
+            "label_ids": "[]",
+        }
+        self.kv.tables["stig_hosts"]["h_lonely"] = {
+            "_key": "h_lonely",
+            "stig_collection_id": "ws1",
+            "hostname": "no-dest-match",
+            "label_ids": "[]",
+        }
+        self.kv.tables["stig_checklists"]["cl_src"] = {
+            "_key": "cl_src",
+            "stig_collection_id": "ws1",
+            "host_id": "h_src",
+            "baseline_id": "b1",
+        }
+        self.kv.tables["stig_checklists"]["cl_dst"] = {
+            "_key": "cl_dst",
+            "stig_collection_id": "ws2",
+            "host_id": "h_dst",
+            "baseline_id": "b1",
+        }
+        self.kv.tables["stig_reviews"]["r_src"] = {
+            "_key": "r_src",
+            "checklist_id": "cl_src",
+            "rule_id": "SV-000001r1_rule",
+            "group_id": "V-000001",
+            "status": "open",
+            "finding_details": "copied detail",
+            "comments": "copied comment",
+            "workflow_state": "draft",
+        }
+        self.kv.tables["stig_reviews"]["r_dst"] = {
+            "_key": "r_dst",
+            "checklist_id": "cl_dst",
+            "rule_id": "SV-000001r1_rule",
+            "group_id": "V-000001",
+            "status": "not_reviewed",
+            "finding_details": "",
+            "comments": "",
+            "workflow_state": "draft",
+        }
+        self.patches = _patch_kv(self.kv)
+        self.patches.append(
+            patch(
+                "services.settings.get_settings",
+                return_value={"governance_enabled": False},
+            )
+        )
+        for p in self.patches:
+            p.start()
+        self.kv.tables["stig_collection_grants"]["g1"] = {
+            "_key": "g1",
+            "stig_collection_id": "ws1",
+            "principal": "user:alice",
+            "grant_role": "owner",
+            "acl_host_ids": "[]",
+            "acl_baseline_ids": "[]",
+            "acl_labels": "[]",
+        }
+        self.kv.tables["stig_collection_grants"]["g2"] = {
+            "_key": "g2",
+            "stig_collection_id": "ws2",
+            "principal": "user:alice",
+            "grant_role": "owner",
+            "acl_host_ids": "[]",
+            "acl_baseline_ids": "[]",
+            "acl_labels": "[]",
+        }
+
+    def tearDown(self) -> None:
+        for p in reversed(self.patches):
+            p.stop()
+
+    @patch("services.collection_transfer.audit.log_event")
+    def test_copy_results_same_hostname_updates_destination(self, mock_audit) -> None:
+        alice = _session()
+        with patch(
+            "services.collection_transfer.collections_svc.get_collection"
+        ) as mock_get:
+            mock_get.side_effect = lambda _s, cid: self.kv.tables["stig_collections"].get(
+                cid
+            )
+            result = transfer_svc.export_hosts_to_collection(
+                self.service,
+                "ws1",
+                "ws2",
+                {"host_ids": ["h_src"], "copy_results": True},
+                "alice",
+                alice,
+            )
+        self.assertTrue(result.get("copy_results"))
+        self.assertEqual(result["summary"]["copied"], 1)
+        self.assertEqual(result["summary"]["reviews_updated"], 1)
+        self.assertEqual(
+            self.kv.tables["stig_hosts"]["h_src"]["stig_collection_id"], "ws1"
+        )
+        dest = self.kv.tables["stig_reviews"]["r_dst"]
+        self.assertEqual(dest["status"], "open")
+        self.assertEqual(dest["finding_details"], "copied detail")
+        self.assertEqual(dest["comments"], "copied comment")
+        mock_audit.assert_called_once()
+
+    @patch("services.collection_transfer.audit.log_event")
+    def test_copy_results_skips_when_hostname_not_in_destination(self, mock_audit) -> None:
+        alice = _session()
+        with patch(
+            "services.collection_transfer.collections_svc.get_collection"
+        ) as mock_get:
+            mock_get.side_effect = lambda _s, cid: self.kv.tables["stig_collections"].get(
+                cid
+            )
+            result = transfer_svc.export_hosts_to_collection(
+                self.service,
+                "ws1",
+                "ws2",
+                {"host_ids": ["h_lonely"], "copy_results": True},
+                "alice",
+                alice,
+            )
+        self.assertEqual(result["summary"]["skipped"], 1)
+        self.assertEqual(result["results"][0]["error"], "destination_hostname_not_found")
+        mock_audit.assert_not_called()
+
+    def test_copy_results_rejects_more_than_100_hosts(self) -> None:
+        alice = _session()
+        host_ids = [f"h{i}" for i in range(101)]
+        with patch(
+            "services.collection_transfer.collections_svc.get_collection"
+        ) as mock_get:
+            mock_get.side_effect = lambda _s, cid: self.kv.tables["stig_collections"].get(
+                cid
+            )
+            with self.assertRaises(ValueError) as ctx:
+                transfer_svc.export_hosts_to_collection(
+                    self.service,
+                    "ws1",
+                    "ws2",
+                    {"host_ids": host_ids, "copy_results": True},
+                    "alice",
+                    alice,
+                )
+        self.assertIn("100", str(ctx.exception))
 
 
 if __name__ == "__main__":

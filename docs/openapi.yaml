@@ -318,7 +318,7 @@ paths:
           type: string
     post:
       tags: [Collections]
-      summary: Bulk transfer hosts to another workspace
+      summary: Bulk transfer hosts or copy review results to another workspace
       operationId: transferHostsToCollection
       x-splunk-capability: stig_write
       requestBody:
@@ -326,11 +326,23 @@ paths:
           application/json:
             schema:
               type: object
+              required: [host_ids]
               properties:
                 host_ids:
                   type: array
+                  description: >
+                    Host ids in the source workspace. When `copy_results` is true,
+                    at most 100 ids per request (STIG Manager §2.9.2.5.1); larger
+                    lists return **400**.
                   items:
                     type: string
+                copy_results:
+                  type: boolean
+                  default: false
+                  description: >
+                    When true, copy assessor review fields onto same-named hosts in
+                    the destination workspace without moving source hosts. When false
+                    or omitted, selected hosts are moved to the destination workspace.
       responses:
         "200":
           description: Transfer finished; no hosts moved (`summary.moved` is 0)
@@ -339,11 +351,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/CollectionTransferResult"
         "201":
-          description: At least one host moved to the destination workspace
+          description: At least one host moved or at least one copy succeeded
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/CollectionTransferResult"
+        "400":
+          description: Invalid request (e.g. empty host_ids, same source/destination, or more than 100 hosts when copy_results is true)
 
   /stig_collections/{collectionId}/baseline_defaults:
     parameters:
@@ -3747,10 +3761,17 @@ components:
     CollectionTransferResult:
       type: object
       properties:
+        copy_results:
+          type: boolean
+          description: Present and true when the request copied results instead of moving hosts
         summary:
           type: object
           properties:
             moved:
+              type: integer
+            copied:
+              type: integer
+            reviews_updated:
               type: integer
       additionalProperties: true
 
