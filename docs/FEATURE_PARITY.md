@@ -29,8 +29,8 @@ Priorities and sizes match the existing legend: **P0** blocks single-collection 
 
 | Status | Count | Notes |
 |--------|------:|-------|
-| done | 20 | Core assessor/admin path; see “Still done” table |
-| partial | 8 | Material doc gaps on existing paths |
+| done | 21 | Core assessor/admin path; see “Still done” table |
+| partial | 7 | Material doc gaps on existing paths |
 | missing | 10 | No implementation found |
 | n/a | 8 | Platform-owned or **intentionally out of scope** |
 | unverified | 3 | Listed at end of doc |
@@ -46,7 +46,7 @@ P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide ali
 | Default STIG revision per collection | done | **partial** | Pin map exists (`baseline_defaults.py`). Unpinned “latest” is highest `imported_at`, not highest version/release, and draft revisions are not held back. Docs: [user guide §2.9.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Collection dashboard metrics | done | **partial** | `GET /stig_collections/{id}/metrics` and the dashboard exist. Missing grouped export (collection / asset / STIG / label / ungrouped), summary vs detail fields, result-engine splits, and oldest/newest review ages. Docs: [§2.4.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). CORA stays **n/a** (see below). |
 | Review aging | done | **partial** | Stale **report** only (`review_aging.py`: threshold + status/severity filters; saved search `stigkvreviewaging`). Docs now specify **action rules** (delete, set Saved/Submitted, set result to Not Checked or Informational), ordinal, enable/disable, and targets (collection, asset, STIG, label). App Manager job **Update Aged Reviews**. Docs: [§2.9.1.7](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [admin §2.2.5](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
-| Result engine (automated / manual / override) | not a row | **partial** | Parsers emit `resultEngine` (`importers/ingest.py`). `review_seed_payload` does **not** write it onto the KV review. Editor has no automated/manual/override badge. Docs: [§2.7.1 and §2.7.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Result engine (automated / manual / override) | not a row | **done** | `resultEngine` survives ingest via `review_seed_payload` → KV `result_engine` (`collections.conf`, `import_policy.py`). Editor shows manual / automated / override (`ui/src/resultEngine.jsx`, `EditorApp.jsx`). Manual status edits clear engine (`services/reviews.py`). XCCDF archive export emits scanner check + override messages (`exporters/xccdf_results.py`). Docs: [§2.7.1 and §2.7.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Informational result | folded into status enum | **partial** | `STATUSES` / `STATUS_TO_RESULT` are `not_reviewed`, `open`, `not_a_finding`, `not_applicable`. `informational` XCCDF maps to `not_reviewed` (`models.py`). Docs treat Informational as its own result. |
 | Collection import options | not a row | **done** | Per-workspace `import_options` on `stig_collections`; REST `GET/PATCH .../import_options`; applied on file import, batch/zip, HEC apply, and reconcile via `import_policy.py`. Admin UI **Import options**. Docs: [§2.9.1.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Compare STIG revisions | not a row | **missing** | Library browses revisions (`LibraryApp.jsx`). No field-level diff of two revisions. Upgrade merge is a different feature and remains **done**. Docs: [§2.3.2.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [review handling](https://stig-manager.readthedocs.io/en/latest/user-guide/review-handling.html). |
@@ -80,6 +80,7 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | Revision upgrade / hash merge | `services/revision_upgrade.py` |
 | Asset review + collection review + batch | `ui/src/pages/EditorApp.jsx`, `CollectionReviewApp.jsx`, `POST /stig_reviews/batch` |
 | Submit / accept / reject, requirements, ingest lock | `review_workflow.py`, editor + collection review UI |
+| Result engine on reviews (ingest, editor, export) | `importers/ingest.py`, `services/reviews.py`, `exporters/xccdf_results.py`, `ui/src/resultEngine.jsx` |
 | Peer copy | `services/review_peers.py` |
 | CKL/CKLB/XCCDF results import and archive export | `services/imports.py`, `exporters/ckl.py`, `cklb.py`, `xccdf_results.py` |
 | Watcher-shaped HEC | [docs/watcher-hec.md](watcher-hec.md), `importers/events.py` |
@@ -98,7 +99,6 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | Default revision “latest” semantics | partial | Pin works; latest = `imported_at` in `find_baseline_by_stig` |
 | Dashboard metrics export + ages | partial | Counts only; no group-by export, no min/max timestamps |
 | Review aging actions | partial | Report/config only; no mutating rules |
-| Result engine on the review | partial | Parsed, dropped in `review_seed_payload` |
 | Informational result | partial | Collapsed to `not_reviewed` |
 | Import options | done | `services/import_options.py`, `import_policy.py`, ingest in `apply.py` / `checklists.py` |
 | Compare revisions | missing | No diff UI or API |
@@ -143,7 +143,6 @@ No new **P0**. Day-to-day assess (open a workspace, assign a STIG, save, submit,
 
 | Item | Size | Engineer-days | Notes |
 |------|------|----------------|-------|
-| Persist result engine and show manual / automated / override | M | 3–5 | Seed, export, metrics detail, editor sprite |
 | Collection import options, including Watcher/HEC | M | 5–8 | Touches every ingest path |
 | Informational as its own status | S | 2–3 | Enum, CKL/XCCDF round-trip, metrics, UI |
 | Revision compare (rule/field diff) | M | 4–6 | Read-only report; do not copy ExtJS |
