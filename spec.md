@@ -839,6 +839,7 @@ Requires **`stig_write`**.
 
 | Method | Path | Notes |
 |--------|------|--------|
+| GET/POST | `/stig_reviews/gc_unmapped` | Admin unmapped review GC. **GET** and default **POST** are dry-run reports (`unmapped_count`, `unmapped[]` with `reason`, `skipped_no_key_count`). Optional query/body `stig_collection_id` limits to one workspace. Destructive delete when **POST** with `dry_run=false` or `confirm=true`. Deletes reviews whose `checklist_id` is missing (**missing_checklist**) or whose `(group_id, rule_id)` is absent from the checklist baseline rules (**missing_rule** / **missing_baseline**). Removes matching `stig_review_history` rows. Audits only when `deleted_count > 0`. Requires **stig_admin**. |
 | GET | `/stig_reviews` | Query `checklist_id?`, `status?`, `workflow_state?`, `stig_collection_id?`, `rule_id?`, `rule_version?`, `valid?` |
 | GET | `/stig_reviews/{id}` | Single review |
 | PATCH/PUT | `/stig_reviews/{id}` | `{status?, finding_details?, comments?, package_id?, ingest_lock?}` (`package_id` = Evaluate-STIG/CKLB id, not RMF — §7.6) |
@@ -1067,7 +1068,7 @@ curl $AUTH "$BASE/stig_checklists/CHECKLIST_ID/export?format=cklb"
 
 | Limitation | Detail |
 |------------|--------|
-| Orphan data | Failed imports before KV `_key` fix may leave orphan `stig_baseline_rules` or empty baselines; no automatic GC. Admins can report and delete orphan **rules** via `GET/POST /stig_baselines/gc_orphan_rules` (does not remove empty baseline headers or checklist/review rows). |
+| Orphan data | Failed imports before KV `_key` fix may leave orphan `stig_baseline_rules` or empty baselines; no automatic GC. Admins can report and delete orphan **rules** via `GET/POST /stig_baselines/gc_orphan_rules` (does not remove empty baseline headers or checklist/review rows). Admins can report and delete **unmapped reviews** via `GET/POST /stig_reviews/gc_unmapped` (dry-run by default; optional workspace scope). |
 | No baseline dedup for legacy rows | Missing `content_fingerprint` until re-import. |
 | Baseline catalog | Default catalog is global; optional per-workspace rows via `stig_collection_id` (§7.3). |
 | Collection delete | Blocked when children exist unless `?cascade=true`; cascades workspace hosts/checklists/reviews/grants/review history and **assignment rules/overrides targeting that workspace**; global baselines unchanged. UCC Configuration delete only allows empty workspaces. |

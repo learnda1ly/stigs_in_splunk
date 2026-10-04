@@ -2169,6 +2169,89 @@ paths:
               schema:
                 type: string
 
+  /stig_reviews/gc_unmapped:
+    get:
+      tags: [Reviews]
+      summary: Dry-run report of unmapped reviews (admin)
+      description: |
+        Lists `stig_reviews` rows whose checklist is missing or whose
+        `(group_id, rule_id)` is not present on the checklist baseline.
+        Always dry-run; does not delete. Optional `stig_collection_id` scopes
+        to one workspace. Handler requires `stig_admin`.
+      operationId: reportUnmappedReviews
+      x-splunk-capability: stig_admin
+      parameters:
+        - name: stig_collection_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Unmapped review report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnmappedReviewsGcResult"
+        "403":
+          description: stig_admin required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [Reviews]
+      summary: Report or delete unmapped reviews (admin)
+      description: |
+        Default is dry-run (same shape as GET). Set query or JSON `dry_run=false`
+        or `confirm=true` to delete unmapped reviews and their history rows.
+        Audit runs only when at least one row is deleted. Optional
+        `stig_collection_id` (query or JSON) limits to one workspace.
+      operationId: gcUnmappedReviews
+      x-splunk-capability: stig_admin
+      parameters:
+        - name: dry_run
+          in: query
+          schema:
+            type: boolean
+            default: true
+        - name: confirm
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: stig_collection_id
+          in: query
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dry_run:
+                  type: boolean
+                  default: true
+                confirm:
+                  type: boolean
+                  default: false
+                stig_collection_id:
+                  type: string
+      responses:
+        "200":
+          description: Dry-run report or delete result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnmappedReviewsGcResult"
+        "403":
+          description: stig_admin required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /stig_reviews:
     get:
       tags: [Reviews]
@@ -3193,6 +3276,43 @@ components:
                 type: string
               group_id:
                 type: string
+
+    UnmappedReviewsGcResult:
+      type: object
+      required:
+        [dry_run, unmapped_count, unmapped, deleted_count, skipped_no_key_count, history_rows_removed]
+      properties:
+        dry_run:
+          type: boolean
+        stig_collection_id:
+          type: string
+          description: Present when the request scoped to one workspace
+        unmapped_count:
+          type: integer
+        deleted_count:
+          type: integer
+        skipped_no_key_count:
+          type: integer
+        history_rows_removed:
+          type: integer
+        unmapped:
+          type: array
+          items:
+            type: object
+            properties:
+              _key:
+                type: string
+              checklist_id:
+                type: string
+              baseline_id:
+                type: string
+              rule_id:
+                type: string
+              group_id:
+                type: string
+              reason:
+                type: string
+                enum: [missing_checklist, missing_baseline, missing_rule]
 
     BaselineJobChunk:
       type: object
