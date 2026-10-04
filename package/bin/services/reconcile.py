@@ -114,7 +114,9 @@ def reconcile_from_index(
     session_key = (session or {}).get("authtoken") or ""
     started = time.time()
     events = _search_events(session_key, index, sourcetype, window)
-    applied = apply_svc.apply_finding_events(service, events, username, session)
+    applied = apply_svc.apply_finding_events(
+        service, events, username, session, automation_import=True
+    )
     applied.update(
         {
             "index": index,

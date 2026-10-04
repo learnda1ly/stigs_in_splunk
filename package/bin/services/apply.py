@@ -5,7 +5,7 @@ Incoming findings are authoritative unless the existing review has ingest_lock.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import audit
 from importers.events import finding_key, normalize_finding_event
@@ -17,6 +17,8 @@ from services import checklists as checklists_svc
 from services import assignment as assignment_svc
 from services import collections as collections_svc
 from services import hosts as hosts_svc
+from services import import_options as import_options_svc
+from services import import_policy as import_policy_svc
 from services import rmf_packages as rmf_packages_svc
 
 
@@ -151,12 +153,24 @@ def _upsert_baseline(
     )
 
 
+def _events_by_rule(events: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for event in events or []:
+        for key in (event.get("ruleId"), event.get("groupId")):
+            if key is not None and str(key).strip():
+                out[str(key).strip()] = event
+    return out
+
+
 def apply_finding_events(
     service,
     events: List[Dict[str, Any]],
     username: str,
     session: Dict[str, Any],
     forced_collection_id: str = "",
+    *,
+    import_options_override: Optional[Dict[str, Any]] = None,
+    automation_import: bool = False,
 ) -> Dict[str, Any]:
     normalized: List[Dict[str, Any]] = []
     errors: List[str] = []
@@ -235,7 +249,16 @@ def apply_finding_events(
             baseline["_key"],
         )
         target_data = (first.get("asset") or {}).get("target_data") or {}
-        seeds = reviews_to_seeds(batch)
+        import_policy = import_options_svc.effective_policy(
+            service,
+            collection_id,
+            session,
+            override=import_options_override,
+            automation=automation_import,
+        )
+        filtered_batch = import_policy_svc.filter_events_for_import(batch, import_policy)
+        seeds = reviews_to_seeds(filtered_batch)
+        events_by_rule = _events_by_rule(filtered_batch)
         if existing:
             if target_data:
                 current = parse_json_field(existing.get("target_data"), default={}) or {}
@@ -270,7 +293,7 @@ def apply_finding_events(
             )
             created = True
             checklist_created += 1
-        for event in batch:
+        for event in filtered_batch:
             checklists_svc.ensure_review(
                 service,
                 checklist,
@@ -280,7 +303,13 @@ def apply_finding_events(
                 or seeds.get(event.get("groupId") or ""),
             )
         result = checklists_svc.apply_review_seeds(
-            service, checklist["_key"], seeds, username, session
+            service,
+            checklist["_key"],
+            seeds,
+            username,
+            session,
+            import_policy=import_policy,
+            events_by_rule=events_by_rule,
         )
         applied += int(result.get("updated") or 0)
         locked += int(result.get("locked") or 0)
@@ -297,7 +326,7 @@ def apply_finding_events(
                 "stig_collection_id": collection_id,
                 "assignment_reason": reason,
                 "assignment_rule_key": resolved.get("rule_key"),
-                "review_count": len(batch),
+                "review_count": len(filtered_batch),
                 "reviews_applied": result.get("updated", 0),
                 "reviews_locked": result.get("locked", 0),
                 "reviews_unmatched": result.get("unmatched", 0),

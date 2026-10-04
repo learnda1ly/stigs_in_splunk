@@ -35,7 +35,10 @@ from services import collections as collections_svc
 from services import grants as grants_svc
 from services import rmf_packages as rmf_packages_svc
 from services import hosts as hosts_svc
+from services import import_options as import_options_svc
+from services import import_policy as import_policy_svc
 from services import review_history as review_history_svc
+from services import review_requirements as review_requirements_svc
 from services import settings as settings_svc
 
 
@@ -418,14 +421,47 @@ def unassign_stig_from_host(
     return {"deleted": existing["_key"], "baseline_id": baseline_id}
 
 
+def _event_for_review(
+    rec: Dict[str, Any], events_by_rule: Optional[Dict[str, Dict[str, Any]]]
+) -> Optional[Dict[str, Any]]:
+    if not events_by_rule:
+        return None
+    candidates = [
+        rec.get("rule_id"),
+        rec.get("group_id"),
+        rec.get("rule_version"),
+    ]
+    for key in list(candidates):
+        if not key:
+            continue
+        text = str(key)
+        candidates.append(text + "_rule" if not text.endswith("_rule") else text[: -len("_rule")])
+    for key in candidates:
+        if key and str(key) in events_by_rule:
+            return events_by_rule[str(key)]
+    return None
+
+
 def apply_review_seeds(
     service,
     checklist_id: str,
     seeds: Dict[str, Any],
     username: str,
     session: Dict[str, Any],
+    *,
+    import_policy: Optional[Dict[str, Any]] = None,
+    events_by_rule: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Dict[str, int]:
-    get_checklist(service, checklist_id, session, write=True)
+    checklist = get_checklist(service, checklist_id, session, write=True)
+    collection_id = checklist.get("stig_collection_id") or ""
+    collection_rec = collections_svc.get_collection(service, collection_id) or {}
+    if import_policy is None:
+        import_policy = import_options_svc.parse_policy_from_collection(collection_rec)
+    review_req_policy = review_requirements_svc.parse_policy_from_collection(
+        collection_rec
+    )
+    _rec, _ctx, grants = grants_svc.workspace_context(service, collection_id, session)
+
     reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
     records = kv_client.query_all(reviews_coll, {"checklist_id": checklist_id})
     updated = 0
@@ -445,17 +481,17 @@ def apply_review_seeds(
         ):
             locked += 1
             continue
-        patch = dict(rec)
-        if "status" in seed:
-            patch["status"] = seed["status"]
-        if "finding_details" in seed:
-            patch["finding_details"] = seed["finding_details"] or ""
-        if "comments" in seed:
-            patch["comments"] = seed["comments"] or ""
-        if "package_id" in seed:
-            patch["package_id"] = seed["package_id"] or ""
-        if "result_engine" in seed:
-            patch["result_engine"] = seed["result_engine"] or ""
+        event = _event_for_review(rec, events_by_rule)
+        patch = import_policy_svc.apply_seed_with_policy(
+            existing=rec,
+            seed=seed,
+            event=event,
+            policy=import_policy,
+            collection_rec=collection_rec,
+            session=session,
+            grants=grants,
+            review_req_policy=review_req_policy,
+        )
         patch["valid"] = validation.persistable_valid(patch)
         patch["updated_at"] = ts
         patch["updated_by"] = username

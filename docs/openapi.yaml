@@ -429,6 +429,36 @@ paths:
               schema:
                 type: object
 
+  /stig_collections/{collectionId}/import_options:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collections]
+      summary: Get checklist import options for a workspace
+      operationId: getImportOptions
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      tags: [Collections]
+      summary: Update checklist import options
+      operationId: patchImportOptions
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
   /stig_collections/{collectionId}/review_aging:
     parameters:
       - $ref: "#/components/parameters/collectionId"
