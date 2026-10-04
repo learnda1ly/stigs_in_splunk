@@ -7,7 +7,16 @@ from typing import Any, Dict, List, Optional
 import access
 import audit
 import kv_client
-from models import KV_STIG_COLLECTION_GRANTS, dumps_json, kv_record, new_id, now_epoch, parse_json_field
+from models import (
+    KV_STIG_CHECKLISTS,
+    KV_STIG_COLLECTION_GRANTS,
+    KV_STIG_HOSTS,
+    dumps_json,
+    kv_record,
+    new_id,
+    now_epoch,
+    parse_json_field,
+)
 from services import collections as collections_svc
 from services import labels as labels_svc
 
@@ -300,6 +309,168 @@ def update_grant_acl(
     if not patch:
         raise ValueError("acl_host_ids, acl_baseline_ids, and/or acl_labels required")
     return update_grant(service, collection_id, grant_id, patch, username, session)
+
+
+def _baseline_lookup(service) -> Dict[str, Dict[str, Any]]:
+    from services import baselines as baselines_svc
+
+    rows = baselines_svc.list_baselines(service)
+    return {r.get("_key") or "": r for r in rows if r.get("_key")}
+
+
+def _expand_effective_access(
+    service,
+    collection_id: str,
+    access_ctx: access.WorkspaceAccess,
+) -> Dict[str, Any]:
+    hosts_coll = kv_client.get_collection(service, KV_STIG_HOSTS)
+    checklists_coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
+    hosts = kv_client.query_all(hosts_coll, {"stig_collection_id": collection_id})
+    checklists = kv_client.query_all(
+        checklists_coll, {"stig_collection_id": collection_id}
+    )
+    visible_hosts = access.filter_hosts(hosts, access_ctx)
+    host_by_id = {h.get("_key") or "": h for h in hosts if h.get("_key")}
+    visible_checklists = access.filter_checklists(
+        checklists, access_ctx, host_by_id=host_by_id
+    )
+    baseline_by_id = _baseline_lookup(service)
+    by_host: Dict[str, Dict[str, Any]] = {}
+    checklist_count = 0
+    baseline_ids: set[str] = set()
+    for cl in visible_checklists:
+        host_id = cl.get("host_id") or ""
+        if not host_id:
+            continue
+        host_rec = host_by_id.get(host_id) or {}
+        entry = by_host.setdefault(
+            host_id,
+            {
+                "host_id": host_id,
+                "hostname": host_rec.get("hostname") or host_id,
+                "checklists": [],
+            },
+        )
+        baseline_id = cl.get("baseline_id") or ""
+        baseline_ids.add(baseline_id)
+        baseline = baseline_by_id.get(baseline_id) or {}
+        entry["checklists"].append(
+            {
+                "checklist_id": cl.get("_key") or "",
+                "baseline_id": baseline_id,
+                "stig_id": baseline.get("stig_id") or "",
+                "baseline_title": baseline.get("title") or "",
+                "baseline_version": baseline.get("version") or "",
+            }
+        )
+        checklist_count += 1
+    host_rows = sorted(by_host.values(), key=lambda row: (row.get("hostname") or "").lower())
+    for row in host_rows:
+        row["checklists"] = sorted(
+            row["checklists"],
+            key=lambda item: (
+                (item.get("stig_id") or "").lower(),
+                (item.get("baseline_id") or ""),
+            ),
+        )
+    return {
+        "hosts": host_rows,
+        "summary": {
+            "host_count": len(host_rows),
+            "checklist_count": checklist_count,
+            "baseline_count": len(baseline_ids),
+        },
+    }
+
+
+def effective_access_for_grant(
+    service,
+    collection_id: str,
+    grant_id: str,
+    session: Dict[str, Any],
+    *,
+    assume_stig_write: bool = True,
+) -> Dict[str, Any]:
+    _require_manage(collection_id, session, service)
+    coll = _grants_coll(service)
+    grant_rec = kv_client.get_by_key(coll, grant_id)
+    if not grant_rec or grant_rec.get("stig_collection_id") != collection_id:
+        raise KeyError(grant_id)
+    access_ctx = access.workspace_access_from_grant(
+        grant_rec, assume_stig_write=assume_stig_write
+    )
+    expanded = _expand_effective_access(service, collection_id, access_ctx)
+    public = _public_grant(grant_rec)
+    return {
+        "stig_collection_id": collection_id,
+        "grant_id": grant_id,
+        "principal": public.get("principal"),
+        "grant_role": public.get("grant_role"),
+        "capabilities": public.get("capabilities"),
+        "acl_host_ids": public.get("acl_host_ids"),
+        "acl_baseline_ids": public.get("acl_baseline_ids"),
+        "acl_labels": public.get("acl_labels"),
+        "assume_stig_write": assume_stig_write,
+        **expanded,
+    }
+
+
+def effective_access_for_principal(
+    service,
+    collection_id: str,
+    principal: str,
+    session: Dict[str, Any],
+    *,
+    assume_stig_write: bool = True,
+) -> Dict[str, Any]:
+    _require_manage(collection_id, session, service)
+    principal_norm = _normalize_principal(principal)
+    collection = collections_svc.get_collection(service, collection_id)
+    if not collection:
+        raise KeyError(collection_id)
+    grant_rec = _find_grant_by_principal(service, collection_id, principal_norm)
+    if grant_rec:
+        access_ctx = access.workspace_access_from_grant(
+            grant_rec, assume_stig_write=assume_stig_write
+        )
+        grant_id = grant_rec.get("_key") or ""
+    else:
+        preview_session = access.session_for_principal_preview(principal_norm)
+        access_ctx = access.resolve_workspace_access(
+            collection, preview_session, grants=[]
+        )
+        if not access_ctx.can_read:
+            raise KeyError(principal_norm)
+        grant_id = None
+    expanded = _expand_effective_access(service, collection_id, access_ctx)
+    out: Dict[str, Any] = {
+        "stig_collection_id": collection_id,
+        "grant_id": grant_id,
+        "principal": principal_norm,
+        "grant_role": access_ctx.grant_role,
+        "capabilities": access.GRANT_CAPABILITIES.get(
+            access_ctx.grant_role or "member",
+            access.GRANT_CAPABILITIES["member"],
+        ),
+        "acl_host_ids": sorted(access_ctx.acl_host_ids or [])
+        if access_ctx.acl_host_ids
+        else [],
+        "acl_baseline_ids": sorted(access_ctx.acl_baseline_ids or [])
+        if access_ctx.acl_baseline_ids
+        else [],
+        "acl_labels": sorted(access_ctx.acl_label_ids or [])
+        if access_ctx.acl_label_ids
+        else [],
+        "assume_stig_write": assume_stig_write,
+        **expanded,
+    }
+    if grant_rec:
+        public = _public_grant(grant_rec)
+        out["capabilities"] = public.get("capabilities")
+        out["acl_host_ids"] = public.get("acl_host_ids")
+        out["acl_baseline_ids"] = public.get("acl_baseline_ids")
+        out["acl_labels"] = public.get("acl_labels")
+    return out
 
 
 def delete_grant(

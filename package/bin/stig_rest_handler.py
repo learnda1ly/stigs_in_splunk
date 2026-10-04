@@ -539,7 +539,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
 
         if len(parts) >= 2 and parts[1] == "grants":
             return self._collection_grants(
-                method, key, parts[2:], payload, service, session, username
+                method, key, parts[2:], query, payload, service, session, username
             )
 
         if len(parts) >= 2 and parts[1] == "labels":
@@ -902,11 +902,52 @@ class StigRestHandler(PersistentServerConnectionApplication):
         method: str,
         collection_id: str,
         parts: List[str],
+        query: Dict[str, Any],
         payload: Dict[str, Any],
         service,
         session: Dict[str, Any],
         username: str,
     ) -> Dict[str, Any]:
+        def _parse_assume_stig_write() -> bool:
+            raw = query.get("assume_stig_write")
+            if raw is None:
+                return True
+            text = str(raw).strip().lower()
+            if text in ("0", "false", "no"):
+                return False
+            return True
+
+        def _effective_access_response(
+            *,
+            grant_id: Optional[str] = None,
+            principal: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            assume = _parse_assume_stig_write()
+            try:
+                if grant_id:
+                    body = grants_svc.effective_access_for_grant(
+                        service,
+                        collection_id,
+                        grant_id,
+                        session,
+                        assume_stig_write=assume,
+                    )
+                else:
+                    body = grants_svc.effective_access_for_principal(
+                        service,
+                        collection_id,
+                        principal or "",
+                        session,
+                        assume_stig_write=assume,
+                    )
+                return _json_response(body)
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+
         if not parts:
             if method == "GET":
                 try:
@@ -927,7 +968,20 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     return _error(str(exc), status=403)
             return _error("method not allowed", status=405)
 
+        if len(parts) == 1 and parts[0] in ("effective_access", "effective-access"):
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            principal = (query.get("principal") or "").strip()
+            if not principal:
+                return _error("principal query parameter is required", status=400)
+            return _effective_access_response(principal=principal)
+
         grant_id = parts[0]
+        if len(parts) == 2 and parts[1] in ("effective_access", "effective-access"):
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            return _effective_access_response(grant_id=grant_id)
+
         if len(parts) == 2 and parts[1] == "acl":
             if method not in ("PUT", "PATCH", "POST"):
                 return _error("method not allowed", status=405)
