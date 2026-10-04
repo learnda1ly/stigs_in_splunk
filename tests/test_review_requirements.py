@@ -61,6 +61,14 @@ class ReviewRequirementsPolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             req_svc.normalize_policy({"applies_to_statuses": ["bogus"]})
 
+    def test_informational_in_scope_allowed(self):
+        policy = req_svc.normalize_policy(
+            {"require_finding_details": True, "applies_to_statuses": ["informational"]}
+        )
+        self.assertEqual(policy["applies_to_statuses"], ["informational"])
+        review = {"status": "informational", "finding_details": "", "comments": ""}
+        self.assertFalse(validation.is_valid(review, policy))
+
     def test_min_length_implies_require_flag(self):
         policy = req_svc.normalize_policy({"min_comments_length": 10})
         self.assertTrue(policy["require_comments"])

@@ -15,7 +15,7 @@ REVIEW_REQUIREMENTS_FIELD = "review_requirements"
 POLICY_FIELD_NAMES = tuple(validation.DEFAULT_POLICY.keys())
 
 ALLOWED_STATUSES = frozenset(
-    {"not_reviewed", "open", "not_a_finding", "not_applicable"}
+    {"not_reviewed", "open", "not_a_finding", "not_applicable", "informational"}
 )
 
 
