@@ -1,7 +1,6 @@
 const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { restAuthHeader, loadAdminCredentials } = require('../fixtures/credentials');
-const { ImportPage, SELECTORS: importSelectors } = require('../pages/ImportPage');
 const { LibraryPage, SELECTORS: librarySelectors } = require('../pages/LibraryPage');
 
 const REST_BASE =
@@ -101,17 +100,14 @@ test.describe('Baseline import', () => {
     const workspaceName = `pw-import-${Date.now()}`;
     let workspaceKey = '';
 
-    const importPage = new ImportPage(page);
     const libraryPage = new LibraryPage(page);
 
     try {
       workspaceKey = await createWorkspaceByRest(request, workspaceName);
 
-      await importPage.open();
-      await importPage.openBaselinesTab();
-      await importPage.selectWorkspace(workspaceName);
-      await importPage.uploadBenchmarkFile(MINIMAL_BENCHMARK);
-      await importPage.expectImportSucceeded(BENCHMARK_TITLE);
+      await libraryPage.open();
+      await libraryPage.uploadBenchmarkFile(MINIMAL_BENCHMARK);
+      await libraryPage.expectImportSucceeded(BENCHMARK_TITLE);
 
       await libraryPage.open();
       await libraryPage.selectWorkspaceFilter(workspaceName);

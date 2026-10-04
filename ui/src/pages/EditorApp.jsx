@@ -20,6 +20,10 @@ import {
 } from "../api";
 import WorkspaceSelect from "../components/WorkspaceSelect";
 import {
+    persistWorkspaceSelection,
+    resolveSharedWorkspaceId,
+} from "../sharedWorkspace";
+import {
     Actions,
     Body,
     Brand,
@@ -72,29 +76,6 @@ import {
     formatResultEngineDetail,
 } from "../resultEngine";
 
-function parseDisVersion(version) {
-    const text = String(version || "").trim().replace(/\s+/g, "");
-    const match = text.match(/^v?(\d+)r(\d+)$/i);
-    if (!match) {
-        return null;
-    }
-    return [parseInt(match[1], 10), parseInt(match[2], 10)];
-}
-
-function baselineIsNewer(candidate, current) {
-    if (!candidate || !current || candidate._key === current._key) {
-        return false;
-    }
-    const cVer = parseDisVersion(candidate.version);
-    const curVer = parseDisVersion(current.version);
-    if (cVer && curVer) {
-        return cVer[0] > curVer[0] || (cVer[0] === curVer[0] && cVer[1] > curVer[1]);
-    }
-    const cImp = Number(candidate.imported_at || 0);
-    const curImp = Number(current.imported_at || 0);
-    return cImp > curImp;
-}
-
 function lookupRule(rulesByKey, rev) {
     return (
         rulesByKey[rev.rule_id] ||
@@ -114,17 +95,13 @@ export default function EditorApp() {
     const [labels, setLabels] = useState([]);
     const [labelFilter, setLabelFilter] = useState("");
     const [hostId, setHostId] = useState("");
-    const [moveTo, setMoveTo] = useState("");
-    const [assignBaselineId, setAssignBaselineId] = useState("");
-    const [assignStigId, setAssignStigId] = useState("");
     const [checklists, setChecklists] = useState([]);
     const [allBaselines, setAllBaselines] = useState([]);
-    const [upgradeChecklistId, setUpgradeChecklistId] = useState("");
-    const [upgradeBaselineId, setUpgradeBaselineId] = useState("");
     const [rulesByKey, setRulesByKey] = useState({});
     const [items, setItems] = useState([]);
     const [selectedKey, setSelectedKey] = useState("");
     const [statusFilter, setStatusFilter] = useState("");
+    const [workflowFilter, setWorkflowFilter] = useState("");
     const [validityFilter, setValidityFilter] = useState("");
     const [query, setQuery] = useState("");
     const [loading, setLoading] = useState(false);
@@ -147,7 +124,6 @@ export default function EditorApp() {
     const [jump, setJump] = useState(null);
     const [fieldRequest, setFieldRequest] = useState(null);
     const [filtersOpen, setFiltersOpen] = useState(false);
-    const [hostActionsOpen, setHostActionsOpen] = useState(false);
     const listRef = useRef(null);
     const searchWrapRef = useRef(null);
     const ctxRef = useRef({});
@@ -204,49 +180,6 @@ export default function EditorApp() {
         }
         return checklists.filter((cl) => cl.host_id === hostId);
     }, [hostId, checklists]);
-
-    const activeUpgradeChecklist = useMemo(() => {
-        if (!hostChecklists.length) {
-            return null;
-        }
-        if (upgradeChecklistId) {
-            return hostChecklists.find((cl) => cl._key === upgradeChecklistId) || hostChecklists[0];
-        }
-        return hostChecklists[0];
-    }, [hostChecklists, upgradeChecklistId]);
-
-    const upgradeBaselineOptions = useMemo(() => {
-        const cl = activeUpgradeChecklist;
-        if (!cl) {
-            return [];
-        }
-        const current = allBaselines.find((b) => b._key === cl.baseline_id) || {};
-        const stigKey = String(current.stig_id || "").toLowerCase();
-        if (!stigKey) {
-            return [];
-        }
-        return allBaselines.filter(
-            (b) =>
-                b._key !== cl.baseline_id &&
-                String(b.stig_id || "").toLowerCase() === stigKey &&
-                baselineIsNewer(b, current)
-        );
-    }, [activeUpgradeChecklist, allBaselines]);
-
-    useEffect(() => {
-        if (!activeUpgradeChecklist) {
-            setUpgradeChecklistId("");
-            setUpgradeBaselineId("");
-            return;
-        }
-        setUpgradeChecklistId(activeUpgradeChecklist._key);
-        if (
-            upgradeBaselineId &&
-            !upgradeBaselineOptions.some((b) => b._key === upgradeBaselineId)
-        ) {
-            setUpgradeBaselineId("");
-        }
-    }, [activeUpgradeChecklist, upgradeBaselineOptions, upgradeBaselineId]);
 
     const mergeRules = (rules, prev) => {
         const next = { ...prev };
@@ -309,13 +242,13 @@ export default function EditorApp() {
 
     const onCollection = (id, deepLink = {}) => {
         setCollectionId(id);
+        persistWorkspaceSelection(id);
         if (deepLink.hostId) {
             setHostId(deepLink.hostId);
         } else {
             setHostId("");
         }
         setLabelFilter("");
-        setMoveTo("");
         setItems([]);
         setSelectedKey("");
         if (!id) {
@@ -393,7 +326,7 @@ export default function EditorApp() {
             return;
         }
         const dl = deepLinkRef.current || {};
-        const id = dl.cid || defaultWorkspaceId(collections);
+        const id = dl.cid || resolveSharedWorkspaceId(collections);
         if (id) {
             onCollection(id, {
                 hostId: dl.hostId || "",
@@ -438,38 +371,6 @@ export default function EditorApp() {
                 setBanner({ type: "error", text: "Failed to load findings: " + err.message })
             )
             .finally(() => setLoading(false));
-    };
-
-    const assignHostStig = () => {
-        if (!hostId) {
-            return;
-        }
-        const body = assignBaselineId
-            ? { baseline_id: assignBaselineId }
-            : { stig_id: assignStigId.trim() };
-        setBusy(true);
-        apiFetch("stig_hosts/" + hostId + "/stigs", {
-            method: "POST",
-            body,
-        })
-            .then((doc) => {
-                setBanner({
-                    type: "success",
-                    text: doc.created
-                        ? "Assigned STIG and created checklist."
-                        : "STIG already assigned (existing checklist).",
-                });
-                onCollection(collectionId);
-                setHostId(hostId);
-                onHost(hostId);
-            })
-            .catch((err) =>
-                setBanner({
-                    type: "error",
-                    text: "Assign failed: " + err.message,
-                })
-            )
-            .finally(() => setBusy(false));
     };
 
     const loadRuleAcrossHosts = (ruleVersion, ruleId) => {
@@ -532,6 +433,12 @@ export default function EditorApp() {
             if (statusFilter && rev.status !== statusFilter) {
                 return false;
             }
+            if (workflowFilter && governanceEnabled) {
+                const wf = reviewWorkflowState(rev);
+                if (wf !== workflowFilter) {
+                    return false;
+                }
+            }
             const complete = reviewIsValid(rev, reviewRequirements);
             if (validityFilter === "complete" && !complete) {
                 return false;
@@ -565,6 +472,8 @@ export default function EditorApp() {
         hostsById,
         checklistById,
         labelFilter,
+        workflowFilter,
+        governanceEnabled,
     ]);
 
     const selected = filtered.find((item) => item.review._key === selectedKey) || filtered[0];
@@ -1177,7 +1086,7 @@ export default function EditorApp() {
                 <Brand>
                     <BrandKicker>STIG in Splunk</BrandKicker>
                     <Heading level={2} style={{ margin: 0 }}>
-                        Checklist editor
+                        Assess
                     </Heading>
                 </Brand>
                 <Toolbar>
@@ -1228,12 +1137,22 @@ export default function EditorApp() {
                     </ControlGroup>
                     <ControlGroup label=" " labelPosition="top">
                         <Button
-                            appearance={hostActionsOpen ? "primary" : "secondary"}
-                            onClick={() => setHostActionsOpen((open) => !open)}
-                            label={hostActionsOpen ? "Host actions ▴" : "Host actions ▾"}
-                            aria-expanded={hostActionsOpen}
+                            appearance="secondary"
+                            disabled={busy || !filtered.length}
+                            onClick={onValidate}
+                            label="Validate"
                         />
                     </ControlGroup>
+                    {governanceEnabled ? (
+                        <ControlGroup label=" " labelPosition="top">
+                            <Button
+                                appearance="secondary"
+                                disabled={busy || !filtered.length}
+                                onClick={() => onBatchWorkflow("submit")}
+                                label="Submit visible"
+                            />
+                        </ControlGroup>
+                    ) : null}
                 </Toolbar>
                 <HeaderMeta>
                     <div>
@@ -1353,263 +1272,27 @@ export default function EditorApp() {
                         label="Incomplete"
                         onClick={() => setValidityFilter("incomplete")}
                     />
-                </FilterRow>
-            ) : null}
-            {hostActionsOpen ? (
-                <FilterRow>
-                    {hostChecklists.length ? (
-                        <>
-                            {hostChecklists.length > 1 ? (
-                                <ControlGroup label="Checklist" labelPosition="top">
-                                    <Select
-                                        value={upgradeChecklistId || activeUpgradeChecklist._key}
-                                        onChange={(e, { value }) => setUpgradeChecklistId(value)}
-                                        filter
-                                        disabled={busy}
-                                    >
-                                        {hostChecklists.map((cl) => (
-                                            <Select.Option
-                                                key={cl._key}
-                                                label={cl.title || cl._key}
-                                                value={cl._key}
-                                            />
-                                        ))}
-                                    </Select>
-                                </ControlGroup>
-                            ) : null}
-                            <ControlGroup label="Upgrade revision" labelPosition="top">
-                                <Select
-                                    value={upgradeBaselineId}
-                                    onChange={(e, { value }) => setUpgradeBaselineId(value)}
-                                    placeholder={
-                                        upgradeBaselineOptions.length
-                                            ? "Newer baseline"
-                                            : "Import newer revision first"
-                                    }
-                                    filter
-                                    disabled={busy || !upgradeBaselineOptions.length}
-                                >
-                                    {upgradeBaselineOptions.map((b) => (
-                                        <Select.Option
-                                            key={b._key}
-                                            label={
-                                                (b.version || b._key) +
-                                                (b.title ? " · " + b.title : "")
-                                            }
-                                            value={b._key}
-                                        />
-                                    ))}
-                                </Select>
-                            </ControlGroup>
-                            <Button
-                                appearance="secondary"
-                                disabled={busy || !upgradeBaselineId || !activeUpgradeChecklist}
-                                onClick={() => {
-                                    const clId = activeUpgradeChecklist._key;
-                                    const fromBl =
-                                        allBaselines.find(
-                                            (b) => b._key === activeUpgradeChecklist.baseline_id
-                                        ) || {};
-                                    const toBl =
-                                        allBaselines.find((b) => b._key === upgradeBaselineId) ||
-                                        {};
-                                    const fromLabel =
-                                        (fromBl.version || fromBl._key || "?") +
-                                        (fromBl.title ? " · " + fromBl.title : "");
-                                    const toLabel =
-                                        (toBl.version || toBl._key || "?") +
-                                        (toBl.title ? " · " + toBl.title : "");
-                                    const confirmMsg =
-                                        "Upgrade checklist \"" +
-                                        (activeUpgradeChecklist.title || clId) +
-                                        "\" from " +
-                                        fromLabel +
-                                        " to " +
-                                        toLabel +
-                                        "?\n\nMatching check content keeps review state. " +
-                                        "Changed rules reset editable drafts (including comments). " +
-                                        "Removed rules delete reviews. This cannot be undone automatically.";
-                                    if (!window.confirm(confirmMsg)) {
-                                        return;
-                                    }
-                                    setBusy(true);
-                                    apiFetch("stig_checklists/" + clId + "/upgrade", {
-                                        method: "POST",
-                                        body: { baseline_id: upgradeBaselineId },
-                                    })
-                                        .then((result) => {
-                                            setBanner({
-                                                type: "success",
-                                                text:
-                                                    "Upgraded checklist: " +
-                                                    (result.merged || 0) +
-                                                    " merged, " +
-                                                    (result.reset || 0) +
-                                                    " reset for re-review, " +
-                                                    (result.added || 0) +
-                                                    " new rules.",
-                                            });
-                                            onCollection(collectionId);
-                                            if (hostId) {
-                                                onHost(hostId);
-                                            }
-                                        })
-                                        .catch((err) =>
-                                            setBanner({
-                                                type: "error",
-                                                text: "Upgrade failed: " + err.message,
-                                            })
-                                        )
-                                        .finally(() => setBusy(false));
-                                }}
-                                label="Upgrade"
-                            />
-                        </>
-                    ) : null}
-                    {hostId ? (
-                        <ControlGroup label="Assign STIG" labelPosition="top">
-                            <Select
-                                value={assignBaselineId}
-                                onChange={(e, { value }) => {
-                                    setAssignBaselineId(value);
-                                    if (value) {
-                                        setAssignStigId("");
-                                    }
-                                }}
-                                placeholder="Baseline revision"
-                                filter
-                                disabled={busy || !allBaselines.length}
-                            >
-                                {allBaselines.map((b) => (
-                                    <Select.Option
-                                        key={b._key}
-                                        label={
-                                            (b.stig_id || b.title || b._key) +
-                                            (b.version ? " " + b.version : "")
-                                        }
-                                        value={b._key}
-                                    />
-                                ))}
-                            </Select>
-                            <Text
-                                value={assignStigId}
-                                onChange={(e, { value }) => {
-                                    setAssignStigId(value);
-                                    if (value) {
-                                        setAssignBaselineId("");
-                                    }
-                                }}
-                                disabled={busy}
-                                placeholder="Or stig_id (uses workspace default)"
-                            />
-                            <Button
-                                appearance="primary"
-                                disabled={
-                                    busy || (!assignBaselineId && !assignStigId.trim())
-                                }
-                                onClick={assignHostStig}
-                                label="Assign to host"
-                            />
-                        </ControlGroup>
-                    ) : null}
-                    {hostId ? (
-                        <ControlGroup label="Move host" labelPosition="top">
-                            <Select
-                                value={moveTo}
-                                onChange={(e, { value }) => setMoveTo(value)}
-                                placeholder="Another workspace"
-                                filter
-                                disabled={busy}
-                            >
-                                {collections
-                                    .filter(
-                                        (c) =>
-                                            isAllWorkspaces(collectionId) ||
-                                            c._key !== collectionId
-                                    )
-                                    .map((c) => (
-                                        <Select.Option
-                                            key={c._key}
-                                            label={workspaceLabel(c)}
-                                            value={c._key}
-                                        />
-                                    ))}
-                            </Select>
-                        </ControlGroup>
-                    ) : null}
-                    {hostId ? (
-                        <Button
-                            appearance="secondary"
-                            disabled={busy || !moveTo}
-                            onClick={() => {
-                                setBusy(true);
-                                apiPatch("stig_hosts/" + hostId, {
-                                    stig_collection_id: moveTo,
-                                })
-                                    .then(() => {
-                                        const dest = moveTo;
-                                        setBanner({
-                                            type: "success",
-                                            text: "Moved host to " + workspaceLabel(
-                                                collections.find((c) => c._key === dest) || {
-                                                    name: dest,
-                                                }
-                                            ) + ".",
-                                        });
-                                        onCollection(dest);
-                                    })
-                                    .catch((err) =>
-                                        setBanner({
-                                            type: "error",
-                                            text: "Move failed: " + err.message,
-                                        })
-                                    )
-                                    .finally(() => setBusy(false));
-                            }}
-                            label="Move"
-                        />
-                    ) : null}
-                    <Button
-                        appearance="secondary"
-                        disabled={busy || !checklists.length}
-                        onClick={onValidate}
-                        label="Validate"
-                    />
                     {governanceEnabled ? (
                         <>
                             <Button
-                                appearance="secondary"
-                                disabled={busy || !filtered.length}
-                                onClick={() => onBatchWorkflow("submit")}
-                                label="Submit visible"
+                                inline
+                                appearance={!workflowFilter ? "primary" : "default"}
+                                label="All workflow"
+                                onClick={() => setWorkflowFilter("")}
                             />
-                            <Button
-                                appearance="secondary"
-                                disabled={busy || !filtered.length}
-                                onClick={() => onBatchWorkflow("unsubmit")}
-                                label="Unsubmit visible"
-                            />
-                            <Button
-                                appearance="secondary"
-                                disabled={busy || !filtered.length}
-                                onClick={() => onBatchWorkflow("accept")}
-                                label="Accept visible"
-                            />
-                            <Button
-                                appearance="secondary"
-                                disabled={busy || !filtered.length}
-                                onClick={() => onBatchWorkflow("reject")}
-                                label="Reject visible"
-                            />
+                            {["draft", "submitted", "accepted", "rejected"].map((wf) => (
+                                <Button
+                                    key={wf}
+                                    inline
+                                    appearance={
+                                        workflowFilter === wf ? "primary" : "default"
+                                    }
+                                    label={wf}
+                                    onClick={() => setWorkflowFilter(wf)}
+                                />
+                            ))}
                         </>
                     ) : null}
-                    <Button
-                        appearance="primary"
-                        onClick={() => {
-                            window.location.assign(viewUrl("stig_import_ui") + "#baselines");
-                        }}
-                        label="Import baselines"
-                    />
                 </FilterRow>
             ) : null}
             <Body>
@@ -1715,13 +1398,8 @@ export default function EditorApp() {
                     {!selected ? (
                         hostId && !hostChecklists.length ? (
                             <EditorAssignCallout
-                                busy={busy}
-                                allBaselines={allBaselines}
-                                assignBaselineId={assignBaselineId}
-                                setAssignBaselineId={setAssignBaselineId}
-                                assignStigId={assignStigId}
-                                setAssignStigId={setAssignStigId}
-                                onAssign={assignHostStig}
+                                collectionId={collectionId}
+                                hostId={hostId}
                             />
                         ) : (
                             <Empty>

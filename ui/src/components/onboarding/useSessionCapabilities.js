@@ -6,7 +6,7 @@ import { apiGet } from "../../api";
  * @returns {boolean|null} null while loading or if the probe failed
  */
 export function useSessionCapabilities() {
-    const [canStigWrite, setCanStigWrite] = useState(null);
+    const [caps, setCaps] = useState({ canStigWrite: null, canStigAdmin: null });
 
     useEffect(() => {
         let cancelled = false;
@@ -15,15 +15,20 @@ export function useSessionCapabilities() {
                 if (cancelled) {
                     return;
                 }
-                if (report && typeof report.can_stig_write === "boolean") {
-                    setCanStigWrite(report.can_stig_write);
-                    return;
-                }
-                setCanStigWrite(null);
+                setCaps({
+                    canStigWrite:
+                        report && typeof report.can_stig_write === "boolean"
+                            ? report.can_stig_write
+                            : null,
+                    canStigAdmin:
+                        report && typeof report.can_stig_admin === "boolean"
+                            ? report.can_stig_admin
+                            : null,
+                });
             })
             .catch(() => {
                 if (!cancelled) {
-                    setCanStigWrite(null);
+                    setCaps({ canStigWrite: null, canStigAdmin: null });
                 }
             });
         return () => {
@@ -31,10 +36,20 @@ export function useSessionCapabilities() {
         };
     }, []);
 
-    return canStigWrite;
+    return caps;
 }
 
-/** @param {boolean|null} canStigWrite from useSessionCapabilities */
+/** @returns {boolean|null} */
+export function useCanStigWrite() {
+    return useSessionCapabilities().canStigWrite;
+}
+
+/** @returns {boolean|null} */
+export function useCanStigAdmin() {
+    return useSessionCapabilities().canStigAdmin;
+}
+
+/** @param {boolean|null} canStigWrite from useCanStigWrite or useSessionCapabilities */
 export function sessionMissingGrantCapabilities(canStigWrite) {
     if (canStigWrite !== true && canStigWrite !== false) {
         return false;

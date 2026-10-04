@@ -13,7 +13,6 @@ import {
     apiFetch,
     apiGet,
     apiPatch,
-    defaultWorkspaceId,
     isAllWorkspaces,
     viewUrl,
     workspaceScopeQuery,
@@ -21,6 +20,11 @@ import {
 import Link from "@splunk/react-ui/Link";
 import { useGovernanceEnabled } from "../governance/settings";
 import WorkspaceSelect from "../components/WorkspaceSelect";
+import {
+    persistWorkspaceSelection,
+    readWorkspaceIdFromUrl,
+    resolveSharedWorkspaceId,
+} from "../sharedWorkspace";
 import {
     Actions,
     Brand,
@@ -125,6 +129,8 @@ export default function CollectionReviewApp() {
     const [banner, setBanner] = useState(null);
     const [selectedReviewKeys, setSelectedReviewKeys] = useState([]);
     const [rejectFeedback, setRejectFeedback] = useState("");
+    const [submittedQueue, setSubmittedQueue] = useState([]);
+    const [queueLoading, setQueueLoading] = useState(false);
 
     const baselineOptions = useMemo(() => {
         const ids = {};
@@ -186,17 +192,66 @@ export default function CollectionReviewApp() {
         });
     };
 
-    const loadWorkspace = (cid) => {
+    const loadSubmittedQueue = (cid, cls, bls) => {
+        if (!cid || isAllWorkspaces(cid)) {
+            setSubmittedQueue([]);
+            return Promise.resolve();
+        }
+        setQueueLoading(true);
+        return apiGet("stig_reviews", workspaceScopeQuery(cid))
+            .then((reviews) => {
+                const list = Array.isArray(reviews) ? reviews : [];
+                const submitted = list.filter(
+                    (r) => reviewWorkflowState(r) === "submitted"
+                );
+                const checklistMap = {};
+                (cls || []).forEach((cl) => {
+                    checklistMap[cl._key] = cl;
+                });
+                const baselineMap = {};
+                (bls || []).forEach((b) => {
+                    baselineMap[b._key] = b;
+                });
+                const counts = {};
+                submitted.forEach((rev) => {
+                    const cl = checklistMap[rev.checklist_id];
+                    const bid = (cl && cl.baseline_id) || "";
+                    const key =
+                        (rev.rule_id || "") + "|" + (rev.group_id || "") + "|" + bid;
+                    if (!counts[key]) {
+                        counts[key] = {
+                            rule_id: rev.rule_id,
+                            group_id: rev.group_id,
+                            baseline_id: bid,
+                            count: 0,
+                            rule_version: rev.rule_version,
+                        };
+                    }
+                    counts[key].count += 1;
+                });
+                setSubmittedQueue(
+                    Object.values(counts).sort((a, b) => b.count - a.count)
+                );
+            })
+            .catch(() => setSubmittedQueue([]))
+            .finally(() => setQueueLoading(false));
+    };
+
+    const loadWorkspace = (cid, deepLink = {}) => {
         setCollectionId(cid);
-        setBaselineId("");
-        setRuleKey("");
-        setRules([]);
-        setRows([]);
+        persistWorkspaceSelection(cid);
+        if (!deepLink.keepRule) {
+            setBaselineId("");
+            setRuleKey("");
+            setRules([]);
+            setRows([]);
+        }
         setSelectedReviewKeys([]);
         if (!cid) {
             setHosts([]);
             setChecklists([]);
             setReviewRequirements(DEFAULT_REVIEW_REQUIREMENTS);
+            setSubmittedQueue([]);
             return;
         }
         setLoading(true);
@@ -219,7 +274,13 @@ export default function CollectionReviewApp() {
                 );
                 setHosts(Array.isArray(hs) ? hs : []);
                 setChecklists(Array.isArray(cls) ? cls : []);
-                setBaselines(Array.isArray(bl) ? bl : []);
+                const blList = Array.isArray(bl) ? bl : [];
+                const clList = Array.isArray(cls) ? cls : [];
+                setBaselines(blList);
+                loadSubmittedQueue(cid, clList, blList);
+                if (deepLink.baselineId) {
+                    loadRulesForBaseline(deepLink.baselineId, deepLink.ruleKey);
+                }
             })
             .catch((err) =>
                 setBanner({
@@ -235,9 +296,18 @@ export default function CollectionReviewApp() {
             .then((data) => {
                 const list = Array.isArray(data) ? data : [];
                 setCollections(list);
-                const id = defaultWorkspaceId(list);
+                const params = new URLSearchParams(window.location.search || "");
+                const id = resolveSharedWorkspaceId(
+                    list,
+                    params.get("stig_collection_id") || readWorkspaceIdFromUrl()
+                );
+                const deepLink = {
+                    baselineId: params.get("baseline_id") || "",
+                    ruleKey: params.get("rule") || "",
+                    keepRule: !!(params.get("baseline_id") && params.get("rule")),
+                };
                 if (id) {
-                    loadWorkspace(id);
+                    loadWorkspace(id, deepLink);
                 }
             })
             .catch((err) =>
@@ -248,10 +318,12 @@ export default function CollectionReviewApp() {
             );
     }, []);
 
-    const loadRulesForBaseline = (bid) => {
+    const loadRulesForBaseline = (bid, selectRuleKey) => {
         setBaselineId(bid);
-        setRuleKey("");
-        setRows([]);
+        if (!selectRuleKey) {
+            setRuleKey("");
+            setRows([]);
+        }
         setSelectedReviewKeys([]);
         if (!bid) {
             setRules([]);
@@ -262,6 +334,9 @@ export default function CollectionReviewApp() {
             .then((data) => {
                 const list = Array.isArray(data) ? data : [];
                 setRules(list);
+                if (selectRuleKey) {
+                    loadRuleRows(selectRuleKey, list);
+                }
             })
             .catch((err) =>
                 setBanner({
@@ -272,14 +347,15 @@ export default function CollectionReviewApp() {
             .finally(() => setLoading(false));
     };
 
-    const loadRuleRows = (rkey) => {
+    const loadRuleRows = (rkey, rulesOverride) => {
         setRuleKey(rkey);
         setSelectedReviewKeys([]);
         if (!collectionId || !baselineId || !rkey) {
             setRows([]);
             return;
         }
-        const rule = rules.find(
+        const ruleSource = rulesOverride || rules;
+        const rule = ruleSource.find(
             (r) => (r.rule_id || "") + "|" + (r.group_id || "") === rkey
         );
         if (!rule) {
@@ -608,7 +684,9 @@ export default function CollectionReviewApp() {
                     <Message appearance="info">
                         Review governance is turned off in app configuration. Use the STIG Editor
                         to manage findings directly. Re-enable governance under{" "}
-                        <Link to={viewUrl("configuration")}>Workspaces → Editor &amp; ingest</Link>
+                        <Link to={viewUrl("configuration")}>
+                            Admin → Workspaces and settings
+                        </Link>
                         .
                     </Message>
                 </PagePad>
@@ -622,7 +700,7 @@ export default function CollectionReviewApp() {
                 <Brand>
                     <BrandKicker>STIG in Splunk</BrandKicker>
                     <Heading level={2} style={{ margin: 0 }}>
-                        Collection review
+                        Review
                     </Heading>
                 </Brand>
                 <Toolbar>
@@ -630,7 +708,7 @@ export default function CollectionReviewApp() {
                         <WorkspaceSelect
                             workspaces={collections}
                             value={collectionId}
-                            onChange={(e, { value }) => loadWorkspace(value)}
+                            onChange={(e, { value }) => loadWorkspace(value, {})}
                             filter
                         />
                     </ControlGroup>
@@ -714,6 +792,65 @@ export default function CollectionReviewApp() {
                 </HeaderMeta>
             </Header>
             <PagePad>
+                {!ruleKey && collectionId && !isAllWorkspaces(collectionId) ? (
+                    <div style={{ marginBottom: 20 }}>
+                        <Heading level={4} style={{ marginTop: 0 }}>
+                            Submitted queue
+                        </Heading>
+                        {queueLoading ? <WaitSpinner size="small" /> : null}
+                        {!queueLoading && !submittedQueue.length ? (
+                            <Message appearance="info">
+                                No submitted findings in this workspace.
+                            </Message>
+                        ) : null}
+                        {!queueLoading && submittedQueue.length ? (
+                            <Table stripeRows>
+                                <Table.Head>
+                                    <Table.HeadCell>Rule</Table.HeadCell>
+                                    <Table.HeadCell>Baseline</Table.HeadCell>
+                                    <Table.HeadCell>Submitted</Table.HeadCell>
+                                </Table.Head>
+                                <Table.Body>
+                                    {submittedQueue.map((row) => {
+                                        const bl =
+                                            baselines.find(
+                                                (b) => b._key === row.baseline_id
+                                            ) || {};
+                                        const rkey =
+                                            (row.rule_id || "") +
+                                            "|" +
+                                            (row.group_id || "");
+                                        return (
+                                            <Table.Row
+                                                key={rkey + row.baseline_id}
+                                                onClick={() => {
+                                                    if (row.baseline_id) {
+                                                        loadRulesForBaseline(
+                                                            row.baseline_id,
+                                                            rkey
+                                                        );
+                                                    }
+                                                }}
+                                                style={{ cursor: "pointer" }}
+                                            >
+                                                <Table.Cell>
+                                                    {row.rule_version ||
+                                                        row.rule_id ||
+                                                        row.group_id ||
+                                                        "—"}
+                                                </Table.Cell>
+                                                <Table.Cell>
+                                                    {bl.stig_id || bl.title || row.baseline_id}
+                                                </Table.Cell>
+                                                <Table.Cell>{row.count}</Table.Cell>
+                                            </Table.Row>
+                                        );
+                                    })}
+                                </Table.Body>
+                            </Table>
+                        ) : null}
+                    </div>
+                ) : null}
                 {banner ? (
                     <Message
                         appearance={banner.type}

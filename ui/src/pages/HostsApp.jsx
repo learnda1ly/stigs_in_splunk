@@ -12,7 +12,6 @@ import {
     apiFetch,
     apiGet,
     apiUrl,
-    defaultWorkspaceId,
     downloadText,
     formatErr,
     isAllWorkspaces,
@@ -21,6 +20,12 @@ import {
     workspaceScopeQuery,
 } from "../api";
 import WorkspaceSelect from "../components/WorkspaceSelect";
+import HostSetupPanel from "../components/HostSetupPanel";
+import CapabilityGrantBanner from "../components/onboarding/CapabilityGrantBanner";
+import {
+    persistWorkspaceSelection,
+    resolveSharedWorkspaceId,
+} from "../sharedWorkspace";
 import {
     Brand,
     BrandKicker,
@@ -55,6 +60,7 @@ export default function HostsApp() {
     const [showAddForm, setShowAddForm] = useState(false);
     const [pendingCsv, setPendingCsv] = useState("");
     const [importReport, setImportReport] = useState(null);
+    const [setupHost, setSetupHost] = useState(null);
 
     const loadWorkspaces = useCallback(() =>
         apiGet("stig_collections")
@@ -65,7 +71,7 @@ export default function HostsApp() {
                     if (prev && list.some((w) => w._key === prev)) {
                         return prev;
                     }
-                    return defaultWorkspaceId(list) || (list[0] && list[0]._key) || "";
+                    return resolveSharedWorkspaceId(list) || "";
                 });
             })
             .catch((err) =>
@@ -91,6 +97,17 @@ export default function HostsApp() {
     useEffect(() => {
         loadWorkspaces();
     }, [loadWorkspaces]);
+
+    useEffect(() => {
+        if (!workspaces.length) {
+            return;
+        }
+        const params = new URLSearchParams(window.location.search || "");
+        const fromUrl = params.get("stig_collection_id");
+        if (fromUrl && workspaces.some((w) => w._key === fromUrl)) {
+            setCollectionId(fromUrl);
+        }
+    }, [workspaces]);
 
     useEffect(() => {
         loadHosts();
@@ -336,11 +353,11 @@ export default function HostsApp() {
                 </Brand>
             </Header>
             <PagePad>
+                <CapabilityGrantBanner />
                 <p style={{ maxWidth: 760, marginTop: 0 }}>
-                    Manage assets (hosts) per workspace. Assign STIGs from the{" "}
-                    <Link to={viewUrl("stig_editor_ui")}>Editor</Link> or{" "}
-                    <Link to={viewUrl("stig_library_ui")}>STIG library</Link> after creating a
-                    host. Checklist import also creates hosts automatically.
+                    Manage assets (hosts) per workspace. Use <strong>Setup</strong> on a row to
+                    assign STIGs, upgrade revisions, or move a host. Checklist import also creates
+                    hosts automatically.
                 </p>
                 {banner ? (
                     <Message appearance={banner.type} onRequestRemove={() => setBanner(null)}>
@@ -352,7 +369,11 @@ export default function HostsApp() {
                         <WorkspaceSelect
                             workspaces={workspaces}
                             value={collectionId}
-                            onChange={(e, { value }) => setCollectionId(value)}
+                            onChange={(e, { value }) => {
+                                setCollectionId(value);
+                                persistWorkspaceSelection(value);
+                                setSetupHost(null);
+                            }}
                             filter
                             disabled={busy}
                         />
@@ -525,6 +546,12 @@ export default function HostsApp() {
                                             <Button
                                                 appearance="secondary"
                                                 disabled={busy}
+                                                onClick={() => setSetupHost(host)}
+                                                label="Setup"
+                                            />
+                                            <Button
+                                                appearance="secondary"
+                                                disabled={busy}
                                                 onClick={() =>
                                                     window.location.assign(
                                                         viewUrlWithQuery("stig_editor_ui", {
@@ -533,7 +560,7 @@ export default function HostsApp() {
                                                         })
                                                     )
                                                 }
-                                                label="Editor"
+                                                label="Assess"
                                             />
                                             <Button
                                                 appearance="secondary"
@@ -580,6 +607,19 @@ export default function HostsApp() {
                         </Table.Body>
                     </Table>
                 )}
+
+                {setupHost ? (
+                    <HostSetupPanel
+                        host={setupHost}
+                        collectionId={collectionId}
+                        workspaces={workspaces}
+                        onClose={() => setSetupHost(null)}
+                        onChanged={() => {
+                            loadHosts();
+                            setSetupHost(null);
+                        }}
+                    />
+                ) : null}
 
                 {editId ? (
                     <div
