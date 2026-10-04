@@ -360,7 +360,7 @@ fields_list = _key, baseline_id, group_id, rule_id, rule_id_src, rule_version, s
 [stig_baselines]
 external_type = kvstore
 collection = stig_baselines
-fields_list = _key, stig_id, title, version, rule_count, content_fingerprint, source_uri, imported_at
+fields_list = _key, stig_id, title, version, benchmark_status, rule_count, content_fingerprint, source_uri, imported_at
 ```
 
 (Add other collections if reporting needs them.)
@@ -431,6 +431,7 @@ REST: `GET/POST /stig_collections/{id}/labels`, `GET/PATCH/DELETE .../labels/{la
 | `stig_id` | string | e.g. `STIG`, `RHEL_8_STIG` |
 | `title`, `stig_name` | string | |
 | `version`, `release_info`, `benchmark_date` | string | Revision metadata |
+| `benchmark_status` | string | XCCDF Benchmark status (`accepted`, `draft`, `interim`, …). Unpinned “latest” catalog resolution skips `draft` / `interim`. |
 | `xccdf_benchmark_id` | string | XCCDF Benchmark `@id` |
 | `rule_count` | number | Count at import |
 | `source_type` | string | `xccdf` \| `cklb` \| `ckl` |
@@ -443,7 +444,7 @@ REST: `GET/POST /stig_collections/{id}/labels`, `GET/PATCH/DELETE .../labels/{la
 
 **Catalog scope:** Global baselines remain shared. Workspace-scoped rows are private to the owning workspace (plus **stig_admin**). `GET /stig_baselines` returns globals plus baselines for workspaces the caller can read. Query `stig_collection_id` narrows to globals + that workspace (requires workspace read). Import without scope creates globals; `stig_collection_id` on `POST /stig_baselines/import` (query or JSON) requires workspace **write**. Dedup (`content_fingerprint`, optional `stig_id`+`version`) is per scope. Existing checklist `baseline_id` references are unchanged.
 
-**Default / assign resolution** (when `baseline_id` omitted): explicit id → workspace `default_baseline_map` → latest matching revision in **workspace-scoped** catalog → latest **global** catalog match.
+**Default / assign resolution** (when `baseline_id` omitted): explicit id → workspace `default_baseline_map` (pinned revision per STIG; unchanged by this rule) → latest matching revision in **workspace-scoped** catalog → latest **global** catalog match. Unpinned “latest” picks the highest DISA-style `VxRy` version/release among catalog rows for that `stig_id` (tie-break: newest `imported_at`), and **excludes** benchmark revisions whose `benchmark_status` is `draft` or `interim`. An explicit `version` query/body field may still resolve a draft row. Aligns with STIG Manager [user guide §2.9.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html); implementation: `find_baseline_by_stig` in `services/baselines.py` and `resolve_baseline_id` in `services/baseline_defaults.py`.
 
 ### 7.4 `stig_baseline_rules`
 
@@ -516,7 +517,7 @@ Append-only audit of **assessor-visible** review changes (not a full document sn
 
 **Workspace list:** `GET /stig_collections/{id}/review-history` loads all KV rows for the workspace then filters and paginates in the handler (acceptable for P2; very large histories may be slow—use per-review history or query filters).
 
-**Retention:** cascade workspace delete removes history rows for that `stig_collection_id`.
+**Retention:** Per-workspace `review_history_config` JSON on `stig_collections`: `enabled` (default true) and `max_records_per_review` (default **15**, max **15** per STIG Manager). When disabled, new rows are not written and history GET endpoints return no rows. When enabled, each insert trims oldest rows for that `review_id` beyond the cap; list endpoints also apply the cap before pagination. Reducing the cap does not delete existing KV rows until the next review update. REST `GET/PATCH /stig_collections/{id}/review_history_config`. Cascade workspace delete removes all history rows for that `stig_collection_id`.
 
 ### 7.8 `stig_assignment_rules`
 
@@ -718,7 +719,7 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 | GET | `/stig_collections/{id}/jobs/{jobId}/download` | — | Zip payload JSON (`content_base64`, `filename`, `count`, `files`) when job succeeded; **400** otherwise. |
 | DELETE | `/stig_collections/{id}/jobs/{jobId}` | — | Remove staged job directory (creator only). |
 | POST/PUT | `/stig_collections/{src}/export-to/{dst}` | JSON `{host_ids: [string]}` | Bulk transfer hosts from `src` to `dst` workspace. Checklists follow each host (host row updated before checklists; single-host rollback on checklist failure). Rejects move when destination already has same hostname (case-insensitive), per-host `error`: `destination_hostname_collision`. **403** without write on either workspace (checked before the loop); **404** when workspace missing/hidden; **400** when `host_ids` empty or `src` equals `dst`. Per-host `results` (`moved`, `skipped`, `error`); `summary` counts. Hosts are processed in order with **no request-level rollback**—successful moves stay committed if later ids fail. **201** when `summary.moved > 0` (even if some hosts failed/skipped), else **200**. Audit: `transfer` on `stig_host` per successful move. |
-| POST/PUT | `/stig_collections/{id}/clone` | JSON `{name?, description?, access_principals?, copy_hosts?, copy_checklists?, copy_reviews?, copy_grants?, copy_labels?, copy_metadata?, copy_baseline_defaults?, copy_review_requirements?, options?}` | Clone workspace to a new `stig_collection`. Requires workspace **read** on source and **`stig_write`** (or admin) to create destination. **201** with `{stig_collection_id, stig_collection, source_stig_collection_id, options, summary, id_map}`; optional `options_coerced` when dependent flags were adjusted. **400** for contradictory explicit flags (e.g. `copy_reviews` true with `copy_hosts` false) or `copy_grants` without `copy_hosts`/`copy_labels` when source grants use `acl_host_ids`/`acl_labels`. Grant ACL ids are remapped 1:1; empty remaps never widen restricted scope. **Global baselines are not copied** (checklists keep `baseline_id` references). On failure after destination create, rolls back with cascade delete; audit `clone_rollback_failed` if rollback fails. Audit: `clone` on destination workspace; `create` on each cloned host. **Defaults** when flags omitted: `copy_hosts`, `copy_checklists`, `copy_reviews`, `copy_labels`, `copy_metadata`, `copy_baseline_defaults`, `copy_review_requirements` = **true**; `copy_grants` = **false**. Implicit coupling: `copy_hosts` false forces checklists/reviews off (listed in `options_coerced`). Optional `name` defaults to `{source name} (clone)` with numeric suffix if taken. STIG Manager aliases: `options.grants`, `options.stigMappings` (`withReviews` / `withoutReviews`). |
+| POST/PUT | `/stig_collections/{id}/clone` | JSON `{name?, description?, access_principals?, async?, pin_all_stigs_to_defaults?, copy_hosts?, copy_checklists?, copy_reviews?, copy_grants?, copy_labels?, copy_metadata?, copy_baseline_defaults?, copy_review_requirements?, options?}` | Clone workspace to a new `stig_collection`. Requires workspace **read** on source and **`stig_write`** (or admin) to create destination. **201** with `{stig_collection_id, stig_collection, source_stig_collection_id, options, summary, id_map}`; optional `options_coerced` when dependent flags were adjusted. **`async: true`** → **202** with pollable collection job (`GET .../jobs/{jobId}`) instead of synchronous **201**. **`pin_all_stigs_to_defaults`** (alias `options.pinAllStigsToDefaults`) sets each cloned checklist `baseline_id` from the source default map (`summary.pinned_checklists`); when false, checklists keep copied `baseline_id` values. **400** for contradictory explicit flags (e.g. `copy_reviews` true with `copy_hosts` false, `pin_all_stigs_to_defaults` without checklists, or `copy_grants` without `copy_hosts`/`copy_labels` when source grants use `acl_host_ids`/`acl_labels`). Grant ACL ids are remapped 1:1; empty remaps never widen restricted scope. **Global baselines are not copied** (checklists keep `baseline_id` references). On failure after destination create, rolls back with cascade delete; audit `clone_rollback_failed` if rollback fails. Audit: `clone` on destination workspace; `create` on each cloned host. **Defaults** when flags omitted: `copy_hosts`, `copy_checklists`, `copy_reviews`, `copy_labels`, `copy_metadata`, `copy_baseline_defaults`, `copy_review_requirements` = **true**; `copy_grants`, `pin_all_stigs_to_defaults`, `async` = **false**. Implicit coupling: `copy_hosts` false forces checklists/reviews off; `pin_all_stigs_to_defaults` forces `copy_baseline_defaults` true (listed in `options_coerced`). Optional `name` defaults to `{source name} (clone)` with numeric suffix if taken. STIG Manager aliases: `options.grants`, `options.stigMappings` (`withReviews` / `withoutReviews`). Async clone also via `POST .../jobs` `{operation: "clone", ...}`. |
 
 Default `access_principals` on create: `["user:<creator>"]` if omitted. The Default holding workspace uses `[]` (any user with STIG caps).
 
@@ -734,6 +735,10 @@ Default `access_principals` on create: `["user:<creator>"]` if omitted. The Defa
 | PATCH/PUT | `/stig_collections/{id}/grants/{grantId}` | Partial grant JSON | Updated grant |
 | PUT/PATCH | `/stig_collections/{id}/grants/{grantId}/acl` | `{acl_host_ids?, acl_baseline_ids?, acl_labels?}` | Updated grant ACL fields only |
 | DELETE | `/stig_collections/{id}/grants/{grantId}` | — | `{deleted: grantId}` |
+| GET | `/stig_collections/{id}/grants/effective_access` | Query `principal=user:<name>` or `role:<name>` | Effective asset×STIG checklist access for that principal (grant row or legacy `access_principals`); requires **owner** or **manager** |
+| GET | `/stig_collections/{id}/grants/{grantId}/effective_access` | Query `assume_stig_write=false?` (default true for member/restricted write preview) | Same shape for one grant row |
+
+Effective-access response: `{stig_collection_id, grant_id?, principal, grant_role, capabilities, acl_*, assume_stig_write, summary: {host_count, checklist_count, baseline_count}, hosts: [{host_id, hostname, checklists: [{checklist_id, baseline_id, stig_id, baseline_title, baseline_version}]}]}`.
 
 `principal` must be `user:<name>` or `role:<name>`. `grant_role` is one of `owner`, `manager`, `member`, `restricted`.
 
@@ -835,6 +840,7 @@ Requires **`stig_write`**.
 
 | Method | Path | Notes |
 |--------|------|--------|
+| GET/POST | `/stig_reviews/gc_unmapped` | Admin unmapped review GC. **GET** and default **POST** are dry-run reports (`unmapped_count`, `unmapped[]` with `reason`, `skipped_no_key_count`). Optional query/body `stig_collection_id` limits to one workspace. Destructive delete when **POST** with `dry_run=false` or `confirm=true`. Deletes reviews whose `checklist_id` is missing (**missing_checklist**) or whose `(group_id, rule_id)` is absent from the checklist baseline rules (**missing_rule** / **missing_baseline**). Removes matching `stig_review_history` rows. Audits only when `deleted_count > 0`. Requires **stig_admin**. |
 | GET | `/stig_reviews` | Query `checklist_id?`, `status?`, `workflow_state?`, `stig_collection_id?`, `rule_id?`, `rule_version?`, `valid?` |
 | GET | `/stig_reviews/{id}` | Single review |
 | PATCH/PUT | `/stig_reviews/{id}` | `{status?, finding_details?, comments?, package_id?, ingest_lock?}` (`package_id` = Evaluate-STIG/CKLB id, not RMF — §7.6) |
@@ -1063,7 +1069,7 @@ curl $AUTH "$BASE/stig_checklists/CHECKLIST_ID/export?format=cklb"
 
 | Limitation | Detail |
 |------------|--------|
-| Orphan data | Failed imports before KV `_key` fix may leave orphan `stig_baseline_rules` or empty baselines; no automatic GC. Admins can report and delete orphan **rules** via `GET/POST /stig_baselines/gc_orphan_rules` (does not remove empty baseline headers or checklist/review rows). |
+| Orphan data | Failed imports before KV `_key` fix may leave orphan `stig_baseline_rules` or empty baselines; no automatic GC. Admins can report and delete orphan **rules** via `GET/POST /stig_baselines/gc_orphan_rules` (does not remove empty baseline headers or checklist/review rows). Admins can report and delete **unmapped reviews** via `GET/POST /stig_reviews/gc_unmapped` (dry-run by default; optional workspace scope). |
 | No baseline dedup for legacy rows | Missing `content_fingerprint` until re-import. |
 | Baseline catalog | Default catalog is global; optional per-workspace rows via `stig_collection_id` (§7.3). |
 | Collection delete | Blocked when children exist unless `?cascade=true`; cascades workspace hosts/checklists/reviews/grants/review history and **assignment rules/overrides targeting that workspace**; global baselines unchanged. UCC Configuration delete only allows empty workspaces. |

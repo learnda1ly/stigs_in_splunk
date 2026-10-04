@@ -1,4 +1,4 @@
-"""Review submit / accept / reject workflow (STIG Manager–style governance)."""
+"""Review submit / unsubmit / accept / reject workflow (STIG Manager–style governance)."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ DEFAULT_WORKFLOW_STATE = "draft"
 # Allowed transitions: (from_state, action) -> to_state
 _TRANSITIONS: Dict[Tuple[str, str], str] = {
     ("draft", "submit"): "submitted",
+    ("submitted", "unsubmit"): "draft",
     ("submitted", "accept"): "accepted",
     ("submitted", "reject"): "draft",
 }

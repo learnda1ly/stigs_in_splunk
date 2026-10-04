@@ -38,7 +38,7 @@ class CollectionReviewGovernanceUiTest(unittest.TestCase):
         src = COLLECTION_REVIEW_APP.read_text(encoding="utf-8")
         self.assertIn('apiPatch("stig_reviews/batch"', src)
         self.assertIn("onBatchWorkflow", src)
-        for action in ("submit", "accept", "reject"):
+        for action in ("submit", "unsubmit", "accept", "reject"):
             self.assertIn('onBatchWorkflow("' + action + '")', src)
         assert_markers(src, JSX_GOVERNANCE_MARKERS, "CollectionReviewApp.jsx")
 

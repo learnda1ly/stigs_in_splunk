@@ -296,10 +296,17 @@ paths:
               $ref: "#/components/schemas/CollectionCloneRequest"
       responses:
         "201":
+          description: Clone finished synchronously
           content:
             application/json:
               schema:
                 type: object
+        "202":
+          description: Async clone job queued (`async: true`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionJob"
 
   /stig_collections/{collectionId}/export-to/{destCollectionId}:
     parameters:
@@ -892,10 +899,11 @@ paths:
       - $ref: "#/components/parameters/collectionId"
     post:
       tags: [Collection jobs]
-      summary: Start async workspace archive export job
+      summary: Start async workspace job (archive export or clone)
       description: |
-        Poll `GET .../jobs/{jobId}` until `status` is `succeeded` or `failed`, then
-        `GET .../jobs/{jobId}/download` for the zip JSON (`content_base64`).
+        Poll `GET .../jobs/{jobId}` until `status` is `succeeded` or `failed`.
+        For `archive_export`, download via `GET .../jobs/{jobId}/download` (zip JSON with `content_base64`).
+        For `clone`, `result` is the same object as synchronous `POST .../clone` (**201**).
         Artifacts live under `$SPLUNK_HOME/var/run/stigs_in_splunk/collection_jobs/` (6h TTL).
       operationId: createCollectionExportJob
       x-splunk-capability: stig_write
@@ -903,20 +911,28 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [format]
-              properties:
-                operation:
-                  type: string
-                  enum: [archive_export]
-                  default: archive_export
-                format:
-                  type: string
-                  enum: [ckl, ckl-multi, cklb, xccdf]
-                host_id:
-                  type: string
-                baseline_id:
-                  type: string
+              oneOf:
+                - type: object
+                  required: [format]
+                  properties:
+                    operation:
+                      type: string
+                      enum: [archive_export]
+                      default: archive_export
+                    format:
+                      type: string
+                      enum: [ckl, ckl-multi, cklb, xccdf]
+                    host_id:
+                      type: string
+                    baseline_id:
+                      type: string
+                - allOf:
+                    - $ref: "#/components/schemas/CollectionCloneRequest"
+                    - type: object
+                      properties:
+                        operation:
+                          type: string
+                          enum: [clone]
       responses:
         "201":
           description: Job created (may already be running or finished before response returns)
@@ -1021,6 +1037,61 @@ paths:
             application/json:
               schema:
                 type: object
+
+  /stig_collections/{collectionId}/grants/effective_access:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collection grants]
+      summary: Effective access preview for a principal
+      operationId: getGrantEffectiveAccessByPrincipal
+      parameters:
+        - name: principal
+          in: query
+          required: true
+          schema:
+            type: string
+            description: user:login or role:rolename
+        - name: assume_stig_write
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: Expanded asset and STIG checklist access
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Missing principal
+        "404":
+          description: Workspace hidden or principal has no read access
+
+  /stig_collections/{collectionId}/grants/{grantId}/effective_access:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+      - $ref: "#/components/parameters/grantId"
+    get:
+      tags: [Collection grants]
+      summary: Effective access preview for one grant
+      operationId: getGrantEffectiveAccess
+      parameters:
+        - name: assume_stig_write
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: Expanded asset and STIG checklist access for the grant ACL
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Workspace or grant not found
 
   /stig_collections/{collectionId}/grants/{grantId}:
     parameters:
@@ -1477,6 +1548,15 @@ paths:
           schema:
             type: string
           description: Optional workspace scope for imported rows (requires workspace write). Omit for global catalog.
+        - name: replace_existing_revisions
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: >-
+            When true, overwrite an existing catalog revision (same content fingerprint or
+            same STIG ID and version) instead of deduplicating. Default false retains the
+            existing row (STIG Manager admin guide §2.2.4).
       requestBody:
         required: true
         content:
@@ -1495,6 +1575,10 @@ paths:
                 stig_collection_id:
                   type: string
                   description: Workspace scope when body carries metadata alongside binary (import handler).
+                replace_existing_revisions:
+                  type: boolean
+                  default: false
+                  description: Same as the query parameter; may be set on zip job create/import actions.
       responses:
         "200":
           description: Import succeeded; baseline deduplicated (no new KV row)
@@ -2085,6 +2169,89 @@ paths:
               schema:
                 type: string
 
+  /stig_reviews/gc_unmapped:
+    get:
+      tags: [Reviews]
+      summary: Dry-run report of unmapped reviews (admin)
+      description: |
+        Lists `stig_reviews` rows whose checklist is missing or whose
+        `(group_id, rule_id)` is not present on the checklist baseline.
+        Always dry-run; does not delete. Optional `stig_collection_id` scopes
+        to one workspace. Handler requires `stig_admin`.
+      operationId: reportUnmappedReviews
+      x-splunk-capability: stig_admin
+      parameters:
+        - name: stig_collection_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Unmapped review report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnmappedReviewsGcResult"
+        "403":
+          description: stig_admin required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [Reviews]
+      summary: Report or delete unmapped reviews (admin)
+      description: |
+        Default is dry-run (same shape as GET). Set query or JSON `dry_run=false`
+        or `confirm=true` to delete unmapped reviews and their history rows.
+        Audit runs only when at least one row is deleted. Optional
+        `stig_collection_id` (query or JSON) limits to one workspace.
+      operationId: gcUnmappedReviews
+      x-splunk-capability: stig_admin
+      parameters:
+        - name: dry_run
+          in: query
+          schema:
+            type: boolean
+            default: true
+        - name: confirm
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: stig_collection_id
+          in: query
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dry_run:
+                  type: boolean
+                  default: true
+                confirm:
+                  type: boolean
+                  default: false
+                stig_collection_id:
+                  type: string
+      responses:
+        "200":
+          description: Dry-run report or delete result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnmappedReviewsGcResult"
+        "403":
+          description: stig_admin required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /stig_reviews:
     get:
       tags: [Reviews]
@@ -2136,7 +2303,7 @@ paths:
       x-splunk-capability: stig_write
       description: |
         Either `{ "reviews": [...] }` / `{ "updates": [...] }` for field patches (max 500 rows),
-        or `{ "action": "submit|accept|reject", "review_ids": [...] }` for workflow — not both.
+        or `{ "action": "submit|unsubmit|accept|reject", "review_ids": [...] }` for workflow — not both.
       requestBody:
         content:
           application/json:
@@ -2186,6 +2353,21 @@ paths:
       tags: [Reviews]
       summary: Submit review for acceptance
       operationId: submitReview
+      x-splunk-capability: stig_write
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+
+  /stig_reviews/{reviewId}/unsubmit:
+    parameters:
+      - $ref: "#/components/parameters/reviewId"
+    post:
+      tags: [Reviews]
+      summary: Withdraw a submitted review back to draft (assessor)
+      operationId: unsubmitReview
       x-splunk-capability: stig_write
       responses:
         "200":
@@ -2869,7 +3051,7 @@ components:
           type: string
         operation:
           type: string
-          enum: [archive_export]
+          enum: [archive_export, clone]
         status:
           type: string
           enum: [pending, running, succeeded, failed]
@@ -2963,6 +3145,12 @@ components:
       properties:
         name:
           type: string
+        async:
+          type: boolean
+          description: When true, queue a pollable clone job instead of running synchronously.
+        pin_all_stigs_to_defaults:
+          type: boolean
+          description: Pin cloned checklists to the source workspace default baseline map.
         copy_hosts:
           type: boolean
         copy_checklists:
@@ -3089,6 +3277,43 @@ components:
               group_id:
                 type: string
 
+    UnmappedReviewsGcResult:
+      type: object
+      required:
+        [dry_run, unmapped_count, unmapped, deleted_count, skipped_no_key_count, history_rows_removed]
+      properties:
+        dry_run:
+          type: boolean
+        stig_collection_id:
+          type: string
+          description: Present when the request scoped to one workspace
+        unmapped_count:
+          type: integer
+        deleted_count:
+          type: integer
+        skipped_no_key_count:
+          type: integer
+        history_rows_removed:
+          type: integer
+        unmapped:
+          type: array
+          items:
+            type: object
+            properties:
+              _key:
+                type: string
+              checklist_id:
+                type: string
+              baseline_id:
+                type: string
+              rule_id:
+                type: string
+              group_id:
+                type: string
+              reason:
+                type: string
+                enum: [missing_checklist, missing_baseline, missing_rule]
+
     BaselineJobChunk:
       type: object
       required: [action, offset, data]
@@ -3172,7 +3397,7 @@ components:
           type: string
         action:
           type: string
-          description: update | submit | accept | reject | ingest | upgrade
+          description: update | submit | unsubmit | accept | reject | ingest | upgrade
         previous_status:
           type: string
         new_status:
@@ -3320,7 +3545,7 @@ components:
       properties:
         action:
           type: string
-          enum: [submit, accept, reject]
+          enum: [submit, unsubmit, accept, reject]
         review_ids:
           type: array
           items:

@@ -180,6 +180,48 @@ def _pick_grant(
     return best
 
 
+def workspace_access_from_grant(
+    grant: Dict[str, Any],
+    *,
+    assume_stig_write: bool = True,
+) -> WorkspaceAccess:
+    """Build effective workspace access for one grant row (admin preview)."""
+    role = (grant.get("grant_role") or "member").strip().lower()
+    if role not in GRANT_ROLES:
+        role = "member"
+    caps = GRANT_CAPABILITIES[role]
+    acl_hosts = _parse_id_set(grant.get("acl_host_ids"))
+    acl_baselines = _parse_id_set(grant.get("acl_baseline_ids"))
+    acl_labels = _parse_id_set(grant.get("acl_labels"))
+    can_write = caps["write"] or (
+        role in {"member", "restricted"} and assume_stig_write
+    )
+    return WorkspaceAccess(
+        can_read=caps["read"],
+        can_write=can_write,
+        manage_grants=caps["manage_grants"],
+        edit_collection=caps["edit_collection"],
+        edit_access_principals=caps["edit_access_principals"],
+        grant_role=role,
+        acl_host_ids=acl_hosts,
+        acl_baseline_ids=acl_baselines,
+        acl_label_ids=acl_labels,
+    )
+
+
+def session_for_principal_preview(principal: str) -> Dict[str, Any]:
+    """Synthetic Splunk session for resolving legacy / role grants in previews."""
+    text = (principal or "").strip()
+    if not text:
+        raise ValueError("principal is required (user:<name> or role:<name>)")
+    if not (text.startswith("user:") or text.startswith("role:")):
+        raise ValueError("principal must start with user: or role:")
+    caps = {"stig_read": True, "stig_write": True}
+    if text.startswith("user:"):
+        return {"user": text[5:], "roles": [], "capabilities": caps}
+    return {"user": "", "roles": [text[5:]], "capabilities": caps}
+
+
 def resolve_workspace_access(
     collection_record: Dict[str, Any],
     session: Dict[str, Any],
