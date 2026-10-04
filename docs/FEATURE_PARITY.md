@@ -51,7 +51,7 @@ P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide ali
 | Collection import options | not a row | **done** | Per-workspace `import_options` on `stig_collections`; REST `GET/PATCH .../import_options`; applied on file import, batch/zip, HEC apply, and reconcile via `import_policy.py`. Admin UI **Import options**. Docs: [§2.9.1.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Compare STIG revisions | not a row | **missing** | Library browses revisions (`LibraryApp.jsx`). No field-level diff of two revisions. Upgrade merge is a different feature and remains **done**. Docs: [§2.3.2.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [review handling](https://stig-manager.readthedocs.io/en/latest/user-guide/review-handling.html). |
 | Review attachments | not a row | **missing** | No review image store. The word “attachment” in the REST handler is not this feature. Docs: [§2.6.5.2 and §2.7.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Asset CSV import/export | not a row | **missing** | Host CRUD is JSON REST, not the documented CSV columns (name, description, IP, FQDN, MAC, non-computing, STIGs, labels, metadata). Docs: [§2.9.2.2–2.9.2.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Asset CSV import/export | not a row | **done** | `GET/POST /stig_collections/{id}/assets/csv` and SplunkUI **Hosts** import/export (STIG Manager columns). Docs: [§2.9.2.2–2.9.2.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Copy results to another collection | not a row | **missing** | `POST .../export-to/{dst}` **moves** hosts (`collection_transfer.py`). It does not copy results onto a same-named asset in the destination (100-asset cap in the docs). Docs: [§2.9.2.5.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Multi-STIG `.ckl` in an archive | not a row | **missing** | Export is one checklist file per host+baseline (`exporters/ckl.py`). Docs offer single-STIG vs multi-STIG `.ckl` vs XCCDF. Docs: [§2.9.2.5.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Unsubmit | not a row | **missing** | States are `draft` / `submitted` / `accepted` / `rejected` (`review_workflow.py`). Reject returns to draft. There is no unsubmit of a submitted review. Docs: [§2.6.3.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
@@ -103,7 +103,7 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | Import options | done | `services/import_options.py`, `import_policy.py`, ingest in `apply.py` / `checklists.py` |
 | Compare revisions | missing | No diff UI or API |
 | Review image attachments | missing | Not in review model |
-| Asset CSV | missing | No CSV importer |
+| Asset CSV | done | `services/asset_csv.py`, `exporters/asset_csv.py`, Hosts UI |
 | Copy results across collections | missing | export-to moves the host |
 | Multi-STIG CKL | missing | One file per checklist |
 | Unsubmit | missing | No transition |

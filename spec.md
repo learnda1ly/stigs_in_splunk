@@ -404,7 +404,7 @@ Foreign keys are string `_key` values unless noted. Timestamps are **epoch secon
 |-------|------|--------|
 | `_key` | string | |
 | `stig_collection_id` | string | FK → workspace |
-| `hostname`, `ip_address`, `fqdn`, `mac_address` | string | CKL/CKLB target |
+| `hostname`, `description`, `ip_address`, `fqdn`, `mac_address` | string | CKL/CKLB target; `description` optional (255 chars) |
 | `role`, `asset_type`, `tech_area` | string | Defaults: `role=None`, `asset_type=Computing` |
 | `web_or_database` | bool | Default false |
 | `metadata` | string | JSON object string |
@@ -747,6 +747,8 @@ Default `access_principals` on create: `["user:<creator>"]` if omitted. The Defa
 | DELETE | `/stig_hosts/{id}/stigs/{baselineIdOrStigId}` | — | Removes **one** checklist: path segment is baseline KV `_key` **or** logical `stig_id` resolved like POST assign (workspace default → catalog). Does **not** delete other revision checklists for the same `stig_id`; pass each revision’s baseline `_key` to remove multiples. Requires workspace **write**. |
 | GET/PATCH | `/stig_hosts/{id}/metadata` | Optional asset metadata (`metadata` JSON on host). **GET** returns `{stig_host_id, metadata}` (empty object when unset). Respects workspace read and restricted grant `acl_host_ids` / `acl_labels` (same as host GET — out-of-scope host → **404**). **PATCH** requires workspace **write**; body `{metadata: {...}}` shallow-merges keys (set a key to JSON `null` to remove). `{replace: true, metadata: {...}}` replaces the entire object. `{clear: true}` removes all keys. Top-level `"metadata": null` returns **400** (use `clear: true` to wipe). Values must be JSON-serializable; non-object `metadata` returns **400**. Audit event `stig_host_metadata` on successful PATCH. |
 | PATCH/DELETE | `/stig_hosts/{id}` | — | PATCH fields optional; DELETE requires **stig_admin** |
+| GET | `/stig_collections/{id}/assets/csv` | `host_ids?` (comma-separated) | STIG Manager–style CSV export (`Name`, `Description`, `IP`, `FQDN`, `MAC`, `Non-Computing`, `STIGs`, `Labels`, `Metadata`). **200** `text/csv` with `Content-Disposition` and `X-Stig-Row-Count`. |
+| POST | `/stig_collections/{id}/assets/csv` | — | JSON `{csv, submit?}`. `submit=false` (default) validates rows; `submit=true` creates/updates hosts, assigns STIGs, creates missing labels. **200** report; **201** when `submit=true` and at least one host created. |
 
 DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 
