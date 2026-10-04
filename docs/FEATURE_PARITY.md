@@ -29,13 +29,17 @@ Priorities and sizes match the existing legend: **P0** blocks single-collection 
 
 | Status | Count | Notes |
 |--------|------:|-------|
-| done | 20 | Core assessor/admin path; see “Still done” table |
-| partial | 8 | Material doc gaps on existing paths |
-| missing | 10 | No implementation found |
+| done | 24 | Core assessor/admin path; see “Still done” table |
+| partial | 6 | Material doc gaps on existing paths |
+| missing | 8 | No implementation found |
 | n/a | 8 | Platform-owned or **intentionally out of scope** |
 | unverified | 3 | Listed at end of doc |
 
 P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide alignment and hygiene (engineer-day estimates below).
+
+### STE-34 (2026-10-04): unpinned “latest” revision
+
+Unpinned catalog resolution now matches STIG Manager [§2.9.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html): highest `VxRy` among selectable benchmarks, excluding `draft` / `interim`, with `imported_at` as tie-break only. Workspace `default_baseline_map` pins are unchanged. Code: `find_baseline_by_stig` (`services/baselines.py`), library hierarchy (`services/baseline_library.py`), tests in `tests/test_find_baseline_by_stig.py`.
 
 ---
 
@@ -43,8 +47,8 @@ P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide ali
 
 | Row | Was | Now | Why |
 |-----|-----|-----|-----|
-| Default STIG revision per collection | done | **partial** | Pin map exists (`baseline_defaults.py`). Unpinned “latest” is highest `imported_at`, not highest version/release, and draft revisions are not held back. Docs: [user guide §2.9.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Collection dashboard metrics | done | `GET /stig_collections/{id}/metrics` includes review ages; `GET .../metrics/export` supports groupings, summary/detail, and result-engine splits (not CORA). Docs: [§2.4.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Default STIG revision per collection | done | **done** | Pin map plus unpinned latest by `VxRy` with draft/interim excluded (STE-34 / `find_baseline_by_stig`). Rescore had flagged `imported_at` ordering; fixed in code. Docs: [§2.9.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Collection dashboard metrics | done | **done** | `GET /stig_collections/{id}/metrics` includes review ages; `GET .../metrics/export` supports groupings, summary/detail, and result-engine splits (not CORA). Docs: [§2.4.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Review aging | done | **partial** | Stale **report** only (`review_aging.py`: threshold + status/severity filters; saved search `stigkvreviewaging`). Docs now specify **action rules** (delete, set Saved/Submitted, set result to Not Checked or Informational), ordinal, enable/disable, and targets (collection, asset, STIG, label). App Manager job **Update Aged Reviews**. Docs: [§2.9.1.7](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [admin §2.2.5](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
 | Result engine (automated / manual / override) | not a row | **partial** | Parsers emit `resultEngine` (`importers/ingest.py`). `review_seed_payload` does **not** write it onto the KV review. Editor has no automated/manual/override badge. Docs: [§2.7.1 and §2.7.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Informational result | folded into status enum | **done** | Fifth assessor status `informational` in `models.py` (`STATUSES`, CKL/CKLB/XCCDF mappings). Import/export, metrics `by_status`, React editor, legacy `stig_editor`, review-aging `set_result_informational`, and import-options unreviewed-with-comment default. |
@@ -77,6 +81,7 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | Labels, host transfer | `services/labels.py`, `services/collection_transfer.py` (move, not copy) |
 | Asset CRUD, assign/remove STIG | `services/hosts.py`, `POST /stig_hosts/{id}/stigs` |
 | STIG library, baseline import, rule/CCI/group GET | `services/baseline_library.py`, `services/baselines.py` |
+| Default STIG revision (pin map + unpinned latest) | `services/baseline_defaults.py`, `find_baseline_by_stig` |
 | Revision upgrade / hash merge | `services/revision_upgrade.py` |
 | Asset review + collection review + batch | `ui/src/pages/EditorApp.jsx`, `CollectionReviewApp.jsx`, `POST /stig_reviews/batch` |
 | Submit / accept / reject, requirements, ingest lock | `review_workflow.py`, editor + collection review UI |
@@ -95,7 +100,6 @@ Rows left **done** were re-checked against code, not just the old table: collect
 
 | Feature | Status | Evidence |
 |---------|--------|----------|
-| Default revision “latest” semantics | partial | Pin works; latest = `imported_at` in `find_baseline_by_stig` |
 | Dashboard metrics export + ages | done | Grouped export, summary/detail, ages on metrics + export; CORA n/a |
 | Review aging actions | partial | Report/config only; no mutating rules |
 | Result engine on the review | partial | Parsed, dropped in `review_seed_payload` |
@@ -144,16 +148,15 @@ No new **P0**. Day-to-day assess (open a workspace, assign a STIG, save, submit,
 | Item | Size | Engineer-days | Notes |
 |------|------|----------------|-------|
 | Persist result engine and show manual / automated / override | M | 3–5 | Seed, export, metrics detail, editor sprite |
-| Collection import options, including Watcher/HEC | M | 5–8 | Touches every ingest path |
+| Collection import options, including Watcher/HEC | M | 5–8 | Touches every ingest path — **done** in app |
 | Informational as its own status | — | — | **Done** (see status table) |
 | Revision compare (rule/field diff) | — | — | **Done** — library compare + `GET /stig_baselines/compare` |
-| “Latest” revision = version/release, skip draft | S | 1–2 | `find_baseline_by_stig` |
 | Review aging **actions** + saved search that mutates | M | 6–10 | Audit every change; do not silent-delete without a dry run |
-| Metrics export groupings + review ages (not CORA) | M | 3–5 | CSV/JSON from existing metrics service — **done** in app (CORA remains n/a) |
+| Metrics export groupings + review ages (not CORA) | — | — | **Done** in app (CORA remains n/a) |
 
-**P1 total: about 24–39 engineer-days (about 5–8 weeks for one person).**
+**P1 total: about 9–15 engineer-days (about 2–3 weeks for one person).**
 
-The wide end is import options plus aging actions. Those two touch ingest and can corrupt reviews if wrong.
+The wide end is aging actions. That path can corrupt reviews if wrong.
 
 ### Nice to have (P2)
 
@@ -161,7 +164,7 @@ The wide end is import options plus aging actions. Those two touch ingest and ca
 |------|------|----------------|
 | Review image attachments | M | 4–8 |
 | Copy results to another collection (not a move) | M | 4–7 |
-| Asset CSV import/export | M | 3–5 |
+| Asset CSV import/export | — | **Done** |
 | Multi-STIG CKL in the zip | S | 2–4 |
 | Unmapped-review cleanup job | S | 2–4 |
 | Web/DB site+instance asset identity | S | 2–3 |
@@ -179,7 +182,7 @@ Attachments and cross-collection copy dominate that range (KV size, ACL, partial
 
 Everything in the n/a table, including CORA, unless you reverse that decision (CORA itself is about 2–4 days on top of the metrics export work).
 
-**All remaining, P1+P2: about 48–82 engineer-days (about 10–16 weeks).** That is the “major work” if the goal is the current user guide plus admin hygiene, not the already-finished P0 path.
+**All remaining, P1+P2: about 33–58 engineer-days (about 7–12 weeks).** That is the “major work” if the goal is the current user guide plus admin hygiene, not the already-finished P0 path.
 
 ---
 

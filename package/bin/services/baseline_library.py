@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import kv_client
 from models import KV_STIG_BASELINE_RULES
 from services import baselines as baselines_svc
 from models import is_selectable_catalog_baseline
-from services.revision_upgrade import parse_dis_version
-
 
 def _benchmark_key(rec: Dict[str, Any]) -> str:
     sid = (rec.get("stig_id") or "").strip()
@@ -21,13 +19,6 @@ def _benchmark_key(rec: Dict[str, Any]) -> str:
             return xccdf.split("_benchmark_")[-1]
         return xccdf
     return (rec.get("_key") or "unknown").strip()
-
-
-def _revision_sort_key(rec: Dict[str, Any]) -> Tuple[int, int, float, str]:
-    ver = parse_dis_version(rec.get("version"))
-    if ver:
-        return (ver[0], ver[1], float(rec.get("imported_at") or 0), "")
-    return (0, 0, float(rec.get("imported_at") or 0), str(rec.get("version") or ""))
 
 
 def revision_summary(rec: Dict[str, Any]) -> Dict[str, Any]:
@@ -60,7 +51,9 @@ def revision_summary(rec: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _benchmark_entry(stig_id: str, revisions: List[Dict[str, Any]]) -> Dict[str, Any]:
-    ordered = sorted(revisions, key=_revision_sort_key, reverse=True)
+    ordered = sorted(
+        revisions, key=baselines_svc._revision_sort_key, reverse=True
+    )
     selectable = [rec for rec in ordered if is_selectable_catalog_baseline(rec)]
     latest = selectable[0] if selectable else ordered[0]
     return {
