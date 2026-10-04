@@ -138,8 +138,10 @@ def annotate_review(
 ) -> Dict[str, Any]:
     """Return a copy with ``valid`` and ``validation_errors`` (not for KV)."""
     import review_workflow
+    from models import result_engine_origin
 
     out = dict(review)
+    out["result_engine_origin"] = result_engine_origin(out.get("result_engine"))
     out["workflow_state"] = review_workflow.workflow_state(out)
     out["workflow_editable"] = review_workflow.is_editable(
         out, governance_enabled=governance_enabled

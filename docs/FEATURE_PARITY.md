@@ -29,13 +29,17 @@ Priorities and sizes match the existing legend: **P0** blocks single-collection 
 
 | Status | Count | Notes |
 |--------|------:|-------|
-| done | 21 | Core assessor/admin path; see “Still done” table |
-| partial | 8 | Material doc gaps on existing paths |
-| missing | 9 | No implementation found |
+| done | 28 | Core assessor/admin path; see “Still done” table |
+| partial | 5 | Material doc gaps on existing paths |
+| missing | 5 | No implementation found |
 | n/a | 8 | Platform-owned or **intentionally out of scope** |
 | unverified | 3 | Listed at end of doc |
 
 P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide alignment and hygiene (engineer-day estimates below).
+
+### STE-34 (2026-10-04): unpinned “latest” revision
+
+Unpinned catalog resolution now matches STIG Manager [§2.9.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html): highest `VxRy` among selectable benchmarks, excluding `draft` / `interim`, with `imported_at` as tie-break only. Workspace `default_baseline_map` pins are unchanged. Code: `find_baseline_by_stig` (`services/baselines.py`), library hierarchy (`services/baseline_library.py`), tests in `tests/test_find_baseline_by_stig.py`.
 
 ---
 
@@ -43,10 +47,10 @@ P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide ali
 
 | Row | Was | Now | Why |
 |-----|-----|-----|-----|
-| Default STIG revision per collection | done | **partial** | Pin map exists (`baseline_defaults.py`). Unpinned “latest” is highest `imported_at`, not highest version/release, and draft revisions are not held back. Docs: [user guide §2.9.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Collection dashboard metrics | done | `GET /stig_collections/{id}/metrics` includes review ages; `GET .../metrics/export` supports groupings, summary/detail, and result-engine splits (not CORA). Docs: [§2.4.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Default STIG revision per collection | done | **done** | Pin map plus unpinned latest by `VxRy` with draft/interim excluded (STE-34 / `find_baseline_by_stig`). Rescore had flagged `imported_at` ordering; fixed in code. Docs: [§2.9.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Collection dashboard metrics | done | **done** | `GET /stig_collections/{id}/metrics` includes review ages; `GET .../metrics/export` supports groupings, summary/detail, and result-engine splits (not CORA). Docs: [§2.4.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Review aging | done | **partial** | Stale **report** only (`review_aging.py`: threshold + status/severity filters; saved search `stigkvreviewaging`). Docs now specify **action rules** (delete, set Saved/Submitted, set result to Not Checked or Informational), ordinal, enable/disable, and targets (collection, asset, STIG, label). App Manager job **Update Aged Reviews**. Docs: [§2.9.1.7](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [admin §2.2.5](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
-| Result engine (automated / manual / override) | not a row | **partial** | Parsers emit `resultEngine` (`importers/ingest.py`). `review_seed_payload` does **not** write it onto the KV review. Editor has no automated/manual/override badge. Docs: [§2.7.1 and §2.7.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Result engine (automated / manual / override) | not a row | **done** | `resultEngine` survives ingest via `review_seed_payload` → KV `result_engine` (`collections.conf`, `import_policy.py`). Editor shows manual / automated / override (`ui/src/resultEngine.jsx`, `EditorApp.jsx`). Manual status edits clear engine (`services/reviews.py`). XCCDF archive export emits scanner check + override messages (`exporters/xccdf_results.py`). Docs: [§2.7.1 and §2.7.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Informational result | folded into status enum | **done** | Fifth assessor status `informational` in `models.py` (`STATUSES`, CKL/CKLB/XCCDF mappings). Import/export, metrics `by_status`, React editor, legacy `stig_editor`, review-aging `set_result_informational`, and import-options unreviewed-with-comment default. |
 | Collection import options | not a row | **done** | Per-workspace `import_options` on `stig_collections`; REST `GET/PATCH .../import_options`; applied on file import, batch/zip, HEC apply, and reconcile via `import_policy.py`. Admin UI **Import options**. Docs: [§2.9.1.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Compare STIG revisions | not a row | **done** | `GET /stig_baselines/compare` + library UI compare panel (`LibraryApp.jsx`). Read-only add/remove/changed report with per-field from/to on changed rules; upgrade merge remains separate. Docs: [§2.3.2.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [review handling](https://stig-manager.readthedocs.io/en/latest/user-guide/review-handling.html). |
@@ -54,13 +58,13 @@ P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide ali
 | Asset CSV import/export | not a row | **done** | `GET/POST /stig_collections/{id}/assets/csv` and SplunkUI **Hosts** import/export (STIG Manager columns). Docs: [§2.9.2.2–2.9.2.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Copy results to another collection | not a row | **missing** | `POST .../export-to/{dst}` **moves** hosts (`collection_transfer.py`). It does not copy results onto a same-named asset in the destination (100-asset cap in the docs). Docs: [§2.9.2.5.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Multi-STIG `.ckl` in an archive | not a row | **missing** | Export is one checklist file per host+baseline (`exporters/ckl.py`). Docs offer single-STIG vs multi-STIG `.ckl` vs XCCDF. Docs: [§2.9.2.5.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Unsubmit | not a row | **missing** | States are `draft` / `submitted` / `accepted` / `rejected` (`review_workflow.py`). Reject returns to draft. There is no unsubmit of a submitted review. Docs: [§2.6.3.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Review history retention | done (append + GET) | **partial** | History is append-only. `limit` is a query page size (default 100, max 500), not a per-workspace cap (docs default 15) and history cannot be turned off. Docs: [§2.9.1.4.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| `.ckl` web/database asset identity | not a row | **partial** | `WEB_DB_SITE` / `WEB_DB_INSTANCE` are stored. Host match in `apply.py` is hostname only, not host + site + instance when `WEB_OR_DATABASE` is true. Docs: [§2.10](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Effective access preview | not a row | **missing** | Grants and ACL filters exist. No UI/API that expands a grant to every asset×STIG the user can actually touch. `GrantsApp.jsx` has no effective-access view. Docs: [§2.9.1.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Unsubmit | not a row | **done** | `submitted` → `draft` via `unsubmit` (`review_workflow.py`, `POST .../unsubmit`, batch `action: unsubmit`); requires `stig_write` like submit. Accept/reject unchanged. Editor and collection review expose Unsubmit. Docs: [§2.6.3.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Review history retention | done (append + GET) | **done** | Append-only KV history. Per-workspace `review_history_config` on `stig_collections` (`enabled`, `max_records_per_review` default **15**, max **15**); REST `GET/PATCH .../review_history_config`. Write-time trim per review on insert; read-time cap when listing. `limit` on history GET remains query page size only (default 100, max 500). Docs: [§2.9.1.4.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| `.ckl` web/database asset identity | not a row | **done** | `WEB_DB_SITE` / `WEB_DB_INSTANCE` stored on hosts/checklists. Ingest host match in `apply.py` / `hosts.py` uses hostname + site + instance when `WEB_OR_DATABASE` / `is_web_database` is true; ordinary hosts still match on hostname only. Docs: [§2.10](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Effective access preview | not a row | **done** | `GET .../grants/{grantId}/effective_access` and `GET .../grants/effective_access?principal=` expand grant ACL to asset×STIG checklists; **Workspace grants** UI **Preview access** panel (`GrantsApp.jsx`). Requires owner/manager grant. Docs: [§2.9.1.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Delete unmapped reviews | not a row | **done** | `GET/POST /stig_reviews/gc_unmapped` (dry-run default; `confirm` / `dry_run=false` to delete). Reports `missing_checklist`, `missing_baseline`, or `missing_rule`; optional `stig_collection_id` scope. Removes review history on delete. Docs: [admin §2.2.5](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
-| Replace existing STIG revision on import | not a row | **missing** | Fingerprint dedup keeps the existing revision. No “replace existing revisions” switch. Docs: [admin §2.2.4](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
-| Clone: pin every STIG + async status | done (sync clone flags) | **partial** | `POST /stig_collections/{id}/clone` copies hosts, checklists, reviews, grants, labels, metadata, baseline defaults, review requirements. It does not offer “pin all STIGs to the source defaults” as its own switch, and it is not a background job with a status bar. Docs: [§2.9.1.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Replace existing STIG revision on import | not a row | **done** | Import page **Replace existing revisions** switch and `replace_existing_revisions` on `POST /stig_baselines/import` (query/JSON) and zip jobs. Default off: fingerprint dedup keeps the row; on: overwrite in place (same `_key`) by fingerprint or STIG ID + version. Docs: [admin §2.2.4](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
+| Clone: pin every STIG + async status | done | **done** | `POST /stig_collections/{id}/clone` copies hosts, checklists, reviews, grants, labels, metadata, baseline defaults, review requirements. Optional `pin_all_stigs_to_defaults` (alias `options.pinAllStigsToDefaults`) rewrites cloned checklists to the source workspace default baseline map; off preserves prior checklist `baseline_id` copy behavior. Pass `async: true` on clone or `POST .../jobs` with `{operation: "clone", ...}` for a pollable job (`GET .../jobs/{jobId}`). Transfer UI polls async clone. Docs: [§2.9.1.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 
 Rows left **done** were re-checked against code, not just the old table: collections, grants and ACL (host, baseline, label), labels, host transfer, asset CRUD and metadata, assign/remove STIG, checklist import wizard (sync, not SM’s async job), STIG library browse, XCCDF/CKL baseline import, revision **upgrade merge**, rule/CCI/group lookups, asset and collection review workspaces, status workflow submit/accept/reject, review requirements, peer copy, batch review PATCH, ingest lock, CKL/CKLB/XCCDF archive export, Watcher-shaped HEC, baseline chunk jobs and collection archive jobs, findings, aggregate findings, unreviewed reports, POA&M CSV/XLSX, OpenAPI file, settings adapter, cascade delete, orphan rule GC, workspace-scoped baselines, vim editor, `stig:finding` index, reconcile saved search, RMF **package** labels (`services/rmf_packages.py`, commit message “Implement RMF packages”). Those RMF packages are a Splunk ingest-routing feature. They are **not** STIG Manager rule exceptions.
 
@@ -73,19 +77,21 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | Feature | Evidence |
 |---------|----------|
 | Collections, metadata, cascade delete | `services/collections.py`, UCC workspaces |
-| Grants owner/manager/member/restricted + ACL | `services/grants.py`, `ui/src/pages/GrantsApp.jsx` |
+| Grants owner/manager/member/restricted + ACL + effective access preview | `services/grants.py`, `ui/src/pages/GrantsApp.jsx`, `GET .../grants/.../effective_access` |
 | Labels, host transfer | `services/labels.py`, `services/collection_transfer.py` (move, not copy) |
 | Asset CRUD, assign/remove STIG | `services/hosts.py`, `POST /stig_hosts/{id}/stigs` |
 | STIG library, baseline import, rule/CCI/group GET | `services/baseline_library.py`, `services/baselines.py` |
+| Default STIG revision (pin map + unpinned latest) | `services/baseline_defaults.py`, `find_baseline_by_stig` |
 | Revision upgrade / hash merge | `services/revision_upgrade.py` |
 | Asset review + collection review + batch | `ui/src/pages/EditorApp.jsx`, `CollectionReviewApp.jsx`, `POST /stig_reviews/batch` |
-| Submit / accept / reject, requirements, ingest lock | `review_workflow.py`, editor + collection review UI |
+| Submit / unsubmit / accept / reject, requirements, ingest lock | `review_workflow.py`, editor + collection review UI |
+| Result engine on reviews (ingest, editor, export) | `importers/ingest.py`, `services/reviews.py`, `exporters/xccdf_results.py`, `ui/src/resultEngine.jsx` |
 | Peer copy | `services/review_peers.py` |
 | CKL/CKLB/XCCDF results import and archive export | `services/imports.py`, `exporters/ckl.py`, `cklb.py`, `xccdf_results.py` |
 | Watcher-shaped HEC | [docs/watcher-hec.md](watcher-hec.md), `importers/events.py` |
 | Findings, aggregate, unreviewed, POA&M file | `services/reporting.py`, `exporters/poam.py`, dashboard tabs |
 | Metrics counts and export matrix | `aggregate_metrics`, `collection_metrics_export` in `reporting.py` |
-| History timeline (not retention policy) | `services/review_history.py`, editor timeline |
+| History timeline + retention policy | `services/review_history.py`, `services/review_history_config.py`, editor timeline |
 | Async baseline upload + collection archive jobs | `services/baseline_jobs.py`, `services/collection_jobs.py` |
 | OpenAPI + settings | [docs/openapi.yaml](openapi.yaml), `services/settings.py` |
 | Splunk caps, audit index | `access.py`, [docs/audit-index.md](audit-index.md) |
@@ -96,10 +102,8 @@ Rows left **done** were re-checked against code, not just the old table: collect
 
 | Feature | Status | Evidence |
 |---------|--------|----------|
-| Default revision “latest” semantics | partial | Pin works; latest = `imported_at` in `find_baseline_by_stig` |
 | Dashboard metrics export + ages | done | Grouped export, summary/detail, ages on metrics + export; CORA n/a |
 | Review aging actions | partial | Report/config only; no mutating rules |
-| Result engine on the review | partial | Parsed, dropped in `review_seed_payload` |
 | Informational result | done | Distinct status; XCCDF `result="informational"` round-trips |
 | Import options | done | `services/import_options.py`, `import_policy.py`, ingest in `apply.py` / `checklists.py` |
 | Compare revisions | done | Library compare panel + `GET /stig_baselines/compare` |
@@ -107,12 +111,11 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | Asset CSV | done | `services/asset_csv.py`, `exporters/asset_csv.py`, Hosts UI |
 | Copy results across collections | missing | export-to moves the host |
 | Multi-STIG CKL | missing | One file per checklist |
-| Unsubmit | missing | No transition |
-| History retention cap / off switch | partial | Page `limit` only |
-| Web/DB asset match | partial | Fields stored; match is hostname |
-| Effective access preview | missing | ACL enforced, not explained in UI |
-| Replace existing benchmark revision | missing | Dedup keeps current |
-| Clone pin-all + async | partial | Sync clone with copy flags |
+| History retention cap / off switch | done | `review_history_config` on workspace; trim on write |
+| Web/DB asset match | done | Hostname + site + instance when web/DB |
+| Effective access preview | done | `effective_access_for_grant` / principal query; Grants UI preview panel |
+| Replace existing benchmark revision | done | Import switch + `replace_existing_revisions` on library import |
+| Clone pin-all + async | done | `pin_all_stigs_to_defaults`, `collection_jobs` clone operation |
 
 ### Not applicable (intentionally out of scope unless product reverses)
 
@@ -143,17 +146,15 @@ No new **P0**. Day-to-day assess (open a workspace, assign a STIG, save, submit,
 
 | Item | Size | Engineer-days | Notes |
 |------|------|----------------|-------|
-| Persist result engine and show manual / automated / override | M | 3–5 | Seed, export, metrics detail, editor sprite |
-| Collection import options, including Watcher/HEC | M | 5–8 | Touches every ingest path |
+| Collection import options, including Watcher/HEC | M | 5–8 | Touches every ingest path — **done** in app |
 | Informational as its own status | — | — | **Done** (see status table) |
 | Revision compare (rule/field diff) | — | — | **Done** — library compare + `GET /stig_baselines/compare` |
-| “Latest” revision = version/release, skip draft | S | 1–2 | `find_baseline_by_stig` |
 | Review aging **actions** + saved search that mutates | M | 6–10 | Audit every change; do not silent-delete without a dry run |
-| Metrics export groupings + review ages (not CORA) | M | 3–5 | CSV/JSON from existing metrics service — **done** in app (CORA remains n/a) |
+| Metrics export groupings + review ages (not CORA) | — | — | **Done** in app (CORA remains n/a) |
 
-**P1 total: about 24–39 engineer-days (about 5–8 weeks for one person).**
+**P1 total: about 9–15 engineer-days (about 2–3 weeks for one person).**
 
-The wide end is import options plus aging actions. Those two touch ingest and can corrupt reviews if wrong.
+The wide end is aging actions. That path can corrupt reviews if wrong.
 
 ### Nice to have (P2)
 
@@ -161,15 +162,12 @@ The wide end is import options plus aging actions. Those two touch ingest and ca
 |------|------|----------------|
 | Review image attachments | M | 4–8 |
 | Copy results to another collection (not a move) | M | 4–7 |
-| Asset CSV import/export | M | 3–5 |
+| Asset CSV import/export | — | **Done** |
 | Multi-STIG CKL in the zip | S | 2–4 |
-| Web/DB site+instance asset identity | S | 2–3 |
-| Effective-access preview | S | 2–3 |
-| Clone: pin-all switch + async status | S | 2–4 |
+| Unmapped-review cleanup job | — | **Done** — `GET/POST /stig_reviews/gc_unmapped` |
+| Clone: pin-all switch + async status | — | **Done** — `pin_all_stigs_to_defaults`, async clone jobs |
 | History cap and disable | S | 1–2 |
-| Replace-existing revision on library import | S | 1–2 |
-| Unsubmit | S | 1 |
-
+| Replace-existing revision on library import | — | — | **Done** — Import UI + REST |
 **P2 total: about 24–43 engineer-days.**
 
 Attachments and cross-collection copy dominate that range (KV size, ACL, partial failure).
@@ -178,7 +176,7 @@ Attachments and cross-collection copy dominate that range (KV size, ACL, partial
 
 Everything in the n/a table, including CORA, unless you reverse that decision (CORA itself is about 2–4 days on top of the metrics export work).
 
-**All remaining, P1+P2: about 48–82 engineer-days (about 10–16 weeks).** That is the “major work” if the goal is the current user guide plus admin hygiene, not the already-finished P0 path.
+**All remaining, P1+P2: about 33–58 engineer-days (about 7–12 weeks).** That is the “major work” if the goal is the current user guide plus admin hygiene, not the already-finished P0 path.
 
 ---
 
