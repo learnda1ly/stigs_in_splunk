@@ -85,6 +85,36 @@ class TestBaselineLibraryGrouping(unittest.TestCase):
         self.assertEqual(revs[0]["content_fingerprint"], "fp2")
         self.assertEqual(revs[1]["baseline_id"], "b_old")
 
+    def test_library_latest_skips_draft_revision(self):
+        service = MagicMock()
+        baselines = [
+            {
+                "_key": "b_draft",
+                "stig_id": "Example_STIG",
+                "title": "Example",
+                "version": "V9R9",
+                "benchmark_status": "draft",
+                "imported_at": 200.0,
+            },
+            {
+                "_key": "b_accepted",
+                "stig_id": "Example_STIG",
+                "title": "Example",
+                "version": "V2R1",
+                "benchmark_status": "accepted",
+                "imported_at": 1.0,
+            },
+        ]
+        with patch.object(
+            lib.baselines_svc, "list_baselines", return_value=baselines
+        ):
+            payload = lib.list_hierarchy(service)
+        example = next(
+            b for b in payload["benchmarks"] if b["stig_id"] == "Example_STIG"
+        )
+        self.assertEqual(example["latest_baseline_id"], "b_accepted")
+        self.assertEqual(example["latest_version"], "V2R1")
+
     def test_get_benchmark_case_insensitive(self):
         service = MagicMock()
         with patch.object(

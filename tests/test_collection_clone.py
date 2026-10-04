@@ -204,6 +204,22 @@ class TestCloneOptions(unittest.TestCase):
                 [],
             )
 
+    def test_pin_all_defaults_false_keeps_checklist_baseline(self):
+        opts, _ = clone_svc.parse_clone_options(
+            {"pin_all_stigs_to_defaults": False}
+        )
+        self.assertFalse(opts["pin_all_stigs_to_defaults"])
+
+    def test_pin_all_defaults_coerces_baseline_map_copy(self):
+        opts, coerced = clone_svc.parse_clone_options(
+            {
+                "pin_all_stigs_to_defaults": True,
+                "copy_baseline_defaults": False,
+            }
+        )
+        self.assertTrue(opts["copy_baseline_defaults"])
+        self.assertTrue(any("copy_baseline_defaults forced" in c for c in coerced))
+
     def test_copy_hosts_false_without_explicit_reviews_ok(self):
         opts, coerced = clone_svc.parse_clone_options({"copy_hosts": False})
         clone_svc.validate_clone_request({"copy_hosts": False}, opts, [])
@@ -264,6 +280,56 @@ class TestCollectionCloneService(unittest.TestCase):
         finally:
             for patcher in reversed(patchers):
                 patcher.stop()
+
+    @patch("services.collection_clone.baseline_defaults_svc.lookup_default_baseline_id")
+    @patch("services.collection_clone.baselines_svc.get_baseline")
+    @patch("services.collection_clone.audit.log_event")
+    @patch("services.collections.audit.log_event")
+    @patch("services.collections.find_default_collection", return_value=None)
+    def test_pin_all_updates_checklist_baselines(
+        self, _def, _audit_create, _audit_clone, mock_get_baseline, mock_lookup
+    ) -> None:
+        alice = _session()
+
+        def _baseline(_s, bid):
+            return {
+                "_key": bid,
+                "stig_id": "RHEL_9_STIG",
+                "xccdf_benchmark_id": "RHEL_9_STIG",
+            }
+
+        mock_get_baseline.side_effect = _baseline
+        mock_lookup.return_value = "base1"
+
+        with self._with_collections_kv():
+            off = clone_svc.clone_collection(
+                self.service,
+                "ws1",
+                {"name": "No pin", "pin_all_stigs_to_defaults": False},
+                "alice",
+                alice,
+            )
+            on = clone_svc.clone_collection(
+                self.service,
+                "ws1",
+                {"name": "Pinned", "pin_all_stigs_to_defaults": True},
+                "alice",
+                alice,
+            )
+        off_cl = [
+            c
+            for c in self.kv.tables["stig_checklists"].values()
+            if c.get("stig_collection_id") == off["stig_collection_id"]
+        ][0]
+        on_cl = [
+            c
+            for c in self.kv.tables["stig_checklists"].values()
+            if c.get("stig_collection_id") == on["stig_collection_id"]
+        ][0]
+        self.assertEqual(off_cl["baseline_id"], "b1")
+        self.assertEqual(on_cl["baseline_id"], "base1")
+        self.assertEqual(on["summary"]["pinned_checklists"], 1)
+        self.assertEqual(off["summary"].get("pinned_checklists"), 0)
 
     @patch("services.collection_clone.audit.log_event")
     @patch("services.collections.audit.log_event")
@@ -510,6 +576,25 @@ class TestCollectionCloneService(unittest.TestCase):
 
 
 class TestCollectionCloneRest(unittest.TestCase):
+    @patch.object(stig_rest_handler.collection_jobs_svc, "create_clone_job")
+    def test_rest_clone_async_route(self, mock_job) -> None:
+        mock_job.return_value = {"job_id": "j1", "status": "pending", "operation": "clone"}
+        handler = stig_rest_handler.StigRestHandler("", "")
+        payload = {
+            "method": "POST",
+            "session": {
+                "authtoken": "t",
+                "user": "alice",
+                "capabilities": {"stig_write": True},
+            },
+            "rest_path": "stig_collections/ws1/clone",
+            "payload": json.dumps({"name": "Copy", "async": True}),
+        }
+        with patch.object(stig_rest_handler.kv_client, "connect", return_value=MagicMock()):
+            resp = handler.handle(json.dumps(payload))
+        self.assertEqual(resp["status"], 202)
+        mock_job.assert_called_once()
+
     @patch.object(clone_svc, "clone_collection")
     def test_rest_clone_route(self, mock_clone) -> None:
         mock_clone.return_value = {

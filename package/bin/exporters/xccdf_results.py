@@ -38,6 +38,46 @@ def _rule_idref(rule: Dict[str, Any]) -> str:
     return raw
 
 
+def _append_result_engine(rr: ET.Element, engine: Dict[str, Any]) -> None:
+    """Attach scanner provenance to a rule-result (OpenSCAP-shaped check block)."""
+    product = str(engine.get("product") or "").strip()
+    if not product:
+        return
+    check = ET.SubElement(rr, f"{{{XCCDF_NS}}}check")
+    check.set("system", product)
+    version = str(engine.get("version") or "").strip()
+    if version:
+        content = ET.SubElement(check, f"{{{XCCDF_NS}}}check-content")
+        content.set("ref", version)
+        content.text = version
+    check_content = engine.get("checkContent")
+    if isinstance(check_content, dict):
+        location = str(check_content.get("location") or "").strip()
+        if location:
+            content = check.find(f"{{{XCCDF_NS}}}check-content")
+            if content is None:
+                content = ET.SubElement(check, f"{{{XCCDF_NS}}}check-content")
+            content.text = location
+    overrides = engine.get("overrides")
+    if isinstance(overrides, list):
+        for entry in overrides:
+            if not isinstance(entry, dict):
+                continue
+            parts = []
+            for label, key in (
+                ("Overridden by", "authority"),
+                ("Original result", "oldResult"),
+                ("New result", "newResult"),
+                ("Remark", "remark"),
+            ):
+                val = str(entry.get(key) or "").strip()
+                if val:
+                    parts.append(f"{label}: {val}")
+            if parts:
+                msg = ET.SubElement(rr, f"{{{XCCDF_NS}}}message", {"severity": "info"})
+                msg.text = "; ".join(parts)
+
+
 def _iso_timestamp(epoch: Any) -> str:
     try:
         when = datetime.datetime.fromtimestamp(float(epoch), datetime.timezone.utc)
@@ -93,9 +133,8 @@ def export_xccdf_results(
             msg = ET.SubElement(rr, f"{{{XCCDF_NS}}}message", {"severity": "info"})
             msg.text = detail
         engine = normalize_result_engine(review.get("result_engine"))
-        if engine and engine.get("product"):
-            check = ET.SubElement(rr, f"{{{XCCDF_NS}}}check")
-            check.set("system", str(engine.get("product")))
+        if engine:
+            _append_result_engine(rr, engine)
 
     xml_body = ET.tostring(root, encoding="unicode", xml_declaration=True)
     if not xml_body.startswith("<?xml"):

@@ -136,7 +136,11 @@ def parse_xccdf_results(
         stats = empty_stats()
         reviews: List[Dict[str, Any]] = []
         engine_product = (tr.get("test-system") or "").strip() or "xccdf-scan"
-        result_engine = {"product": engine_product, "source": source_uri or ""}
+        result_engine = {
+            "type": "scap",
+            "product": engine_product,
+            "source": source_uri or "",
+        }
 
         for rr in tr.iter():
             if strip_ns(rr.tag) != "rule-result":

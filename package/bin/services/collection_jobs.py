@@ -23,6 +23,7 @@ from typing import Any, Dict, Optional
 
 import kv_client
 from services import checklists as checklists_svc
+from services import collection_clone as collection_clone_svc
 
 JOB_TTL_SECONDS = 6 * 3600
 SYNC_ENV = "STIG_COLLECTION_JOBS_SYNC"
@@ -97,10 +98,13 @@ def _public(meta: Dict[str, Any], collection_id: str) -> Dict[str, Any]:
     result = meta.get("result")
     if result and meta.get("status") == "succeeded":
         job_id = meta.get("job_id")
-        out["result"] = {
-            **result,
-            "download_path": f"stig_collections/{collection_id}/jobs/{job_id}/download",
-        }
+        if meta.get("operation") == "archive_export":
+            out["result"] = {
+                **result,
+                "download_path": f"stig_collections/{collection_id}/jobs/{job_id}/download",
+            }
+        else:
+            out["result"] = result
     else:
         out["result"] = None
     return out
@@ -133,27 +137,41 @@ def _execute_job(
     _save_meta(meta)
     try:
         service = kv_client.connect(session_key)
-        export_fmt = meta.get("format") or "cklb"
-        filters = meta.get("filters") or {}
-        payload = checklists_svc.export_collection_archive(
-            service,
-            collection_id,
-            export_fmt,
-            session,
-            host_id=filters.get("host_id"),
-            baseline_id=filters.get("baseline_id"),
-        )
-        raw = base64.b64decode(payload.get("content_base64") or "")
-        with open(_artifact_path(job_id), "wb") as handle:
-            handle.write(raw)
-        meta["result"] = {
-            "filename": payload.get("filename"),
-            "format": payload.get("format"),
-            "count": payload.get("count"),
-            "files": payload.get("files"),
-        }
-        meta["status"] = "succeeded"
-        meta["error"] = None
+        operation = (meta.get("operation") or "archive_export").strip().lower()
+        if operation == "clone":
+            clone_body = meta.get("clone_request") or {}
+            payload = collection_clone_svc.clone_collection(
+                service,
+                collection_id,
+                clone_body,
+                username,
+                session,
+            )
+            meta["result"] = payload
+            meta["status"] = "succeeded"
+            meta["error"] = None
+        else:
+            export_fmt = meta.get("format") or "cklb"
+            filters = meta.get("filters") or {}
+            payload = checklists_svc.export_collection_archive(
+                service,
+                collection_id,
+                export_fmt,
+                session,
+                host_id=filters.get("host_id"),
+                baseline_id=filters.get("baseline_id"),
+            )
+            raw = base64.b64decode(payload.get("content_base64") or "")
+            with open(_artifact_path(job_id), "wb") as handle:
+                handle.write(raw)
+            meta["result"] = {
+                "filename": payload.get("filename"),
+                "format": payload.get("format"),
+                "count": payload.get("count"),
+                "files": payload.get("files"),
+            }
+            meta["status"] = "succeeded"
+            meta["error"] = None
     except Exception as exc:  # noqa: BLE001 — job failure surface
         meta["status"] = "failed"
         meta["error"] = str(exc)
@@ -183,6 +201,53 @@ def _start_worker(
     with _LOCK:
         _ACTIVE[job_id] = thread
     thread.start()
+
+
+def _clone_request_body(body: Dict[str, Any]) -> Dict[str, Any]:
+    clone_body = dict(body or {})
+    for key in ("operation", "async"):
+        clone_body.pop(key, None)
+    return clone_body
+
+
+def create_clone_job(
+    service,
+    source_collection_id: str,
+    body: Dict[str, Any],
+    session: Dict[str, Any],
+    username: str,
+) -> Dict[str, Any]:
+    """Validate clone ACL and queue async workspace clone job."""
+    source_collection_id = (source_collection_id or "").strip()
+    if not source_collection_id:
+        raise ValueError("stig_collection_id is required")
+    clone_body = _clone_request_body(body)
+    collection_clone_svc.validate_clone_job_request(
+        service, source_collection_id, clone_body, session
+    )
+    session_key = (session or {}).get("authtoken") or ""
+    if not str(session_key).strip():
+        raise ValueError("session authtoken required for clone job")
+    job_id = uuid.uuid4().hex
+    os.makedirs(_job_dir(job_id), mode=0o700)
+    now = time.time()
+    meta = {
+        "job_id": job_id,
+        "stig_collection_id": source_collection_id,
+        "operation": "clone",
+        "format": None,
+        "filters": {},
+        "clone_request": clone_body,
+        "status": "pending",
+        "created_by": username,
+        "created_at": now,
+        "updated_at": now,
+        "error": None,
+        "result": None,
+    }
+    _save_meta(meta)
+    _start_worker(session_key, session, job_id, source_collection_id, username)
+    return get_job(job_id, source_collection_id, username)
 
 
 def create_archive_export_job(

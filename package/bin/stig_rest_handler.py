@@ -46,6 +46,7 @@ from services import imports as imports_svc
 from services import reconcile as reconcile_svc
 from services import reporting as reporting_svc
 from services import review_history as review_history_svc
+from services import review_history_config as review_history_config_svc
 from services import review_peers as review_peers_svc
 from services import reviews as reviews_svc
 from services import revision_upgrade as revision_upgrade_svc
@@ -406,6 +407,35 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     return _error(str(exc), status=400)
             return _error("method not allowed", status=405)
 
+        if len(parts) >= 2 and parts[1] in (
+            "review_history_config",
+            "review-history-config",
+        ):
+            if method == "GET" and len(parts) == 2:
+                try:
+                    return _json_response(
+                        review_history_config_svc.get_config(service, key, session)
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            if method in ("POST", "PUT", "PATCH") and len(parts) == 2:
+                body = _body_json(payload)
+                try:
+                    return _json_response(
+                        review_history_config_svc.patch_config(
+                            service, key, body, username, session
+                        )
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+                except ValueError as exc:
+                    return _error(str(exc), status=400)
+            return _error("method not allowed", status=405)
+
         if len(parts) >= 2 and parts[1] in ("review_aging", "review-aging"):
             if len(parts) == 2:
                 if method == "GET":
@@ -509,7 +539,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
 
         if len(parts) >= 2 and parts[1] == "grants":
             return self._collection_grants(
-                method, key, parts[2:], payload, service, session, username
+                method, key, parts[2:], query, payload, service, session, username
             )
 
         if len(parts) >= 2 and parts[1] == "labels":
@@ -521,16 +551,24 @@ class StigRestHandler(PersistentServerConnectionApplication):
             if method not in ("POST", "PUT"):
                 return _error("method not allowed", status=405)
             body = _body_json(payload)
+            async_clone = collections_svc.parse_cascade_flag(body.get("async"))
             try:
-                result = collection_clone_svc.clone_collection(
-                    service, key, body, username, session
-                )
+                if async_clone:
+                    rec = collection_jobs_svc.create_clone_job(
+                        service, key, body, session, username
+                    )
+                else:
+                    result = collection_clone_svc.clone_collection(
+                        service, key, body, username, session
+                    )
             except KeyError:
                 return _error("not found", status=404)
             except PermissionError as exc:
                 return _error(str(exc), status=403)
             except ValueError as exc:
                 return _error(str(exc), status=400)
+            if async_clone:
+                return _json_response(rec, status=202)
             return _json_response(result, status=201)
 
         if len(parts) == 3 and parts[1] == "export-to":
@@ -864,11 +902,52 @@ class StigRestHandler(PersistentServerConnectionApplication):
         method: str,
         collection_id: str,
         parts: List[str],
+        query: Dict[str, Any],
         payload: Dict[str, Any],
         service,
         session: Dict[str, Any],
         username: str,
     ) -> Dict[str, Any]:
+        def _parse_assume_stig_write() -> bool:
+            raw = query.get("assume_stig_write")
+            if raw is None:
+                return True
+            text = str(raw).strip().lower()
+            if text in ("0", "false", "no"):
+                return False
+            return True
+
+        def _effective_access_response(
+            *,
+            grant_id: Optional[str] = None,
+            principal: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            assume = _parse_assume_stig_write()
+            try:
+                if grant_id:
+                    body = grants_svc.effective_access_for_grant(
+                        service,
+                        collection_id,
+                        grant_id,
+                        session,
+                        assume_stig_write=assume,
+                    )
+                else:
+                    body = grants_svc.effective_access_for_principal(
+                        service,
+                        collection_id,
+                        principal or "",
+                        session,
+                        assume_stig_write=assume,
+                    )
+                return _json_response(body)
+            except KeyError:
+                return _error("not found", status=404)
+            except PermissionError as exc:
+                return _error(str(exc), status=403)
+            except ValueError as exc:
+                return _error(str(exc), status=400)
+
         if not parts:
             if method == "GET":
                 try:
@@ -889,7 +968,20 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     return _error(str(exc), status=403)
             return _error("method not allowed", status=405)
 
+        if len(parts) == 1 and parts[0] in ("effective_access", "effective-access"):
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            principal = (query.get("principal") or "").strip()
+            if not principal:
+                return _error("principal query parameter is required", status=400)
+            return _effective_access_response(principal=principal)
+
         grant_id = parts[0]
+        if len(parts) == 2 and parts[1] in ("effective_access", "effective-access"):
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            return _effective_access_response(grant_id=grant_id)
+
         if len(parts) == 2 and parts[1] == "acl":
             if method not in ("PUT", "PATCH", "POST"):
                 return _error("method not allowed", status=405)
@@ -1266,6 +1358,9 @@ class StigRestHandler(PersistentServerConnectionApplication):
             body = _body_bytes(payload)
             if not body:
                 return _error("empty import body")
+            replace_existing = baselines_svc.parse_replace_existing_revisions_flag(
+                query, body_json
+            )
             results = baselines_svc.import_baselines_payload(
                 service,
                 body,
@@ -1273,6 +1368,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 username,
                 source_uri,
                 stig_collection_id=scope,
+                replace_existing_revisions=replace_existing,
             )
             created_any = any(item.get("created") for item in results)
             payload_out = {
@@ -1487,18 +1583,25 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error("method not allowed", status=405)
             body = _body_json(payload)
             operation = (body.get("operation") or "archive_export").strip().lower()
-            if operation != "archive_export":
-                return _error("operation must be archive_export", status=400)
             try:
-                rec = collection_jobs_svc.create_archive_export_job(
-                    service,
-                    collection_id,
-                    session,
-                    username,
-                    body.get("format") or query.get("format") or "",
-                    host_id=body.get("host_id") or query.get("host_id"),
-                    baseline_id=body.get("baseline_id") or query.get("baseline_id"),
-                )
+                if operation == "archive_export":
+                    rec = collection_jobs_svc.create_archive_export_job(
+                        service,
+                        collection_id,
+                        session,
+                        username,
+                        body.get("format") or query.get("format") or "",
+                        host_id=body.get("host_id") or query.get("host_id"),
+                        baseline_id=body.get("baseline_id") or query.get("baseline_id"),
+                    )
+                elif operation == "clone":
+                    rec = collection_jobs_svc.create_clone_job(
+                        service, collection_id, body, session, username
+                    )
+                else:
+                    return _error(
+                        "operation must be archive_export or clone", status=400
+                    )
             except KeyError:
                 return _error("not found", status=404)
             except PermissionError as exc:
@@ -1563,10 +1666,14 @@ class StigRestHandler(PersistentServerConnectionApplication):
             if method != "POST":
                 return _error("method not allowed", status=405)
             body = _body_json(payload)
+            replace_existing = baselines_svc.parse_replace_existing_revisions_flag(
+                query, body
+            )
             rec = baseline_jobs_svc.create_job(
                 body.get("filename") or "",
                 int(body.get("size") or 0),
                 username,
+                replace_existing_revisions=replace_existing,
             )
             return _json_response(rec, status=201)
         job_id = parts[0]
@@ -1589,8 +1696,19 @@ class StigRestHandler(PersistentServerConnectionApplication):
             rec = baseline_jobs_svc.finalize_job(job_id, username)
             return _json_response(rec)
         if action == "import":
+            replace_existing = baselines_svc.resolve_replace_existing_revisions(
+                query,
+                body,
+                job_default=baseline_jobs_svc.job_replace_existing_revisions(
+                    job_id, username
+                ),
+            )
             rec = baseline_jobs_svc.import_member(
-                service, job_id, username, body.get("path") or ""
+                service,
+                job_id,
+                username,
+                body.get("path") or "",
+                replace_existing_revisions=replace_existing,
             )
             payload_out = dict(rec.get("record") or {})
             payload_out["created"] = bool(rec.get("created"))
@@ -1778,7 +1896,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
             body = _body_json(payload)
             action = (body.get("action") or "").strip().lower()
             has_field_batch = body.get("reviews") is not None or body.get("updates") is not None
-            if action in ("submit", "accept", "reject"):
+            if action in ("submit", "unsubmit", "accept", "reject"):
                 if has_field_batch:
                     return _error(
                         "batch body cannot combine action with reviews/updates; "
@@ -1842,13 +1960,15 @@ class StigRestHandler(PersistentServerConnectionApplication):
             except ValueError as exc:
                 return _error(str(exc), status=400)
 
-        if len(parts) == 2 and parts[1] in ("submit", "accept", "reject"):
+        if len(parts) == 2 and parts[1] in ("submit", "unsubmit", "accept", "reject"):
             action = parts[1]
             if method not in ("POST", "PATCH", "PUT"):
                 return _error("method not allowed", status=405)
             body = _body_json(payload)
             if action == "submit":
                 updated = reviews_svc.submit_review(service, key, username, session)
+            elif action == "unsubmit":
+                updated = reviews_svc.unsubmit_review(service, key, username, session)
             elif action == "accept":
                 updated = reviews_svc.accept_review(service, key, username, session)
             else:
