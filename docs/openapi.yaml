@@ -1477,6 +1477,15 @@ paths:
           schema:
             type: string
           description: Optional workspace scope for imported rows (requires workspace write). Omit for global catalog.
+        - name: replace_existing_revisions
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: >-
+            When true, overwrite an existing catalog revision (same content fingerprint or
+            same STIG ID and version) instead of deduplicating. Default false retains the
+            existing row (STIG Manager admin guide §2.2.4).
       requestBody:
         required: true
         content:
@@ -1495,6 +1504,10 @@ paths:
                 stig_collection_id:
                   type: string
                   description: Workspace scope when body carries metadata alongside binary (import handler).
+                replace_existing_revisions:
+                  type: boolean
+                  default: false
+                  description: Same as the query parameter; may be set on zip job create/import actions.
       responses:
         "200":
           description: Import succeeded; baseline deduplicated (no new KV row)
@@ -2136,7 +2149,7 @@ paths:
       x-splunk-capability: stig_write
       description: |
         Either `{ "reviews": [...] }` / `{ "updates": [...] }` for field patches (max 500 rows),
-        or `{ "action": "submit|accept|reject", "review_ids": [...] }` for workflow — not both.
+        or `{ "action": "submit|unsubmit|accept|reject", "review_ids": [...] }` for workflow — not both.
       requestBody:
         content:
           application/json:
@@ -2186,6 +2199,21 @@ paths:
       tags: [Reviews]
       summary: Submit review for acceptance
       operationId: submitReview
+      x-splunk-capability: stig_write
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+
+  /stig_reviews/{reviewId}/unsubmit:
+    parameters:
+      - $ref: "#/components/parameters/reviewId"
+    post:
+      tags: [Reviews]
+      summary: Withdraw a submitted review back to draft (assessor)
+      operationId: unsubmitReview
       x-splunk-capability: stig_write
       responses:
         "200":
@@ -3172,7 +3200,7 @@ components:
           type: string
         action:
           type: string
-          description: update | submit | accept | reject | ingest | upgrade
+          description: update | submit | unsubmit | accept | reject | ingest | upgrade
         previous_status:
           type: string
         new_status:
@@ -3320,7 +3348,7 @@ components:
       properties:
         action:
           type: string
-          enum: [submit, accept, reject]
+          enum: [submit, unsubmit, accept, reject]
         review_ids:
           type: array
           items:

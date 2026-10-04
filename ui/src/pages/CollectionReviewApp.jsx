@@ -490,7 +490,7 @@ export default function CollectionReviewApp() {
                     reviewIsValid(reviewSnapshotFromRow(row), reviewRequirements)
                 );
             }
-            if (action === "accept" || action === "reject") {
+            if (action === "unsubmit" || action === "accept" || action === "reject") {
                 return wf === "submitted";
             }
             return false;
@@ -738,6 +738,13 @@ export default function CollectionReviewApp() {
                                 onClick={() => onBatchWorkflow("submit")}
                             >
                                 Submit
+                            </Button>
+                            <Button
+                                appearance="secondary"
+                                disabled={busy || !rows.length}
+                                onClick={() => onBatchWorkflow("unsubmit")}
+                            >
+                                Unsubmit
                             </Button>
                             <Button
                                 appearance="secondary"
