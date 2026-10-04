@@ -89,6 +89,83 @@ def list_hosts(
     return out
 
 
+def _normalize_host_part(value: Any) -> str:
+    return str(value or "").strip().casefold()
+
+
+def host_record_is_web_or_database(rec: Dict[str, Any]) -> bool:
+    if rec.get("web_or_database"):
+        return True
+    meta = parse_json_field(rec.get("metadata"), default={}) or {}
+    if isinstance(meta, dict):
+        return meta.get("cklWebOrDatabase") == "true"
+    return False
+
+
+def web_db_identity_from_host(rec: Dict[str, Any]) -> tuple[str, str, str]:
+    meta = parse_json_field(rec.get("metadata"), default={}) or {}
+    if not isinstance(meta, dict):
+        meta = {}
+    hostname = meta.get("cklHostName") or rec.get("hostname") or ""
+    site = meta.get("cklWebDbSite") or ""
+    instance = meta.get("cklWebDbInstance") or ""
+    return str(hostname), str(site), str(instance)
+
+
+def web_db_identity_from_ingest_event(event: Dict[str, Any]) -> tuple[bool, str, str, str]:
+    asset = event.get("asset") if isinstance(event.get("asset"), dict) else {}
+    metadata = asset.get("metadata") if isinstance(asset.get("metadata"), dict) else {}
+    target_data = asset.get("target_data") if isinstance(asset.get("target_data"), dict) else {}
+    is_web = bool(
+        metadata.get("cklWebOrDatabase") == "true"
+        or target_data.get("is_web_database")
+    )
+    hostname = (
+        event.get("assetName")
+        or asset.get("name")
+        or metadata.get("cklHostName")
+        or target_data.get("host_name")
+        or ""
+    )
+    site = metadata.get("cklWebDbSite") or target_data.get("web_db_site") or ""
+    instance = metadata.get("cklWebDbInstance") or target_data.get("web_db_instance") or ""
+    return is_web, str(hostname), str(site), str(instance)
+
+
+def host_matches_ingest(rec: Dict[str, Any], event: Dict[str, Any]) -> bool:
+    """Match ingest events to KV hosts (STIG Manager §2.10 web/database rules)."""
+    is_web, want_host, want_site, want_instance = web_db_identity_from_ingest_event(event)
+    if is_web:
+        if not host_record_is_web_or_database(rec):
+            return False
+        rec_host, rec_site, rec_instance = web_db_identity_from_host(rec)
+        return (
+            _normalize_host_part(rec_host) == _normalize_host_part(want_host)
+            and _normalize_host_part(rec_site) == _normalize_host_part(want_site)
+            and _normalize_host_part(rec_instance) == _normalize_host_part(want_instance)
+        )
+    want = _normalize_host_part(
+        event.get("assetName") or (event.get("asset") or {}).get("name") or ""
+    )
+    if not want:
+        return False
+    if host_record_is_web_or_database(rec):
+        return False
+    return _normalize_host_part(rec.get("hostname")) == want
+
+
+def find_host_for_ingest(
+    service,
+    session: Dict[str, Any],
+    stig_collection_id: str,
+    event: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    for rec in list_hosts(service, session, stig_collection_id):
+        if host_matches_ingest(rec, event):
+            return rec
+    return None
+
+
 def find_host_by_hostname(
     service,
     session: Dict[str, Any],
@@ -99,6 +176,8 @@ def find_host_by_hostname(
     if not want:
         return None
     for rec in list_hosts(service, session, stig_collection_id):
+        if host_record_is_web_or_database(rec):
+            continue
         if (rec.get("hostname") or "").strip().casefold() == want:
             return rec
     return None
