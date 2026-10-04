@@ -20,6 +20,7 @@ KV_STIG_BASELINE_RULES = "stig_baseline_rules"
 KV_STIG_CHECKLISTS = "stig_checklists"
 KV_STIG_REVIEWS = "stig_reviews"
 KV_STIG_REVIEW_HISTORY = "stig_review_history"
+KV_STIG_REVIEW_IMAGES = "stig_review_images"
 KV_STIG_EDITOR_SETTINGS = "stig_editor_settings"
 KV_STIG_ASSIGNMENT_RULES = "stig_assignment_rules"
 KV_STIG_HOST_BASELINE_ASSIGNMENTS = "stig_host_baseline_assignments"
@@ -196,6 +197,22 @@ def serialize_result_engine(value: Any) -> str:
     if not engine:
         return ""
     return dumps_json(engine)
+
+
+def result_engine_origin(value: Any) -> str:
+    """STIG Manager–style origin for UI: manual, automated, or override.
+
+    See user guide §2.7.1 and §2.7.4.4 (gear / user / answer-file overrides).
+    """
+    engine = normalize_result_engine(value)
+    if not engine:
+        return "manual"
+    overrides = engine.get("overrides")
+    if isinstance(overrides, list) and len(overrides) > 0:
+        return "override"
+    if str(engine.get("product") or "").strip():
+        return "automated"
+    return "manual"
 
 
 def normalize_status(value: Optional[str], source: str = "internal") -> Optional[str]:

@@ -22,6 +22,18 @@ from services import import_policy as import_policy_svc
 from services import rmf_packages as rmf_packages_svc
 
 
+def _ingest_batch_group_key(event: Dict[str, Any]) -> str:
+    parts = [
+        (event.get("assetName") or "").casefold(),
+        (event.get("benchmarkId") or "").casefold(),
+    ]
+    is_web, _host, site, instance = hosts_svc.web_db_identity_from_ingest_event(event)
+    if is_web:
+        parts.append(site.casefold())
+        parts.append(instance.casefold())
+    return "|".join(parts)
+
+
 def _ingest_metadata_block(event: Dict[str, Any]) -> Dict[str, Any]:
     """Splunk-app ingest context stored on stig_hosts.metadata (JSON)."""
     block: Dict[str, Any] = {}
@@ -59,9 +71,7 @@ def _upsert_host(
 ) -> Tuple[Dict[str, Any], bool]:
     asset = event.get("asset") or {}
     hostname = event.get("assetName") or asset.get("name") or ""
-    existing = hosts_svc.find_host_by_hostname(
-        service, session, collection_id, hostname
-    )
+    existing = hosts_svc.find_host_for_ingest(service, session, collection_id, event)
     asset_meta = asset.get("metadata") if isinstance(asset.get("metadata"), dict) else {}
     metadata = _merge_host_metadata(
         existing.get("metadata") if existing else {},
@@ -184,12 +194,7 @@ def apply_finding_events(
 
     groups: Dict[str, Dict[str, Dict[str, Any]]] = {}
     for event in normalized:
-        gkey = "|".join(
-            [
-                (event.get("assetName") or "").casefold(),
-                (event.get("benchmarkId") or "").casefold(),
-            ]
-        )
+        gkey = _ingest_batch_group_key(event)
         groups.setdefault(gkey, {})
         groups[gkey][finding_key(event)] = event
 

@@ -42,12 +42,12 @@ Grant-based workspace ACLs further restrict which collections, hosts, and review
 
 | Prefix | Purpose |
 |--------|---------|
-| `/stig_collections` | Workspaces; **`/meta/metrics`** (+ `/summary`) for grant-filtered cross-workspace rollups; subpaths for grants, labels, metrics, findings, POA&M, imports, clone, transfer, metadata, **`/review-history`**, **`/review_aging`** (+ `/stale`), **`/jobs`** (async archive export), `archive/ckl\|cklb\|xccdf`, … |
+| `/stig_collections` | Workspaces; **`/meta/metrics`** (+ `/summary`) for grant-filtered cross-workspace rollups; subpaths for grants (including **`/grants/{id}/effective_access`** and **`/grants/effective_access?principal=`**), labels, metrics, findings, POA&M, imports, clone, transfer, metadata, **`/review-history`**, **`/review_aging`** (+ `/stale`), **`/jobs`** (async archive export), `archive/ckl\|cklb\|xccdf`, … |
 | `/stig_hosts` | Assets; `/metadata`, `/checklists`, `/stigs` |
 | `/stig_collections/{id}/assets/csv` | Asset CSV export (`GET`) and validate/import (`POST` JSON `{csv, submit?}`) |
 | `/stig_baselines` | STIG library; `/import`, `/jobs`, `/gc_orphan_rules`, `/hierarchy`, `/by_stig/{stigId}`, cross-catalog `/rules`, `/ccis`, `/groups`, `/rule/{key}`, `/{id}/rules`, `/{id}/rules/{ruleRef}` |
 | `/stig_checklists` | Checklists; export, upgrade, validate, `export_bulk` |
-| `/stig_reviews` | Reviews; workflow actions; `/batch`; `/{id}/history` timeline; `/{id}/peers` and `/{id}/copy_from/{peerReviewId}` |
+| `/stig_reviews` | Reviews; workflow actions; `/batch`; `/gc_unmapped` (admin dry-run/delete); `/{id}/history` timeline; `/{id}/peers` and `/{id}/copy_from/{peerReviewId}` |
 | `/stig_imports` | File ingest and `/reconcile` |
 | `/stig_findings` | Workspace findings (`stig_collection_id` query) |
 | `/stig_settings` | Editor / ingest settings (no HEC token in responses) |
@@ -82,7 +82,7 @@ For large workspace zips, prefer jobs over synchronous `POST .../archive/{format
 
 | Step | Method | Path | Body / notes |
 |------|--------|------|----------------|
-| 1 | `POST` | `/stig_collections/{id}/jobs` | JSON `{ "operation": "archive_export", "format": "ckl" \| "cklb" \| "xccdf", "host_id"?, "baseline_id"? }` → **201** `{ job_id, status, ... }` |
+| 1 | `POST` | `/stig_collections/{id}/jobs` | JSON `{ "operation": "archive_export", "format": "ckl" \| "cklb" \| "xccdf", "host_id"?, "baseline_id"? }` or `{ "operation": "clone", ...clone flags }` → **201** `{ job_id, status, ... }` |
 | 2 | `GET` | `/stig_collections/{id}/jobs/{jobId}` | Poll until `status` is `succeeded` or `failed` (`error` on failure). |
 | 3 | `GET` | `/stig_collections/{id}/jobs/{jobId}/download` | Same JSON fields as sync archive (`filename`, `count`, `files`, `content_base64`) when `status=succeeded`. |
 | — | `DELETE` | `/stig_collections/{id}/jobs/{jobId}` | Drop staged artifact (creator only). |
