@@ -89,7 +89,7 @@ def has_material_change(
     *,
     action: Optional[str] = None,
 ) -> bool:
-    if action in ("submit", "accept", "reject"):
+    if action in ("submit", "unsubmit", "accept", "reject"):
         return True
     return bool(changed_field_names(before, after))
 
@@ -122,7 +122,7 @@ def build_change_summary(
     action: str = "update",
 ) -> str:
     parts: List[str] = []
-    if action in ("submit", "accept", "reject"):
+    if action in ("submit", "unsubmit", "accept", "reject"):
         wf_before = review_workflow.workflow_state(before)
         wf_after = review_workflow.workflow_state(after)
         parts.append(f"workflow: {wf_before} → {wf_after} ({action})")
@@ -132,7 +132,12 @@ def build_change_summary(
         parts.append("baseline upgrade")
 
     for field in changed_field_names(before, after):
-        if field == "workflow_state" and action in ("submit", "accept", "reject"):
+        if field == "workflow_state" and action in (
+            "submit",
+            "unsubmit",
+            "accept",
+            "reject",
+        ):
             continue
         parts.append(_preview_field(field, before, after))
 
@@ -184,7 +189,12 @@ def audit_details_for_review_change(
         details["summary"] = summary
     if "status" in changed:
         details["previous_status"] = _text(before.get("status"))
-    if "workflow_state" in changed or action in ("submit", "accept", "reject"):
+    if "workflow_state" in changed or action in (
+        "submit",
+        "unsubmit",
+        "accept",
+        "reject",
+    ):
         details["previous_workflow_state"] = review_workflow.workflow_state(before)
         details["workflow_state"] = review_workflow.workflow_state(after)
     for field in changed:
