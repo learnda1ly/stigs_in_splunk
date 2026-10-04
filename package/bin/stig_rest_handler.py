@@ -29,6 +29,7 @@ from services import checklists as checklists_svc
 from services import baseline_defaults as baseline_defaults_svc
 from services import review_aging as review_aging_svc
 from services import review_aging_actions as review_aging_actions_svc
+from services import import_options as import_options_svc
 from services import review_requirements as review_requirements_svc
 from services import collection_metadata as collection_metadata_svc
 from services import collection_clone as collection_clone_svc
@@ -121,6 +122,23 @@ def _body_json(payload: Dict[str, Any]) -> Dict[str, Any]:
         return json.loads(data.decode("utf-8"))
     except (TypeError, ValueError):
         return {}
+
+
+def _import_options_override(
+    query: Dict[str, Any], body: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
+    body = body or {}
+    raw = body.get("import_options")
+    if raw is None and query.get("import_options"):
+        try:
+            raw = json.loads(str(query.get("import_options")))
+        except (TypeError, ValueError):
+            raise ValueError("import_options query must be JSON") from None
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("import_options must be an object")
+    return raw
 
 
 def _enrich_session(session: Dict[str, Any]) -> Dict[str, Any]:
@@ -359,6 +377,32 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     return _error("not found", status=404)
                 except PermissionError as exc:
                     return _error(str(exc), status=403)
+            return _error("method not allowed", status=405)
+
+        if len(parts) >= 2 and parts[1] == "import_options":
+            if method == "GET" and len(parts) == 2:
+                try:
+                    return _json_response(
+                        import_options_svc.get_options(service, key, session)
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            if method in ("POST", "PUT", "PATCH") and len(parts) == 2:
+                body = _body_json(payload)
+                try:
+                    return _json_response(
+                        import_options_svc.patch_options(
+                            service, key, body, username, session
+                        )
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+                except ValueError as exc:
+                    return _error(str(exc), status=400)
             return _error("method not allowed", status=405)
 
         if len(parts) >= 2 and parts[1] in ("review_aging", "review-aging"):
@@ -626,7 +670,12 @@ class StigRestHandler(PersistentServerConnectionApplication):
             try:
                 if entries is not None:
                     rec = imports_svc.import_checklist_batch(
-                        service, session, username, key, entries
+                        service,
+                        session,
+                        username,
+                        key,
+                        entries,
+                        import_options_override=body.get("import_options"),
                     )
                 elif zip_body and (
                     (body.get("format") or "").lower() == "zip"
@@ -1862,6 +1911,10 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return _error(
                 "format must be ckl, cklb, zip, xccdf-results-zip, or xccdf-results"
             )
+        try:
+            import_override = _import_options_override(query, _body_json(payload))
+        except ValueError as exc:
+            return _error(str(exc), status=400)
         rec = imports_svc.import_checklist_file(
             service,
             body,
@@ -1871,6 +1924,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
             collection_id,
             source_uri,
             operator_collection_id=collection_id,
+            import_options_override=import_override,
         )
         created = rec.get("host", {}).get("created") or any(
             item.get("created") for item in rec.get("checklists") or []

@@ -21,6 +21,7 @@ module.exports = {
         ),
         workspace_defaults: path.join(__dirname, "src/workspace_defaults.jsx"),
         review_requirements: path.join(__dirname, "src/review_requirements.jsx"),
+        import_options: path.join(__dirname, "src/import_options.jsx"),
         grants: path.join(__dirname, "src/grants.jsx"),
         labels: path.join(__dirname, "src/labels.jsx"),
         library: path.join(__dirname, "src/library.jsx"),

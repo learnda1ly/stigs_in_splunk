@@ -23,5 +23,6 @@
     <view name="stig_labels_ui" label="Asset labels" icon="tag"/>
     <view name="stig_transfer_ui" label="Transfer assets" icon="forwarderuniversal"/>
     <view name="stig_review_requirements_ui" label="Review requirements" icon="bookmark"/>
+    <view name="stig_import_options_ui" label="Import options" icon="forwarderuniversal"/>
   </collection>
 </nav>

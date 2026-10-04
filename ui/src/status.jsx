@@ -58,6 +58,42 @@ export const DEFAULT_REVIEW_REQUIREMENTS = {
     applies_to_statuses: [],
 };
 
+export const DEFAULT_IMPORT_OPTIONS = {
+    status_per_result: {
+        fail: "saved",
+        pass: "saved",
+        notapplicable: "saved",
+    },
+    include_unreviewed: "with_comments",
+    unreviewed_with_comment: "informational",
+    empty_detail: "ignored",
+    empty_comment: "ignored",
+    allow_customize_per_import: true,
+    lock_automation_import_options: false,
+};
+
+export function normalizeImportOptions(raw) {
+    const base = DEFAULT_IMPORT_OPTIONS;
+    const src = raw && typeof raw === "object" ? raw : {};
+    const spr = { ...base.status_per_result, ...(src.status_per_result || {}) };
+    return {
+        status_per_result: spr,
+        include_unreviewed: src.include_unreviewed || base.include_unreviewed,
+        unreviewed_with_comment:
+            src.unreviewed_with_comment || base.unreviewed_with_comment,
+        empty_detail: src.empty_detail || base.empty_detail,
+        empty_comment: src.empty_comment || base.empty_comment,
+        allow_customize_per_import:
+            src.allow_customize_per_import != null
+                ? Boolean(src.allow_customize_per_import)
+                : base.allow_customize_per_import,
+        lock_automation_import_options:
+            src.lock_automation_import_options != null
+                ? Boolean(src.lock_automation_import_options)
+                : base.lock_automation_import_options,
+    };
+}
+
 function text(value) {
     return String((value == null ? "" : value) || "").trim();
 }

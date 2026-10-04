@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import audit
 from importers.checklist_zip import checklist_format
@@ -97,6 +97,7 @@ def import_checklist_file(
     stig_collection_id: str,
     source_uri: str = "",
     operator_collection_id: str = "",
+    import_options_override: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     forced_collection_id = (operator_collection_id or stig_collection_id or "").strip()
     if not forced_collection_id:
@@ -149,6 +150,8 @@ def import_checklist_file(
         username,
         session,
         forced_collection_id=forced_collection_id,
+        import_options_override=import_options_override,
+        automation_import=False,
     )
 
     totals = {"pass": 0, "fail": 0, "notapplicable": 0, "notchecked": 0}
@@ -211,6 +214,7 @@ def import_checklist_batch(
     username: str,
     collection_id: str,
     entries: List[Dict[str, Any]],
+    import_options_override: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     cid = resolve_import_workspace(service, session, username, collection_id)
     files = list(entries or [])
@@ -243,6 +247,8 @@ def import_checklist_batch(
                 cid,
                 source_uri=source_uri,
                 operator_collection_id=cid,
+                import_options_override=entry.get("import_options")
+                or import_options_override,
             )
             row = _public_import_row(rec)
             results.append(row)

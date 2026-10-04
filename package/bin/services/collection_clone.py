@@ -71,6 +71,9 @@ def _raw_flags(body: Dict[str, Any]) -> Dict[str, bool]:
         "copy_review_requirements": _flag(
             body, "copy_review_requirements", DEFAULT_COPY_REVIEW_REQUIREMENTS
         ),
+        "copy_import_options": _flag(
+            body, "copy_import_options", DEFAULT_COPY_REVIEW_REQUIREMENTS
+        ),
     }
 
 
@@ -85,6 +88,7 @@ def parse_clone_options(body: Dict[str, Any]) -> Tuple[Dict[str, bool], List[str
     copy_metadata = raw["copy_metadata"]
     copy_baseline_defaults = raw["copy_baseline_defaults"]
     copy_review_requirements = raw["copy_review_requirements"]
+    copy_import_options = raw["copy_import_options"]
 
     # STIG Manager compatibility aliases
     stig_mappings = (
@@ -122,6 +126,7 @@ def parse_clone_options(body: Dict[str, Any]) -> Tuple[Dict[str, bool], List[str
         "copy_metadata": copy_metadata,
         "copy_baseline_defaults": copy_baseline_defaults,
         "copy_review_requirements": copy_review_requirements,
+        "copy_import_options": copy_import_options,
     }
     return opts, coerced
 
@@ -283,6 +288,8 @@ def clone_collection(
                 patch["review_requirements"] = source.get("review_requirements")
             if source.get("review_accept_principals"):
                 patch["review_accept_principals"] = source.get("review_accept_principals")
+        if opts["copy_import_options"] and source.get("import_options"):
+            patch["import_options"] = source.get("import_options")
         if patch:
             dest = collections_svc.update_collection(service, dest_id, patch, username)
 
