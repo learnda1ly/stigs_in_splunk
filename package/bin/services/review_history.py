@@ -19,6 +19,7 @@ from models import (
 from services import checklists as checklists_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
+from services import review_history_config as review_history_config_svc
 import review_workflow
 
 DEFAULT_HISTORY_LIMIT = 100
@@ -253,8 +254,32 @@ def record_review_change(
         "actor": username or "unknown",
         "created_at": now_epoch(),
     }
+    collection_id = ctx["stig_collection_id"]
+    policy = review_history_config_svc.policy_for_collection_id(service, collection_id)
+    if not policy.get("enabled"):
+        return None
+
     coll = kv_client.get_collection(service, KV_STIG_REVIEW_HISTORY)
-    return kv_client.insert_record(coll, kv_record(row))
+    stored = kv_client.insert_record(coll, kv_record(row))
+    _trim_review_history(
+        service,
+        review_id,
+        int(policy.get("max_records_per_review") or review_history_config_svc.DEFAULT_MAX_RECORDS_PER_REVIEW),
+    )
+    return stored
+
+
+def _trim_review_history(service, review_id: str, max_keep: int) -> None:
+    """Delete oldest KV rows for a review after insert (write-time cap)."""
+    if max_keep <= 0:
+        return
+    coll = kv_client.get_collection(service, KV_STIG_REVIEW_HISTORY)
+    rows = kv_client.query_all(coll, {"review_id": review_id})
+    if len(rows) <= max_keep:
+        return
+    rows.sort(key=lambda r: float(r.get("created_at") or 0))
+    for rec in rows[: len(rows) - max_keep]:
+        kv_client.delete_record(coll, rec["_key"])
 
 
 def _history_allowed(
@@ -346,7 +371,13 @@ def list_review_history(
     session: Dict[str, Any],
     query: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    _require_visible_review(service, review_id, session)
+    review = _require_visible_review(service, review_id, session)
+    checklist_id = review.get("checklist_id")
+    collection_id = ""
+    if checklist_id:
+        checklist = checklists_svc.get_checklist(service, str(checklist_id), session)
+        collection_id = str((checklist or {}).get("stig_collection_id") or "")
+    policy = review_history_config_svc.policy_for_collection_id(service, collection_id)
 
     query = query or {}
     limit = _parse_int(
@@ -359,6 +390,7 @@ def list_review_history(
     coll = kv_client.get_collection(service, KV_STIG_REVIEW_HISTORY)
     rows = kv_client.query_all(coll, {"review_id": review_id})
     rows = [_public_row(r) for r in rows]
+    rows = review_history_config_svc.apply_retention_to_rows(rows, policy)
     if since is not None:
         rows = [r for r in rows if float(r.get("created_at") or 0) >= since]
     if until is not None:
@@ -396,6 +428,7 @@ def list_collection_review_history(
 ) -> Dict[str, Any]:
     query = query or {}
     collection = _require_read_collection(service, collection_id, session)
+    policy = review_history_config_svc.parse_policy_from_collection(collection)
     _rec, access_ctx, _grants = grants_svc.workspace_context(
         service, collection_id, session
     )
@@ -435,6 +468,7 @@ def list_collection_review_history(
             continue
         filtered.append(_public_row(rec))
 
+    filtered = review_history_config_svc.apply_retention_to_rows(filtered, policy)
     filtered.sort(key=lambda r: float(r.get("created_at") or 0), reverse=True)
     total = len(filtered)
     page = filtered[offset : offset + limit]
