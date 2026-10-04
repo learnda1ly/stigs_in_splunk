@@ -363,6 +363,31 @@ def set_ucc_name(service, key: str, ucc_name: str) -> Optional[Dict[str, Any]]:
     return kv_client.update_record(coll, key, kv_record(patch))
 
 
+def parse_replace_existing_revisions_flag(
+    query: Dict[str, Any], body: Dict[str, Any]
+) -> bool:
+    """True when the caller opts in to overwriting an existing catalog revision."""
+    return _truthy_flag(query.get("replace_existing_revisions")) or _truthy_flag(
+        body.get("replace_existing_revisions")
+    )
+
+
+def resolve_replace_existing_revisions(
+    query: Dict[str, Any],
+    body: Dict[str, Any],
+    *,
+    job_default: bool = False,
+) -> bool:
+    """Use explicit query/body when provided; otherwise fall back to job default."""
+    body = body or {}
+    query = query or {}
+    if query.get("replace_existing_revisions") not in (None, ""):
+        return parse_replace_existing_revisions_flag(query, body)
+    if "replace_existing_revisions" in body:
+        return parse_replace_existing_revisions_flag(query, body)
+    return bool(job_default)
+
+
 def parse_orphan_gc_execute_flag(query: Dict[str, Any], body: Dict[str, Any]) -> bool:
     """Return True when the caller wants to delete orphans (not dry-run).
 
@@ -549,6 +574,81 @@ def _parse_import(format_name: str, body: bytes, source_uri: str) -> Tuple[Dict[
     raise ValueError(f"unsupported format: {format_name}")
 
 
+def _overwrite_baseline_revision(
+    service,
+    baseline_id: str,
+    meta: Dict[str, Any],
+    rules: List[Dict[str, Any]],
+    username: str,
+    *,
+    source_uri: str = "",
+    format_name: str = "",
+    content_fingerprint: str,
+    ucc_name: str = "",
+) -> Dict[str, Any]:
+    """Replace baseline metadata and rules in place (preserves ``_key``)."""
+    existing = get_baseline(service, baseline_id)
+    if not existing:
+        raise KeyError(baseline_id)
+
+    baseline_coll = kv_client.get_collection(service, KV_STIG_BASELINES)
+    rules_coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
+    ts = now_epoch()
+    prior_ucc = ucc_name_for(existing)
+    patch = dict(existing)
+    patch.update(
+        {
+            "stig_id": meta.get("stig_id"),
+            "title": meta.get("title"),
+            "stig_name": meta.get("stig_name"),
+            "version": meta.get("version"),
+            "release_info": meta.get("release_info"),
+            "benchmark_date": meta.get("benchmark_date"),
+            "benchmark_status": meta.get("benchmark_status") or "accepted",
+            "xccdf_benchmark_id": meta.get("xccdf_benchmark_id"),
+            "display_name": meta.get("display_name") or "",
+            "reference_identifier": meta.get("reference_identifier") or "",
+            "description": meta.get("description") or "",
+            "classification": meta.get("classification") or "UNCLASSIFIED",
+            "source_filename": meta.get("source_filename") or "",
+            "notice": meta.get("notice") or "terms-of-use",
+            "stig_source": meta.get("stig_source") or "STIG.DOD.MIL",
+            "target_key": meta.get("target_key") or "",
+            "uuid": meta.get("uuid") or "",
+            "rule_count": len(rules),
+            "source_type": meta.get("source_type"),
+            "source_uri": source_uri or meta.get("source_uri"),
+            "content_fingerprint": content_fingerprint,
+            "imported_at": ts,
+            "imported_by": username,
+        }
+    )
+    if (ucc_name or "").strip():
+        patch["ucc_name"] = (ucc_name or "").strip()
+    elif prior_ucc:
+        patch["ucc_name"] = prior_ucc
+    stored = kv_client.update_record(baseline_coll, baseline_id, kv_record(patch))
+
+    for rule in list_baseline_rules(service, baseline_id):
+        if rule.get("_key"):
+            kv_client.delete_record(rules_coll, rule["_key"])
+    rule_records = [_rule_record(baseline_id, rule, meta) for rule in rules]
+    kv_client.batch_insert(rules_coll, rule_records)
+
+    audit.log_event(
+        "import_replace",
+        "stig_baseline",
+        baseline_id,
+        username,
+        {
+            "rule_count": len(rules),
+            "format": format_name,
+            "content_fingerprint": content_fingerprint,
+        },
+    )
+    return stored
+
+
 def import_parsed_baseline(
     service,
     meta: Dict[str, Any],
@@ -559,6 +659,7 @@ def import_parsed_baseline(
     match_stig_id: bool = False,
     ucc_name: str = "",
     stig_collection_id: str = "",
+    replace_existing_revisions: bool = False,
 ) -> Tuple[Dict[str, Any], bool]:
     if not rules:
         raise ValueError("no rules parsed from import")
@@ -569,6 +670,19 @@ def import_parsed_baseline(
         service, content_fingerprint, stig_collection_id=scope_id
     )
     if existing:
+        if replace_existing_revisions:
+            replaced = _overwrite_baseline_revision(
+                service,
+                existing["_key"],
+                meta,
+                rules,
+                username,
+                source_uri=source_uri,
+                format_name=format_name,
+                content_fingerprint=content_fingerprint,
+                ucc_name=ucc_name,
+            )
+            return replaced, True
         audit.log_event(
             "import_deduplicated",
             "stig_baseline",
@@ -592,6 +706,19 @@ def import_parsed_baseline(
             stig_collection_id=scope_id,
         )
         if existing:
+            if replace_existing_revisions:
+                replaced = _overwrite_baseline_revision(
+                    service,
+                    existing["_key"],
+                    meta,
+                    rules,
+                    username,
+                    source_uri=source_uri,
+                    format_name=format_name,
+                    content_fingerprint=content_fingerprint,
+                    ucc_name=ucc_name,
+                )
+                return replaced, True
             audit.log_event(
                 "import_deduplicated",
                 "stig_baseline",
@@ -605,6 +732,26 @@ def import_parsed_baseline(
                 },
             )
             return existing, False
+    if replace_existing_revisions:
+        existing = find_baseline_by_stig(
+            service,
+            meta.get("stig_id") or "",
+            meta.get("version") or "",
+            stig_collection_id=scope_id,
+        )
+        if existing:
+            replaced = _overwrite_baseline_revision(
+                service,
+                existing["_key"],
+                meta,
+                rules,
+                username,
+                source_uri=source_uri,
+                format_name=format_name,
+                content_fingerprint=content_fingerprint,
+                ucc_name=ucc_name,
+            )
+            return replaced, True
 
     baseline_coll = kv_client.get_collection(service, KV_STIG_BASELINES)
     rules_coll = kv_client.get_collection(service, KV_STIG_BASELINE_RULES)
@@ -765,6 +912,7 @@ def import_baseline(
     source_uri: str = "",
     ucc_name: str = "",
     stig_collection_id: str = "",
+    replace_existing_revisions: bool = False,
 ) -> Tuple[Dict[str, Any], bool]:
     meta, rules = _parse_import(format_name, body, source_uri)
     return import_parsed_baseline(
@@ -776,6 +924,7 @@ def import_baseline(
         format_name=format_name,
         ucc_name=ucc_name,
         stig_collection_id=stig_collection_id,
+        replace_existing_revisions=replace_existing_revisions,
     )
 
 
@@ -787,6 +936,7 @@ def import_baselines_payload(
     source_uri: str = "",
     ucc_name: str = "",
     stig_collection_id: str = "",
+    replace_existing_revisions: bool = False,
 ) -> List[Dict[str, Any]]:
     """Import one XCCDF/CKL/CKLB or a DISA zip / zip-of-zips of Manual-xccdf files."""
     from importers.stig_zip import list_baseline_xccdfs, looks_like_zip
@@ -807,6 +957,7 @@ def import_baselines_payload(
                 format_name="xccdf",
                 ucc_name=row_name,
                 stig_collection_id=stig_collection_id,
+                replace_existing_revisions=replace_existing_revisions,
             )
             shown = ucc_name_for(rec) or row_name
             used.add(shown)
@@ -827,6 +978,7 @@ def import_baselines_payload(
         source_uri=source_uri,
         ucc_name=ucc_name,
         stig_collection_id=stig_collection_id,
+        replace_existing_revisions=replace_existing_revisions,
     )
     return [
         {

@@ -114,7 +114,11 @@ export function rowsFromDirectZipResponse(doc, fileName) {
     }));
 }
 
-export function importJobMembers(jobId, pending, { onRow, onBanner }) {
+export function importJobMembers(
+    jobId,
+    pending,
+    { onRow, onBanner, replaceExistingRevisions }
+) {
     const total = pending.length;
     return pending.reduce((chain, row, index) => {
         return chain.then(() => {
@@ -133,9 +137,13 @@ export function importJobMembers(jobId, pending, { onRow, onBanner }) {
             if (onRow) {
                 onRow(row.key, { status: "uploading", error: "" });
             }
+            const body = { action: "import", path: row.path };
+            if (replaceExistingRevisions) {
+                body.replace_existing_revisions = true;
+            }
             return apiFetch("stig_baselines/jobs/" + jobId, {
                 method: "POST",
-                body: { action: "import", path: row.path },
+                body,
             })
                 .then((doc) => {
                     const rec = doc || {};
@@ -164,11 +172,15 @@ export function importJobMembers(jobId, pending, { onRow, onBanner }) {
     }, Promise.resolve());
 }
 
-export function uploadZipInChunks(file, { onUploadPct, onBanner }) {
+export function uploadZipInChunks(file, { onUploadPct, onBanner, replaceExistingRevisions }) {
     let jobId = "";
+    const createBody = { filename: file.name, size: file.size };
+    if (replaceExistingRevisions) {
+        createBody.replace_existing_revisions = true;
+    }
     return apiFetch("stig_baselines/jobs", {
         method: "POST",
-        body: { filename: file.name, size: file.size },
+        body: createBody,
     })
         .then((job) => {
             jobId = job && job.job_id;
@@ -251,6 +263,7 @@ export function importDisaBaselineZip(file, callbacks) {
         onJobId,
         onSkipped,
         onRows,
+        replaceExistingRevisions,
     } = callbacks || {};
 
     if (onPhase) {
@@ -275,7 +288,13 @@ export function importDisaBaselineZip(file, callbacks) {
         return readArrayBuffer(file)
             .then((buffer) =>
                 apiUpload("stig_baselines/import", {
-                    query: { format: "zip", source_uri: file.name },
+                    query: {
+                        format: "zip",
+                        source_uri: file.name,
+                        ...(replaceExistingRevisions
+                            ? { replace_existing_revisions: "true" }
+                            : {}),
+                    },
                     contentType: "application/zip",
                     body: buffer,
                 })
@@ -299,7 +318,11 @@ export function importDisaBaselineZip(file, callbacks) {
             });
     }
 
-    return uploadZipInChunks(file, { onUploadPct, onBanner })
+    return uploadZipInChunks(file, {
+        onUploadPct,
+        onBanner,
+        replaceExistingRevisions,
+    })
         .then(({ jobId, result }) => {
             if (onJobId) {
                 onJobId(jobId);
@@ -341,6 +364,7 @@ export function importDisaBaselineZip(file, callbacks) {
             return importJobMembers(jobId, nextRows, {
                 onBanner,
                 onRow: callbacks.onRowPatch,
+                replaceExistingRevisions,
             }).then(() => ({
                 mode: "job",
                 total: nextRows.length,

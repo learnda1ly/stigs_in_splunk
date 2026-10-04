@@ -360,7 +360,7 @@ fields_list = _key, baseline_id, group_id, rule_id, rule_id_src, rule_version, s
 [stig_baselines]
 external_type = kvstore
 collection = stig_baselines
-fields_list = _key, stig_id, title, version, rule_count, content_fingerprint, source_uri, imported_at
+fields_list = _key, stig_id, title, version, benchmark_status, rule_count, content_fingerprint, source_uri, imported_at
 ```
 
 (Add other collections if reporting needs them.)
@@ -431,6 +431,7 @@ REST: `GET/POST /stig_collections/{id}/labels`, `GET/PATCH/DELETE .../labels/{la
 | `stig_id` | string | e.g. `STIG`, `RHEL_8_STIG` |
 | `title`, `stig_name` | string | |
 | `version`, `release_info`, `benchmark_date` | string | Revision metadata |
+| `benchmark_status` | string | XCCDF Benchmark status (`accepted`, `draft`, `interim`, …). Unpinned “latest” catalog resolution skips `draft` / `interim`. |
 | `xccdf_benchmark_id` | string | XCCDF Benchmark `@id` |
 | `rule_count` | number | Count at import |
 | `source_type` | string | `xccdf` \| `cklb` \| `ckl` |
@@ -443,7 +444,7 @@ REST: `GET/POST /stig_collections/{id}/labels`, `GET/PATCH/DELETE .../labels/{la
 
 **Catalog scope:** Global baselines remain shared. Workspace-scoped rows are private to the owning workspace (plus **stig_admin**). `GET /stig_baselines` returns globals plus baselines for workspaces the caller can read. Query `stig_collection_id` narrows to globals + that workspace (requires workspace read). Import without scope creates globals; `stig_collection_id` on `POST /stig_baselines/import` (query or JSON) requires workspace **write**. Dedup (`content_fingerprint`, optional `stig_id`+`version`) is per scope. Existing checklist `baseline_id` references are unchanged.
 
-**Default / assign resolution** (when `baseline_id` omitted): explicit id → workspace `default_baseline_map` → latest matching revision in **workspace-scoped** catalog → latest **global** catalog match.
+**Default / assign resolution** (when `baseline_id` omitted): explicit id → workspace `default_baseline_map` (pinned revision per STIG; unchanged by this rule) → latest matching revision in **workspace-scoped** catalog → latest **global** catalog match. Unpinned “latest” picks the highest DISA-style `VxRy` version/release among catalog rows for that `stig_id` (tie-break: newest `imported_at`), and **excludes** benchmark revisions whose `benchmark_status` is `draft` or `interim`. An explicit `version` query/body field may still resolve a draft row. Aligns with STIG Manager [user guide §2.9.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html); implementation: `find_baseline_by_stig` in `services/baselines.py` and `resolve_baseline_id` in `services/baseline_defaults.py`.
 
 ### 7.4 `stig_baseline_rules`
 
@@ -516,7 +517,7 @@ Append-only audit of **assessor-visible** review changes (not a full document sn
 
 **Workspace list:** `GET /stig_collections/{id}/review-history` loads all KV rows for the workspace then filters and paginates in the handler (acceptable for P2; very large histories may be slow—use per-review history or query filters).
 
-**Retention:** cascade workspace delete removes history rows for that `stig_collection_id`.
+**Retention:** Per-workspace `review_history_config` JSON on `stig_collections`: `enabled` (default true) and `max_records_per_review` (default **15**, max **15** per STIG Manager). When disabled, new rows are not written and history GET endpoints return no rows. When enabled, each insert trims oldest rows for that `review_id` beyond the cap; list endpoints also apply the cap before pagination. Reducing the cap does not delete existing KV rows until the next review update. REST `GET/PATCH /stig_collections/{id}/review_history_config`. Cascade workspace delete removes all history rows for that `stig_collection_id`.
 
 ### 7.8 `stig_assignment_rules`
 

@@ -45,6 +45,19 @@ class ReviewWorkflowTransitionTests(unittest.TestCase):
         rec = self._review(workflow_state="submitted")
         self.assertEqual(review_workflow.transition("reject", rec), "draft")
 
+    def test_unsubmit_submitted_to_draft(self):
+        rec = self._review(workflow_state="submitted")
+        self.assertEqual(review_workflow.transition("unsubmit", rec), "draft")
+
+    def test_cannot_unsubmit_accepted(self):
+        rec = self._review(workflow_state="accepted")
+        with self.assertRaises(ValueError):
+            review_workflow.transition("unsubmit", rec)
+
+    def test_cannot_unsubmit_draft(self):
+        with self.assertRaises(ValueError):
+            review_workflow.transition("unsubmit", self._review())
+
     def test_annotate_includes_workflow(self):
         annotated = validation.annotate_review(self._review())
         self.assertEqual(annotated["workflow_state"], "draft")
