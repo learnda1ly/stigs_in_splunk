@@ -56,7 +56,7 @@ P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide ali
 | Multi-STIG `.ckl` in an archive | not a row | **missing** | Export is one checklist file per host+baseline (`exporters/ckl.py`). Docs offer single-STIG vs multi-STIG `.ckl` vs XCCDF. Docs: [§2.9.2.5.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Unsubmit | not a row | **missing** | States are `draft` / `submitted` / `accepted` / `rejected` (`review_workflow.py`). Reject returns to draft. There is no unsubmit of a submitted review. Docs: [§2.6.3.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Review history retention | done (append + GET) | **partial** | History is append-only. `limit` is a query page size (default 100, max 500), not a per-workspace cap (docs default 15) and history cannot be turned off. Docs: [§2.9.1.4.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| `.ckl` web/database asset identity | not a row | **partial** | `WEB_DB_SITE` / `WEB_DB_INSTANCE` are stored. Host match in `apply.py` is hostname only, not host + site + instance when `WEB_OR_DATABASE` is true. Docs: [§2.10](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| `.ckl` web/database asset identity | not a row | **done** | `WEB_DB_SITE` / `WEB_DB_INSTANCE` stored on hosts/checklists. Ingest host match in `apply.py` / `hosts.py` uses hostname + site + instance when `WEB_OR_DATABASE` / `is_web_database` is true; ordinary hosts still match on hostname only. Docs: [§2.10](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Effective access preview | not a row | **missing** | Grants and ACL filters exist. No UI/API that expands a grant to every asset×STIG the user can actually touch. `GrantsApp.jsx` has no effective-access view. Docs: [§2.9.1.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Delete unmapped reviews | not a row | **missing** | Orphan **baseline rule** GC exists. No job deletes reviews whose rule or STIG assignment is gone. Docs: [admin §2.2.5](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html) (Delete Unmapped Reviews / Delete Unmapped Asset Reviews). |
 | Replace existing STIG revision on import | not a row | **missing** | Fingerprint dedup keeps the existing revision. No “replace existing revisions” switch. Docs: [admin §2.2.4](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
@@ -164,7 +164,6 @@ The wide end is import options plus aging actions. Those two touch ingest and ca
 | Asset CSV import/export | M | 3–5 |
 | Multi-STIG CKL in the zip | S | 2–4 |
 | Unmapped-review cleanup job | S | 2–4 |
-| Web/DB site+instance asset identity | S | 2–3 |
 | Effective-access preview | S | 2–3 |
 | Clone: pin-all switch + async status | S | 2–4 |
 | History cap and disable | S | 1–2 |
