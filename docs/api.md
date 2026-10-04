@@ -82,7 +82,7 @@ For large workspace zips, prefer jobs over synchronous `POST .../archive/{format
 
 | Step | Method | Path | Body / notes |
 |------|--------|------|----------------|
-| 1 | `POST` | `/stig_collections/{id}/jobs` | JSON `{ "operation": "archive_export", "format": "ckl" \| "cklb" \| "xccdf", "host_id"?, "baseline_id"? }` → **201** `{ job_id, status, ... }` |
+| 1 | `POST` | `/stig_collections/{id}/jobs` | JSON `{ "operation": "archive_export", "format": "ckl" \| "cklb" \| "xccdf", "host_id"?, "baseline_id"? }` or `{ "operation": "clone", ...clone flags }` → **201** `{ job_id, status, ... }` |
 | 2 | `GET` | `/stig_collections/{id}/jobs/{jobId}` | Poll until `status` is `succeeded` or `failed` (`error` on failure). |
 | 3 | `GET` | `/stig_collections/{id}/jobs/{jobId}/download` | Same JSON fields as sync archive (`filename`, `count`, `files`, `content_base64`) when `status=succeeded`. |
 | — | `DELETE` | `/stig_collections/{id}/jobs/{jobId}` | Drop staged artifact (creator only). |

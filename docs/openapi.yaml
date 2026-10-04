@@ -296,10 +296,17 @@ paths:
               $ref: "#/components/schemas/CollectionCloneRequest"
       responses:
         "201":
+          description: Clone finished synchronously
           content:
             application/json:
               schema:
                 type: object
+        "202":
+          description: Async clone job queued (`async: true`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionJob"
 
   /stig_collections/{collectionId}/export-to/{destCollectionId}:
     parameters:
@@ -892,10 +899,11 @@ paths:
       - $ref: "#/components/parameters/collectionId"
     post:
       tags: [Collection jobs]
-      summary: Start async workspace archive export job
+      summary: Start async workspace job (archive export or clone)
       description: |
-        Poll `GET .../jobs/{jobId}` until `status` is `succeeded` or `failed`, then
-        `GET .../jobs/{jobId}/download` for the zip JSON (`content_base64`).
+        Poll `GET .../jobs/{jobId}` until `status` is `succeeded` or `failed`.
+        For `archive_export`, download via `GET .../jobs/{jobId}/download` (zip JSON with `content_base64`).
+        For `clone`, `result` is the same object as synchronous `POST .../clone` (**201**).
         Artifacts live under `$SPLUNK_HOME/var/run/stigs_in_splunk/collection_jobs/` (6h TTL).
       operationId: createCollectionExportJob
       x-splunk-capability: stig_write
@@ -903,20 +911,28 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [format]
-              properties:
-                operation:
-                  type: string
-                  enum: [archive_export]
-                  default: archive_export
-                format:
-                  type: string
-                  enum: [ckl, cklb, xccdf]
-                host_id:
-                  type: string
-                baseline_id:
-                  type: string
+              oneOf:
+                - type: object
+                  required: [format]
+                  properties:
+                    operation:
+                      type: string
+                      enum: [archive_export]
+                      default: archive_export
+                    format:
+                      type: string
+                      enum: [ckl, cklb, xccdf]
+                    host_id:
+                      type: string
+                    baseline_id:
+                      type: string
+                - allOf:
+                    - $ref: "#/components/schemas/CollectionCloneRequest"
+                    - type: object
+                      properties:
+                        operation:
+                          type: string
+                          enum: [clone]
       responses:
         "201":
           description: Job created (may already be running or finished before response returns)
@@ -2869,7 +2885,7 @@ components:
           type: string
         operation:
           type: string
-          enum: [archive_export]
+          enum: [archive_export, clone]
         status:
           type: string
           enum: [pending, running, succeeded, failed]
@@ -2963,6 +2979,12 @@ components:
       properties:
         name:
           type: string
+        async:
+          type: boolean
+          description: When true, queue a pollable clone job instead of running synchronously.
+        pin_all_stigs_to_defaults:
+          type: boolean
+          description: Pin cloned checklists to the source workspace default baseline map.
         copy_hosts:
           type: boolean
         copy_checklists:

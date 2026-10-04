@@ -521,16 +521,24 @@ class StigRestHandler(PersistentServerConnectionApplication):
             if method not in ("POST", "PUT"):
                 return _error("method not allowed", status=405)
             body = _body_json(payload)
+            async_clone = collections_svc.parse_cascade_flag(body.get("async"))
             try:
-                result = collection_clone_svc.clone_collection(
-                    service, key, body, username, session
-                )
+                if async_clone:
+                    rec = collection_jobs_svc.create_clone_job(
+                        service, key, body, session, username
+                    )
+                else:
+                    result = collection_clone_svc.clone_collection(
+                        service, key, body, username, session
+                    )
             except KeyError:
                 return _error("not found", status=404)
             except PermissionError as exc:
                 return _error(str(exc), status=403)
             except ValueError as exc:
                 return _error(str(exc), status=400)
+            if async_clone:
+                return _json_response(rec, status=202)
             return _json_response(result, status=201)
 
         if len(parts) == 3 and parts[1] == "export-to":
@@ -1487,18 +1495,25 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error("method not allowed", status=405)
             body = _body_json(payload)
             operation = (body.get("operation") or "archive_export").strip().lower()
-            if operation != "archive_export":
-                return _error("operation must be archive_export", status=400)
             try:
-                rec = collection_jobs_svc.create_archive_export_job(
-                    service,
-                    collection_id,
-                    session,
-                    username,
-                    body.get("format") or query.get("format") or "",
-                    host_id=body.get("host_id") or query.get("host_id"),
-                    baseline_id=body.get("baseline_id") or query.get("baseline_id"),
-                )
+                if operation == "archive_export":
+                    rec = collection_jobs_svc.create_archive_export_job(
+                        service,
+                        collection_id,
+                        session,
+                        username,
+                        body.get("format") or query.get("format") or "",
+                        host_id=body.get("host_id") or query.get("host_id"),
+                        baseline_id=body.get("baseline_id") or query.get("baseline_id"),
+                    )
+                elif operation == "clone":
+                    rec = collection_jobs_svc.create_clone_job(
+                        service, collection_id, body, session, username
+                    )
+                else:
+                    return _error(
+                        "operation must be archive_export or clone", status=400
+                    )
             except KeyError:
                 return _error("not found", status=404)
             except PermissionError as exc:
