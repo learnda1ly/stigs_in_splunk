@@ -2450,6 +2450,102 @@ paths:
         "404":
           description: Review not found or not visible under workspace ACL
 
+  /stig_reviews/{reviewId}/images:
+    parameters:
+      - $ref: "#/components/parameters/reviewId"
+    get:
+      tags: [Reviews]
+      summary: List image attachments for a review
+      operationId: listReviewImages
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewImagesListResponse"
+        "404":
+          description: Review not found or not visible under workspace ACL
+    post:
+      tags: [Reviews]
+      summary: Upload an image attachment
+      operationId: createReviewImage
+      x-splunk-capability: stig_write
+      parameters:
+        - name: filename
+          in: query
+          schema:
+            type: string
+        - name: content_type
+          in: query
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewImageUploadRequest"
+          image/png:
+            schema:
+              type: string
+              format: binary
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewImageMetadata"
+        "403":
+          description: Write denied or review not editable
+        "404":
+          description: Review not found or not visible under workspace ACL
+
+  /stig_reviews/{reviewId}/images/{imageId}:
+    parameters:
+      - $ref: "#/components/parameters/reviewId"
+      - name: imageId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Reviews]
+      summary: Download one image attachment (base64 in JSON)
+      operationId: getReviewImage
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewImageDownload"
+        "404":
+          description: Review or image not found or not visible under workspace ACL
+    delete:
+      tags: [Reviews]
+      summary: Delete an image attachment
+      operationId: deleteReviewImage
+      x-splunk-capability: stig_write
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                  _key:
+                    type: string
+                  review_id:
+                    type: string
+        "403":
+          description: Write denied or review not editable
+        "404":
+          description: Review or image not found or not visible under workspace ACL
+
   /stig_reviews/{reviewId}/peers:
     parameters:
       - $ref: "#/components/parameters/reviewId"
@@ -3442,6 +3538,56 @@ components:
               type: boolean
         filters:
           type: object
+      additionalProperties: true
+
+    ReviewImageMetadata:
+      type: object
+      properties:
+        _key:
+          type: string
+        review_id:
+          type: string
+        filename:
+          type: string
+        content_type:
+          type: string
+        byte_size:
+          type: integer
+        created_at:
+          type: number
+        created_by:
+          type: string
+        download_path:
+          type: string
+      additionalProperties: true
+
+    ReviewImageDownload:
+      allOf:
+        - $ref: "#/components/schemas/ReviewImageMetadata"
+        - type: object
+          properties:
+            content_base64:
+              type: string
+
+    ReviewImageUploadRequest:
+      type: object
+      properties:
+        filename:
+          type: string
+        content_type:
+          type: string
+        content_base64:
+          type: string
+
+    ReviewImagesListResponse:
+      type: object
+      properties:
+        review_id:
+          type: string
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewImageMetadata"
       additionalProperties: true
 
     ReviewHistoryByReviewResponse:

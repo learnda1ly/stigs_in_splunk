@@ -632,8 +632,11 @@ def delete_checklist(service, key: str, username: str, session: Dict[str, Any]) 
         raise KeyError(key)
     _require_collection(service, existing["stig_collection_id"], session, write=True)
 
+    from services import review_images as review_images_svc
+
     reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
     for review in kv_client.query_all(reviews_coll, {"checklist_id": key}):
+        review_images_svc.delete_images_for_review(service, str(review["_key"]))
         kv_client.delete_record(reviews_coll, review["_key"])
     kv_client.delete_record(coll, key)
     audit.log_event("delete", "stig_checklist", key, username)

@@ -57,6 +57,7 @@ import {
 import VimField from "../vim/VimField";
 import { HelpOverlay, JumpOverlay, VimCommandBar } from "../vim/overlays";
 import EditorThemeSelect from "../components/EditorThemeSelect";
+import ReviewImagesPanel from "../components/ReviewImagesPanel";
 import CapabilityGrantBanner from "../components/onboarding/CapabilityGrantBanner";
 import EditorAssignCallout from "../components/onboarding/EditorAssignCallout";
 import EditorEmptyState from "../components/onboarding/EditorEmptyState";
@@ -1880,6 +1881,14 @@ export default function EditorApp() {
                                     onSwitchField={onSwitchField}
                                 />
                             </ControlGroup>
+                            <ReviewImagesPanel
+                                reviewId={selected.review._key}
+                                editable={selectedEditable}
+                                onError={(text) => setBanner({ type: "error", text })}
+                                onNotice={(text) =>
+                                    setBanner({ type: "success", text })
+                                }
+                            />
                             {governanceEnabled ? (
                                 <ControlGroup label="Governance (submit / unsubmit / accept / reject)">
                                     <Actions>
