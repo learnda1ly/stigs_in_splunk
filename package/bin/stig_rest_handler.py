@@ -548,7 +548,11 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error(str(exc), status=403)
             except ValueError as exc:
                 return _error(str(exc), status=400)
-            status = 201 if int((result.get("summary") or {}).get("moved") or 0) else 200
+            summary = result.get("summary") or {}
+            if result.get("copy_results"):
+                status = 201 if int(summary.get("copied") or 0) else 200
+            else:
+                status = 201 if int(summary.get("moved") or 0) else 200
             return _json_response(result, status=status)
 
         if len(parts) == 2 and parts[1] == "upgrade_checklists":

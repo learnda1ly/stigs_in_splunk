@@ -29,9 +29,9 @@ Priorities and sizes match the existing legend: **P0** blocks single-collection 
 
 | Status | Count | Notes |
 |--------|------:|-------|
-| done | 20 | Core assessor/admin path; see “Still done” table |
+| done | 21 | Core assessor/admin path; see “Still done” table |
 | partial | 8 | Material doc gaps on existing paths |
-| missing | 10 | No implementation found |
+| missing | 9 | No implementation found |
 | n/a | 8 | Platform-owned or **intentionally out of scope** |
 | unverified | 3 | Listed at end of doc |
 
@@ -52,7 +52,7 @@ P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide ali
 | Compare STIG revisions | not a row | **done** | `GET /stig_baselines/compare` + library UI compare panel (`LibraryApp.jsx`). Read-only add/remove/changed report with per-field from/to on changed rules; upgrade merge remains separate. Docs: [§2.3.2.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [review handling](https://stig-manager.readthedocs.io/en/latest/user-guide/review-handling.html). |
 | Review attachments | not a row | **missing** | No review image store. The word “attachment” in the REST handler is not this feature. Docs: [§2.6.5.2 and §2.7.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Asset CSV import/export | not a row | **done** | `GET/POST /stig_collections/{id}/assets/csv` and SplunkUI **Hosts** import/export (STIG Manager columns). Docs: [§2.9.2.2–2.9.2.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Copy results to another collection | not a row | **missing** | `POST .../export-to/{dst}` **moves** hosts (`collection_transfer.py`). It does not copy results onto a same-named asset in the destination (100-asset cap in the docs). Docs: [§2.9.2.5.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Copy results to another collection | not a row | **done** | `POST .../export-to/{dst}` with `{copy_results: true}` copies reviews onto same-named hosts in the destination (`collection_transfer.py`; 100-asset cap). Default body still **moves** hosts. Docs: [§2.9.2.5.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Multi-STIG `.ckl` in an archive | not a row | **missing** | Export is one checklist file per host+baseline (`exporters/ckl.py`). Docs offer single-STIG vs multi-STIG `.ckl` vs XCCDF. Docs: [§2.9.2.5.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Unsubmit | not a row | **missing** | States are `draft` / `submitted` / `accepted` / `rejected` (`review_workflow.py`). Reject returns to draft. There is no unsubmit of a submitted review. Docs: [§2.6.3.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Review history retention | done (append + GET) | **partial** | History is append-only. `limit` is a query page size (default 100, max 500), not a per-workspace cap (docs default 15) and history cannot be turned off. Docs: [§2.9.1.4.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
@@ -74,7 +74,7 @@ Rows left **done** were re-checked against code, not just the old table: collect
 |---------|----------|
 | Collections, metadata, cascade delete | `services/collections.py`, UCC workspaces |
 | Grants owner/manager/member/restricted + ACL | `services/grants.py`, `ui/src/pages/GrantsApp.jsx` |
-| Labels, host transfer | `services/labels.py`, `services/collection_transfer.py` (move, not copy) |
+| Labels, host transfer, copy results to collection | `services/labels.py`, `services/collection_transfer.py` (move default; `copy_results` on export-to) |
 | Asset CRUD, assign/remove STIG | `services/hosts.py`, `POST /stig_hosts/{id}/stigs` |
 | STIG library, baseline import, rule/CCI/group GET | `services/baseline_library.py`, `services/baselines.py` |
 | Revision upgrade / hash merge | `services/revision_upgrade.py` |
@@ -104,7 +104,7 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | Compare revisions | done | Library compare panel + `GET /stig_baselines/compare` |
 | Review image attachments | missing | Not in review model |
 | Asset CSV | done | `services/asset_csv.py`, `exporters/asset_csv.py`, Hosts UI |
-| Copy results across collections | missing | export-to moves the host |
+| Copy results across collections | done | `POST .../export-to/{dst}` with `copy_results: true` (100-host cap) |
 | Multi-STIG CKL | missing | One file per checklist |
 | Unsubmit | missing | No transition |
 | History retention cap / off switch | partial | Page `limit` only |
@@ -160,7 +160,7 @@ The wide end is import options plus aging actions. Those two touch ingest and ca
 | Item | Size | Engineer-days |
 |------|------|----------------|
 | Review image attachments | M | 4–8 |
-| Copy results to another collection (not a move) | M | 4–7 |
+| Copy results to another collection (not a move) | — | — | **Done** — `copy_results` on export-to |
 | Asset CSV import/export | M | 3–5 |
 | Multi-STIG CKL in the zip | S | 2–4 |
 | Unmapped-review cleanup job | S | 2–4 |
