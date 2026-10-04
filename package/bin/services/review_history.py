@@ -284,7 +284,7 @@ def _host_by_id_for_labels(
     return host_by_id
 
 
-def _require_visible_review(
+def require_visible_review(
     service,
     review_id: str,
     session: Dict[str, Any],
@@ -315,6 +315,9 @@ def _require_visible_review(
     ):
         raise KeyError(review_id)
     return rec
+
+
+_require_visible_review = require_visible_review
 
 
 def _public_row(rec: Dict[str, Any]) -> Dict[str, Any]:

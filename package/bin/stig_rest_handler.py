@@ -46,6 +46,7 @@ from services import imports as imports_svc
 from services import reconcile as reconcile_svc
 from services import reporting as reporting_svc
 from services import review_history as review_history_svc
+from services import review_images as review_images_svc
 from services import review_peers as review_peers_svc
 from services import reviews as reviews_svc
 from services import revision_upgrade as revision_upgrade_svc
@@ -1814,6 +1815,66 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 )
             except KeyError:
                 return _error("not found", status=404)
+
+        if len(parts) == 2 and parts[1] == "images":
+            if method == "GET":
+                try:
+                    return _json_response(
+                        review_images_svc.list_review_images(service, key, session)
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+            if method in ("POST", "PUT"):
+                body = _body_json(payload)
+                if not body.get("filename") and query.get("filename"):
+                    body["filename"] = query.get("filename")
+                if not body.get("content_type") and query.get("content_type"):
+                    body["content_type"] = query.get("content_type")
+                raw = _body_bytes(payload)
+                raw_body = None
+                if not body.get("content_base64") and raw:
+                    raw_body = raw
+                try:
+                    rec = review_images_svc.create_review_image(
+                        service,
+                        key,
+                        body if body else {},
+                        username,
+                        session,
+                        raw_body=raw_body,
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+                except ValueError as exc:
+                    return _error(str(exc), status=400)
+                return _json_response(rec, status=201)
+            return _error("method not allowed", status=405)
+
+        if len(parts) == 3 and parts[1] == "images":
+            image_id = parts[2]
+            if method == "GET":
+                try:
+                    return _json_response(
+                        review_images_svc.get_review_image(
+                            service, key, image_id, session
+                        )
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+            if method == "DELETE":
+                try:
+                    return _json_response(
+                        review_images_svc.delete_review_image(
+                            service, key, image_id, username, session
+                        )
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            return _error("method not allowed", status=405)
 
         if len(parts) == 2 and parts[1] == "peers":
             if method != "GET":
