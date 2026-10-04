@@ -29,9 +29,9 @@ Priorities and sizes match the existing legend: **P0** blocks single-collection 
 
 | Status | Count | Notes |
 |--------|------:|-------|
-| done | 20 | Core assessor/admin path; see “Still done” table |
+| done | 21 | Core assessor/admin path; see “Still done” table |
 | partial | 8 | Material doc gaps on existing paths |
-| missing | 10 | No implementation found |
+| missing | 9 | No implementation found |
 | n/a | 8 | Platform-owned or **intentionally out of scope** |
 | unverified | 3 | Listed at end of doc |
 
@@ -53,7 +53,7 @@ P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide ali
 | Review attachments | not a row | **missing** | No review image store. The word “attachment” in the REST handler is not this feature. Docs: [§2.6.5.2 and §2.7.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Asset CSV import/export | not a row | **done** | `GET/POST /stig_collections/{id}/assets/csv` and SplunkUI **Hosts** import/export (STIG Manager columns). Docs: [§2.9.2.2–2.9.2.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Copy results to another collection | not a row | **missing** | `POST .../export-to/{dst}` **moves** hosts (`collection_transfer.py`). It does not copy results onto a same-named asset in the destination (100-asset cap in the docs). Docs: [§2.9.2.5.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Multi-STIG `.ckl` in an archive | not a row | **missing** | Export is one checklist file per host+baseline (`exporters/ckl.py`). Docs offer single-STIG vs multi-STIG `.ckl` vs XCCDF. Docs: [§2.9.2.5.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Multi-STIG `.ckl` in an archive | not a row | **done** | `POST .../archive/ckl-multi` (and bulk `format=ckl-multi`) emit one `.ckl` per host with multiple `iSTIG` blocks; single-STIG `archive/ckl` unchanged. Docs: [§2.9.2.5.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Unsubmit | not a row | **missing** | States are `draft` / `submitted` / `accepted` / `rejected` (`review_workflow.py`). Reject returns to draft. There is no unsubmit of a submitted review. Docs: [§2.6.3.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Review history retention | done (append + GET) | **partial** | History is append-only. `limit` is a query page size (default 100, max 500), not a per-workspace cap (docs default 15) and history cannot be turned off. Docs: [§2.9.1.4.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | `.ckl` web/database asset identity | not a row | **partial** | `WEB_DB_SITE` / `WEB_DB_INSTANCE` are stored. Host match in `apply.py` is hostname only, not host + site + instance when `WEB_OR_DATABASE` is true. Docs: [§2.10](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
@@ -105,7 +105,7 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | Review image attachments | missing | Not in review model |
 | Asset CSV | done | `services/asset_csv.py`, `exporters/asset_csv.py`, Hosts UI |
 | Copy results across collections | missing | export-to moves the host |
-| Multi-STIG CKL | missing | One file per checklist |
+| Multi-STIG CKL | done | `ckl-multi` archive groups by host (`exporters/ckl.py` `export_ckl_multi_stig`) |
 | Unsubmit | missing | No transition |
 | History retention cap / off switch | partial | Page `limit` only |
 | Web/DB asset match | partial | Fields stored; match is hostname |
@@ -162,7 +162,6 @@ The wide end is import options plus aging actions. Those two touch ingest and ca
 | Review image attachments | M | 4–8 |
 | Copy results to another collection (not a move) | M | 4–7 |
 | Asset CSV import/export | M | 3–5 |
-| Multi-STIG CKL in the zip | S | 2–4 |
 | Unmapped-review cleanup job | S | 2–4 |
 | Web/DB site+instance asset identity | S | 2–3 |
 | Effective-access preview | S | 2–3 |

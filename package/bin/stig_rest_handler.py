@@ -706,7 +706,14 @@ class StigRestHandler(PersistentServerConnectionApplication):
             return _json_response(rec, status=_batch_import_http_status(rec))
 
         archive_fmt = parts[2].lower().replace("_", "-") if len(parts) > 2 else ""
-        archive_formats = {"ckl", "cklb", "xccdf", "xccdf-results", "xccdfresults"}
+        archive_formats = {
+            "ckl",
+            "ckl-multi",
+            "cklb",
+            "xccdf",
+            "xccdf-results",
+            "xccdfresults",
+        }
         if len(parts) == 3 and parts[1] == "archive" and archive_fmt in archive_formats:
             if method not in ("POST", "PUT"):
                 return _error("method not allowed", status=405)

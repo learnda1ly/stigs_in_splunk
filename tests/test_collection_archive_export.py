@@ -51,12 +51,15 @@ class _MemKv:
     def __init__(self):
         self.checklists: Dict[str, Dict[str, Any]] = {}
         self.reviews: Dict[str, Dict[str, Any]] = {}
+        self.hosts: Dict[str, Dict[str, Any]] = {}
 
     def get_collection(self, _service, name: str) -> _MemColl:
         if name == "stig_checklists":
             return _MemColl(self.checklists)
         if name == "stig_reviews":
             return _MemColl(self.reviews)
+        if name == "stig_hosts":
+            return _MemColl(self.hosts)
         raise KeyError(name)
 
     def query_all(self, coll: _MemColl, query: Dict[str, Any] = None) -> List[Dict[str, Any]]:
@@ -120,6 +123,12 @@ class TestCollectionArchiveExport(unittest.TestCase):
             "title": "RHEL 8 STIG",
             "version": "V2R6",
         }
+        self.baseline_2 = {
+            "_key": "base2",
+            "stig_id": "APACHE_2_4_STIG",
+            "title": "Apache 2.4 STIG",
+            "version": "V2R2",
+        }
         self.rules = [
             {
                 "group_id": "V-1",
@@ -145,6 +154,14 @@ class TestCollectionArchiveExport(unittest.TestCase):
                 "title": "t2",
                 "target_data": "{}",
             },
+            "cl3": {
+                "_key": "cl3",
+                "stig_collection_id": "ws1",
+                "host_id": "host_a",
+                "baseline_id": "base2",
+                "title": "t3",
+                "target_data": "{}",
+            },
         }
         self.kv.reviews = {
             "rv1": {
@@ -157,6 +174,156 @@ class TestCollectionArchiveExport(unittest.TestCase):
                 "comments": "",
             }
         }
+        self.kv.hosts = {
+            "host_a": self.host_a,
+            "host_b": self.host_b,
+        }
+
+    @patch.object(checklists_svc, "_access_context")
+    @patch("services.checklists.baselines_svc.list_baseline_rules")
+    @patch("services.checklists.baselines_svc.get_baseline")
+    @patch("services.checklists.hosts_svc.get_host")
+    @patch("services.checklists.grants_svc.query_grants", return_value=[])
+    @patch("services.checklists.collections_svc.get_collection")
+    def test_single_stig_ckl_one_file_per_checklist(
+        self,
+        get_coll,
+        _grants,
+        mock_get_host,
+        mock_get_baseline,
+        mock_rules,
+        mock_ctx,
+    ):
+        get_coll.return_value = self.ws
+        mock_rules.return_value = self.rules
+        mock_ctx.return_value = access.WorkspaceAccess(
+            can_read=True,
+            can_write=True,
+            manage_grants=False,
+            edit_collection=False,
+            edit_access_principals=False,
+            grant_role="member",
+            acl_host_ids=None,
+            acl_baseline_ids=None,
+            acl_label_ids=None,
+        )
+
+        def _baseline(_svc, bid):
+            return {"base1": self.baseline, "base2": self.baseline_2}.get(bid)
+
+        mock_get_baseline.side_effect = _baseline
+
+        def _host(_svc, host_id, _session):
+            return {"host_a": self.host_a, "host_b": self.host_b}.get(host_id)
+
+        mock_get_host.side_effect = _host
+
+        patches = _wire_kv_patches(self.kv)
+        for p in patches:
+            p.start()
+        try:
+            with patch.object(checklists_svc, "_require_collection", return_value=self.ws):
+                result = checklists_svc.export_collection_archive(
+                    self.service, "ws1", "ckl", self.session
+                )
+        finally:
+            for p in patches:
+                p.stop()
+
+        self.assertEqual(result["format"], "ckl")
+        self.assertEqual(result["count"], 3)
+        self.assertEqual(
+            len(result["files"]),
+            3,
+        )
+        self.assertTrue(
+            all(
+                name.endswith(".ckl")
+                and ("_RHEL_8_STIG_" in name or "_APACHE_2_4_STIG_" in name)
+                for name in result["files"]
+            )
+        )
+
+    @patch.object(checklists_svc, "_access_context")
+    @patch("services.checklists.baselines_svc.list_baseline_rules")
+    @patch("services.checklists.baselines_svc.get_baseline")
+    @patch("services.checklists.hosts_svc.get_host")
+    @patch("services.checklists.grants_svc.query_grants", return_value=[])
+    @patch("services.checklists.collections_svc.get_collection")
+    def test_multi_ckl_archive_one_file_per_host(
+        self,
+        get_coll,
+        _grants,
+        mock_get_host,
+        mock_get_baseline,
+        mock_rules,
+        mock_ctx,
+    ):
+        get_coll.return_value = self.ws
+        mock_rules.return_value = self.rules
+        mock_ctx.return_value = access.WorkspaceAccess(
+            can_read=True,
+            can_write=True,
+            manage_grants=False,
+            edit_collection=False,
+            edit_access_principals=False,
+            grant_role="member",
+            acl_host_ids=None,
+            acl_baseline_ids=None,
+            acl_label_ids=None,
+        )
+
+        def _baseline(_svc, bid):
+            return {"base1": self.baseline, "base2": self.baseline_2}.get(bid)
+
+        mock_get_baseline.side_effect = _baseline
+
+        def _host(_svc, host_id, _session):
+            return {"host_a": self.host_a, "host_b": self.host_b}.get(host_id)
+
+        mock_get_host.side_effect = _host
+
+        patches = _wire_kv_patches(self.kv)
+        for p in patches:
+            p.start()
+        try:
+            with patch.object(checklists_svc, "_require_collection", return_value=self.ws):
+                result = checklists_svc.export_collection_archive(
+                    self.service, "ws1", "ckl-multi", self.session
+                )
+            raw = base64.b64decode(result["content_base64"])
+            with zipfile.ZipFile(io.BytesIO(raw), "r") as archive:
+                bodies = {
+                    name: archive.read(name).decode("utf-8")
+                    for name in archive.namelist()
+                }
+        finally:
+            for p in patches:
+                p.stop()
+
+        self.assertEqual(result["format"], "ckl-multi")
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(
+            sorted(result["files"]),
+            ["db-01.lab.ckl", "web-01.lab.ckl"],
+        )
+        self.assertEqual(
+            result["filename"],
+            "stig-archive-Lab_Workspace-ckl-multi.zip",
+        )
+        web_root = ET.fromstring(bodies["web-01.lab.ckl"])
+        self.assertEqual(web_root.tag, "CHECKLIST")
+        istigs = web_root.findall(".//iSTIG")
+        self.assertEqual(len(istigs), 2)
+        stig_ids = []
+        for istig in istigs:
+            for si in istig.findall("STIG_INFO"):
+                for sdata in si.findall("SI_DATA"):
+                    if (sdata.findtext("SID_NAME") or "").strip() == "stigid":
+                        stig_ids.append((sdata.findtext("SID_DATA") or "").strip())
+        self.assertEqual(sorted(stig_ids), ["APACHE_2_4_STIG", "RHEL_8_STIG"])
+        db_root = ET.fromstring(bodies["db-01.lab.ckl"])
+        self.assertEqual(len(db_root.findall(".//iSTIG")), 1)
 
     @patch("services.checklists.export_checklist_file")
     @patch("services.checklists.checklist_ids_for_collection_export")
@@ -172,7 +339,7 @@ class TestCollectionArchiveExport(unittest.TestCase):
         get_coll.return_value = self.ws
         mock_ids.return_value = ["cl1", "cl2"]
 
-        def _file(_svc, key, fmt, _session):
+        def _file(_svc, key, fmt, _session, rmf_package_id=None):
             if key == "cl1":
                 return ("{}", "web-01.lab_RHEL_8_STIG_V2R6.cklb")
             return ("{}", "db-01.lab_RHEL_8_STIG_V2R6.cklb")
@@ -201,6 +368,7 @@ class TestCollectionArchiveExport(unittest.TestCase):
             names = set(archive.namelist())
         self.assertEqual(names, set(result["files"]))
 
+    @patch.object(checklists_svc, "_access_context")
     @patch("services.checklists.baselines_svc.list_baseline_rules")
     @patch("services.checklists.baselines_svc.get_baseline")
     @patch("services.checklists.hosts_svc.get_host")
@@ -213,11 +381,23 @@ class TestCollectionArchiveExport(unittest.TestCase):
         mock_get_host,
         mock_get_baseline,
         mock_rules,
+        mock_ctx,
     ):
         get_coll.return_value = self.ws
         self.kv.checklists = {"cl1": self.kv.checklists["cl1"]}
         mock_get_baseline.return_value = self.baseline
         mock_rules.return_value = self.rules
+        mock_ctx.return_value = access.WorkspaceAccess(
+            can_read=True,
+            can_write=True,
+            manage_grants=False,
+            edit_collection=False,
+            edit_access_principals=False,
+            grant_role="member",
+            acl_host_ids=None,
+            acl_baseline_ids=None,
+            acl_label_ids=None,
+        )
 
         def _host(_svc, host_id, _session):
             return {"host_a": self.host_a}.get(host_id)
@@ -228,29 +408,30 @@ class TestCollectionArchiveExport(unittest.TestCase):
         for p in patches:
             p.start()
         try:
-            for fmt, parser in (
+            with patch.object(checklists_svc, "_require_collection", return_value=self.ws):
+                for fmt, parser in (
                 ("ckl", ET.fromstring),
                 ("cklb", json.loads),
                 ("xccdf", ET.fromstring),
             ):
-                result = checklists_svc.export_collection_archive(
-                    self.service, "ws1", fmt, self.session
-                )
-                self.assertEqual(result["count"], 1)
-                raw = base64.b64decode(result["content_base64"])
-                with zipfile.ZipFile(io.BytesIO(raw), "r") as archive:
-                    self.assertEqual(len(archive.namelist()), 1)
-                    body = archive.read(archive.namelist()[0]).decode("utf-8")
-                root = parser(body)
-                if fmt == "ckl":
-                    self.assertEqual(root.tag, "CHECKLIST")
-                    self.assertIsNotNone(root.find(".//STATUS"))
-                elif fmt == "xccdf":
-                    self.assertEqual(root.tag.split("}")[-1], "TestResult")
-                    self.assertIsNotNone(root.find(".//{*}rule-result"))
-                else:
-                    self.assertIn("stigs", root)
-                    self.assertEqual(root["mode"], 2)
+                    result = checklists_svc.export_collection_archive(
+                        self.service, "ws1", fmt, self.session
+                    )
+                    self.assertEqual(result["count"], 1)
+                    raw = base64.b64decode(result["content_base64"])
+                    with zipfile.ZipFile(io.BytesIO(raw), "r") as archive:
+                        self.assertEqual(len(archive.namelist()), 1)
+                        body = archive.read(archive.namelist()[0]).decode("utf-8")
+                    root = parser(body)
+                    if fmt == "ckl":
+                        self.assertEqual(root.tag, "CHECKLIST")
+                        self.assertIsNotNone(root.find(".//STATUS"))
+                    elif fmt == "xccdf":
+                        self.assertEqual(root.tag.split("}")[-1], "TestResult")
+                        self.assertIsNotNone(root.find(".//{*}rule-result"))
+                    else:
+                        self.assertIn("stigs", root)
+                        self.assertEqual(root["mode"], 2)
         finally:
             for p in patches:
                 p.stop()
@@ -358,7 +539,7 @@ class TestCollectionArchiveExport(unittest.TestCase):
             "access_principals": '["user:alice"]',
         }
         handler = stig_rest_handler.StigRestHandler("", "")
-        for fmt in ("ckl", "cklb", "xccdf"):
+        for fmt in ("ckl", "ckl-multi", "cklb", "xccdf"):
             with patch(
                 "services.checklists.collections_svc.get_collection",
                 return_value=private_ws,
