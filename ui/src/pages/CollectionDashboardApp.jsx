@@ -497,6 +497,7 @@ export default function CollectionDashboardApp() {
     );
 
     const [metricsExportGrouping, setMetricsExportGrouping] = useState("collection");
+    const [metricsExportStyle, setMetricsExportStyle] = useState("summary");
 
     const exportMetricsCsv = () => {
         if (!collectionId) {
@@ -508,7 +509,9 @@ export default function CollectionDashboardApp() {
                 collectionId +
                 "/metrics/export?grouping=" +
                 encodeURIComponent(metricsExportGrouping) +
-                "&format=json"
+                "&style=" +
+                encodeURIComponent(metricsExportStyle) +
+                "&format=csv"
         )
             .then((data) => {
                 const csv = (data && data.csv) || "";
@@ -517,7 +520,7 @@ export default function CollectionDashboardApp() {
                     return;
                 }
                 downloadText(
-                    "stig_metrics_" + metricsExportGrouping + ".csv",
+                    "stig_metrics_" + metricsExportGrouping + "_" + metricsExportStyle + ".csv",
                     csv,
                     "text/csv"
                 );
@@ -803,6 +806,53 @@ export default function CollectionDashboardApp() {
                                             <MetricLabel>Reviews</MetricLabel>
                                         </MetricCard>
                                     </MetricGrid>
+                                    {metrics.minTs != null || metrics.maxTs != null ? (
+                                        <>
+                                            <Heading level={4} style={{ marginTop: 16 }}>
+                                                Review ages
+                                            </Heading>
+                                            <MetricGrid>
+                                                <MetricCard>
+                                                    <MetricValue>
+                                                        {metrics.review_ages &&
+                                                        metrics.review_ages.oldest_review_age_seconds !=
+                                                            null
+                                                            ? Math.floor(
+                                                                  metrics.review_ages
+                                                                      .oldest_review_age_seconds /
+                                                                      86400
+                                                              )
+                                                            : "—"}
+                                                    </MetricValue>
+                                                    <MetricLabel>Oldest review (days)</MetricLabel>
+                                                </MetricCard>
+                                                <MetricCard>
+                                                    <MetricValue>
+                                                        {metrics.review_ages &&
+                                                        metrics.review_ages.newest_review_age_seconds !=
+                                                            null
+                                                            ? Math.floor(
+                                                                  metrics.review_ages
+                                                                      .newest_review_age_seconds /
+                                                                      86400
+                                                              )
+                                                            : "—"}
+                                                    </MetricValue>
+                                                    <MetricLabel>Newest review (days)</MetricLabel>
+                                                </MetricCard>
+                                                <MetricCard>
+                                                    <MetricValue>
+                                                        {metrics.maxTouch
+                                                            ? new Date(
+                                                                  metrics.maxTouch * 1000
+                                                              ).toLocaleDateString()
+                                                            : "—"}
+                                                    </MetricValue>
+                                                    <MetricLabel>Last workflow change</MetricLabel>
+                                                </MetricCard>
+                                            </MetricGrid>
+                                        </>
+                                    ) : null}
                                     {reviewAging ? (
                                         <>
                                             <Heading level={4}>Review aging</Heading>
@@ -880,6 +930,17 @@ export default function CollectionDashboardApp() {
                                                     label="Ungrouped (per checklist)"
                                                     value="ungrouped"
                                                 />
+                                            </Select>
+                                        </ControlGroup>
+                                        <ControlGroup label="Style" labelPosition="top">
+                                            <Select
+                                                value={metricsExportStyle}
+                                                onChange={(e, { value }) =>
+                                                    setMetricsExportStyle(value)
+                                                }
+                                            >
+                                                <Select.Option label="Summary" value="summary" />
+                                                <Select.Option label="Detail" value="detail" />
                                             </Select>
                                         </ControlGroup>
                                         <Button

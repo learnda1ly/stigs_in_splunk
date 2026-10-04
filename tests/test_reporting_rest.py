@@ -121,6 +121,16 @@ class TestReportingRestRoutes(unittest.TestCase):
         self.assertEqual(resp["status"], 200)
         mock_summary.assert_called_once()
 
+    @patch.object(stig_rest_handler.reporting_svc, "collection_metrics_export")
+    def test_metrics_export_route(self, mock_export):
+        mock_export.return_value = {"row_count": 0, "rows": []}
+        resp = self._dispatch(
+            "/stig_collections/ws1/metrics/export",
+            {"grouping": "asset", "style": "detail", "format": "json"},
+        )
+        self.assertEqual(resp["status"], 200)
+        mock_export.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

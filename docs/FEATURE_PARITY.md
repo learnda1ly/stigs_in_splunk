@@ -44,12 +44,12 @@ P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide ali
 | Row | Was | Now | Why |
 |-----|-----|-----|-----|
 | Default STIG revision per collection | done | **partial** | Pin map exists (`baseline_defaults.py`). Unpinned “latest” is highest `imported_at`, not highest version/release, and draft revisions are not held back. Docs: [user guide §2.9.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Collection dashboard metrics | done | **partial** | `GET /stig_collections/{id}/metrics` and the dashboard exist. Missing grouped export (collection / asset / STIG / label / ungrouped), summary vs detail fields, result-engine splits, and oldest/newest review ages. Docs: [§2.4.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). CORA stays **n/a** (see below). |
+| Collection dashboard metrics | done | `GET /stig_collections/{id}/metrics` includes review ages; `GET .../metrics/export` supports groupings, summary/detail, and result-engine splits (not CORA). Docs: [§2.4.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Review aging | done | **partial** | Stale **report** only (`review_aging.py`: threshold + status/severity filters; saved search `stigkvreviewaging`). Docs now specify **action rules** (delete, set Saved/Submitted, set result to Not Checked or Informational), ordinal, enable/disable, and targets (collection, asset, STIG, label). App Manager job **Update Aged Reviews**. Docs: [§2.9.1.7](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [admin §2.2.5](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
 | Result engine (automated / manual / override) | not a row | **partial** | Parsers emit `resultEngine` (`importers/ingest.py`). `review_seed_payload` does **not** write it onto the KV review. Editor has no automated/manual/override badge. Docs: [§2.7.1 and §2.7.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Informational result | folded into status enum | **done** | Fifth assessor status `informational` in `models.py` (`STATUSES`, CKL/CKLB/XCCDF mappings). Import/export, metrics `by_status`, React editor, legacy `stig_editor`, review-aging `set_result_informational`, and import-options unreviewed-with-comment default. |
 | Collection import options | not a row | **done** | Per-workspace `import_options` on `stig_collections`; REST `GET/PATCH .../import_options`; applied on file import, batch/zip, HEC apply, and reconcile via `import_policy.py`. Admin UI **Import options**. Docs: [§2.9.1.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Compare STIG revisions | not a row | **missing** | Library browses revisions (`LibraryApp.jsx`). No field-level diff of two revisions. Upgrade merge is a different feature and remains **done**. Docs: [§2.3.2.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [review handling](https://stig-manager.readthedocs.io/en/latest/user-guide/review-handling.html). |
+| Compare STIG revisions | not a row | **done** | `GET /stig_baselines/compare` + library UI compare panel (`LibraryApp.jsx`). Read-only add/remove/changed report with per-field from/to on changed rules; upgrade merge remains separate. Docs: [§2.3.2.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [review handling](https://stig-manager.readthedocs.io/en/latest/user-guide/review-handling.html). |
 | Review attachments | not a row | **missing** | No review image store. The word “attachment” in the REST handler is not this feature. Docs: [§2.6.5.2 and §2.7.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Asset CSV import/export | not a row | **missing** | Host CRUD is JSON REST, not the documented CSV columns (name, description, IP, FQDN, MAC, non-computing, STIGs, labels, metadata). Docs: [§2.9.2.2–2.9.2.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Copy results to another collection | not a row | **missing** | `POST .../export-to/{dst}` **moves** hosts (`collection_transfer.py`). It does not copy results onto a same-named asset in the destination (100-asset cap in the docs). Docs: [§2.9.2.5.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
@@ -84,7 +84,7 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | CKL/CKLB/XCCDF results import and archive export | `services/imports.py`, `exporters/ckl.py`, `cklb.py`, `xccdf_results.py` |
 | Watcher-shaped HEC | [docs/watcher-hec.md](watcher-hec.md), `importers/events.py` |
 | Findings, aggregate, unreviewed, POA&M file | `services/reporting.py`, `exporters/poam.py`, dashboard tabs |
-| Metrics counts (not the export matrix) | `aggregate_metrics` in `reporting.py` |
+| Metrics counts and export matrix | `aggregate_metrics`, `collection_metrics_export` in `reporting.py` |
 | History timeline (not retention policy) | `services/review_history.py`, editor timeline |
 | Async baseline upload + collection archive jobs | `services/baseline_jobs.py`, `services/collection_jobs.py` |
 | OpenAPI + settings | [docs/openapi.yaml](openapi.yaml), `services/settings.py` |
@@ -96,12 +96,12 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | Feature | Status | Evidence |
 |---------|--------|----------|
 | Default revision “latest” semantics | partial | Pin works; latest = `imported_at` in `find_baseline_by_stig` |
-| Dashboard metrics export + ages | partial | Counts only; no group-by export, no min/max timestamps |
+| Dashboard metrics export + ages | done | Grouped export, summary/detail, ages on metrics + export; CORA n/a |
 | Review aging actions | partial | Report/config only; no mutating rules |
 | Result engine on the review | partial | Parsed, dropped in `review_seed_payload` |
 | Informational result | done | Distinct status; XCCDF `result="informational"` round-trips |
 | Import options | done | `services/import_options.py`, `import_policy.py`, ingest in `apply.py` / `checklists.py` |
-| Compare revisions | missing | No diff UI or API |
+| Compare revisions | done | Library compare panel + `GET /stig_baselines/compare` |
 | Review image attachments | missing | Not in review model |
 | Asset CSV | missing | No CSV importer |
 | Copy results across collections | missing | export-to moves the host |
@@ -146,10 +146,10 @@ No new **P0**. Day-to-day assess (open a workspace, assign a STIG, save, submit,
 | Persist result engine and show manual / automated / override | M | 3–5 | Seed, export, metrics detail, editor sprite |
 | Collection import options, including Watcher/HEC | M | 5–8 | Touches every ingest path |
 | Informational as its own status | — | — | **Done** (see status table) |
-| Revision compare (rule/field diff) | M | 4–6 | Read-only report; do not copy ExtJS |
+| Revision compare (rule/field diff) | — | — | **Done** — library compare + `GET /stig_baselines/compare` |
 | “Latest” revision = version/release, skip draft | S | 1–2 | `find_baseline_by_stig` |
 | Review aging **actions** + saved search that mutates | M | 6–10 | Audit every change; do not silent-delete without a dry run |
-| Metrics export groupings + review ages (not CORA) | M | 3–5 | CSV/JSON from existing metrics service |
+| Metrics export groupings + review ages (not CORA) | M | 3–5 | CSV/JSON from existing metrics service — **done** in app (CORA remains n/a) |
 
 **P1 total: about 24–39 engineer-days (about 5–8 weeks for one person).**
 

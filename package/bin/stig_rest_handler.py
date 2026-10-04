@@ -23,6 +23,7 @@ from stig_ucc_kv import _context_session, normalize_roles
 from importers.ingest import detect_format
 from services import baselines as baselines_svc
 from services import baseline_library as baseline_library_svc
+from services import baseline_revision_compare as baseline_revision_compare_svc
 from services import baseline_jobs as baseline_jobs_svc
 from services import checklists as checklists_svc
 from services import baseline_defaults as baseline_defaults_svc
@@ -1256,6 +1257,26 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     stig_collection_id=scope_filter,
                 )
             )
+
+        if parts == ["compare"]:
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            from_id = (query.get("from_baseline_id") or "").strip()
+            to_id = (query.get("to_baseline_id") or "").strip()
+            if not from_id or not to_id:
+                return _error(
+                    "from_baseline_id and to_baseline_id query parameters are required",
+                    status=400,
+                )
+            if from_id not in visible_ids or to_id not in visible_ids:
+                return _error("not found", status=404)
+            try:
+                report = baseline_revision_compare_svc.compare_baselines(
+                    service, from_id, to_id
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            return _json_response(report)
 
         if len(parts) >= 2 and parts[0] == "by_stig":
             if method != "GET":

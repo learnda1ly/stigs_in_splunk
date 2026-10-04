@@ -16,6 +16,7 @@ from models import (
     KV_STIG_REVIEWS,
     STATUSES,
     STATUS_TO_RESULT,
+    normalize_result_engine,
     now_epoch,
     parse_json_field,
 )
@@ -48,6 +49,9 @@ UNREVIEWED_DEFINITION = (
 METRICS_EXPORT_GROUPINGS = frozenset(
     {"collection", "asset", "stig", "label", "ungrouped"}
 )
+METRICS_EXPORT_STYLES = frozenset({"summary", "detail"})
+METRICS_ASSESSED_RESULTS = frozenset({"pass", "fail", "notapplicable"})
+METRICS_SEVERITY_BUCKETS = ("high", "medium", "low")
 METRICS_RESULT_KEYS = (
     "pass",
     "fail",
@@ -260,6 +264,11 @@ def collection_metrics(
     }
     if rmf_package_id_filter:
         out["filters"] = {"rmf_package_id": rmf_package_id_filter}
+    ages = _metrics_export_review_ages(reviews)
+    out["review_ages"] = ages
+    out["minTs"] = ages.get("oldest_review_at")
+    out["maxTs"] = ages.get("newest_review_at")
+    out["maxTouch"] = _metrics_workflow_max_touch(reviews)
     return out
 
 
@@ -1158,6 +1167,38 @@ def collection_unreviewed_rules(
     }
 
 
+def _metrics_review_result(review: Dict[str, Any]) -> str:
+    status = (review.get("status") or "not_reviewed").strip().lower()
+    if status not in STATUSES:
+        status = "not_reviewed"
+    result = STATUS_TO_RESULT.get(status, "notchecked")
+    if result not in METRICS_RESULT_KEYS:
+        return "notchecked"
+    return result
+
+
+def _metrics_review_automated(review: Dict[str, Any]) -> bool:
+    return bool(normalize_result_engine(review.get("result_engine")))
+
+
+def _metrics_workflow_touch_epoch(review: Dict[str, Any]) -> float:
+    best = 0.0
+    for key in ("submitted_at", "accepted_at", "rejected_at"):
+        try:
+            val = float(review.get(key) or 0)
+        except (TypeError, ValueError):
+            val = 0.0
+        if val > best:
+            best = val
+    return best
+
+
+def _metrics_workflow_max_touch(reviews: List[Dict[str, Any]]) -> Optional[float]:
+    stamps = [_metrics_workflow_touch_epoch(review) for review in reviews]
+    stamps = [stamp for stamp in stamps if stamp > 0]
+    return max(stamps) if stamps else None
+
+
 def _metrics_export_result_counts(reviews: List[Dict[str, Any]]) -> Dict[str, int]:
     counts = {key: 0 for key in METRICS_RESULT_KEYS}
     for review in reviews:
@@ -1213,23 +1254,105 @@ def _metrics_export_review_ages(reviews: List[Dict[str, Any]]) -> Dict[str, Any]
     }
 
 
+def _metrics_export_sm_fields(
+    reviews: List[Dict[str, Any]],
+    severity_index: Dict[Tuple[str, str, str], str],
+    *,
+    style: str,
+) -> Dict[str, Any]:
+    assessments_by_sev = {sev: 0 for sev in METRICS_SEVERITY_BUCKETS}
+    assessed_by_sev = {sev: 0 for sev in METRICS_SEVERITY_BUCKETS}
+    fail_by_sev = {sev: 0 for sev in METRICS_SEVERITY_BUCKETS}
+    results = {key: 0 for key in METRICS_RESULT_KEYS}
+    result_engine = {key: 0 for key in METRICS_RESULT_KEYS}
+    workflow = {"saved": 0, "submitted": 0, "accepted": 0, "rejected": 0}
+    workflow_engine = {key: 0 for key in workflow}
+
+    for review in reviews:
+        sev = review_severity(review, severity_index)
+        if sev in assessments_by_sev:
+            assessments_by_sev[sev] += 1
+
+        result = _metrics_review_result(review)
+        results[result] += 1
+        automated = _metrics_review_automated(review)
+        if automated and style == "detail":
+            result_engine[result] += 1
+
+        if result in METRICS_ASSESSED_RESULTS and sev in assessed_by_sev:
+            assessed_by_sev[sev] += 1
+        if result == "fail" and sev in fail_by_sev:
+            fail_by_sev[sev] += 1
+
+        state = review_workflow.workflow_state(review)
+        wf_key = "saved" if state == "draft" else state
+        if wf_key in workflow:
+            workflow[wf_key] += 1
+            if automated and style == "detail":
+                workflow_engine[wf_key] += 1
+
+    ages = _metrics_export_review_ages(reviews)
+    total_assessed = sum(
+        1 for review in reviews if _metrics_review_result(review) in METRICS_ASSESSED_RESULTS
+    )
+    other = len(reviews) - (
+        results.get("pass", 0) + results.get("fail", 0) + results.get("notapplicable", 0)
+    )
+
+    fields: Dict[str, Any] = {
+        "assessments": len(reviews),
+        "assessmentsHigh": assessments_by_sev["high"],
+        "assessmentsMedium": assessments_by_sev["medium"],
+        "assessmentsLow": assessments_by_sev["low"],
+        "assessed": total_assessed,
+        "assessedHigh": assessed_by_sev["high"],
+        "assessedMedium": assessed_by_sev["medium"],
+        "assessedLow": assessed_by_sev["low"],
+        "minTs": ages.get("oldest_review_at"),
+        "maxTs": ages.get("newest_review_at"),
+        "maxTouch": _metrics_workflow_max_touch(reviews),
+        "high": fail_by_sev["high"],
+        "medium": fail_by_sev["medium"],
+        "low": fail_by_sev["low"],
+        "saved": workflow["saved"],
+        "submitted": workflow["submitted"],
+        "accepted": workflow["accepted"],
+        "rejected": workflow["rejected"],
+        "other": other,
+    }
+    for key in METRICS_RESULT_KEYS:
+        fields[key] = results.get(key, 0)
+    if style == "detail":
+        for key in METRICS_RESULT_KEYS:
+            fields[f"{key}ResultEngine"] = result_engine.get(key, 0)
+        for wf_key in workflow:
+            fields[f"{wf_key}ResultEngine"] = workflow_engine.get(wf_key, 0)
+    return fields
+
+
 def _metrics_export_row(
     reviews: List[Dict[str, Any]],
     *,
     governance_enabled: bool,
     group_key: str,
     labels: Dict[str, Any],
+    severity_index: Dict[Tuple[str, str, str], str],
+    style: str,
 ) -> Dict[str, Any]:
     ages = _metrics_export_review_ages(reviews)
+    sm_fields = _metrics_export_sm_fields(
+        reviews, severity_index, style=style
+    )
     return {
         **labels,
+        **sm_fields,
+        **ages,
         "group_key": group_key,
         "review_count": len(reviews),
         "results": _metrics_export_result_counts(reviews),
         "workflow": _metrics_export_workflow_counts(
             reviews, governance_enabled=governance_enabled
         ),
-        **ages,
     }
 
 
@@ -1267,6 +1390,8 @@ def _metrics_export_rows(
     collection_name: str,
     governance_enabled: bool,
     service,
+    severity_index: Dict[Tuple[str, str, str], str],
+    style: str,
 ) -> List[Dict[str, Any]]:
     buckets: Dict[str, List[Dict[str, Any]]] = {}
     bucket_labels: Dict[str, Dict[str, Any]] = {}
@@ -1375,13 +1500,15 @@ def _metrics_export_rows(
                 governance_enabled=governance_enabled,
                 group_key=key,
                 labels=bucket_labels.get(key) or {},
+                severity_index=severity_index,
+                style=style,
             )
         )
     return rows
 
 
-def metrics_export_to_csv(rows: List[Dict[str, Any]]) -> str:
-    headers = [
+def _metrics_export_csv_headers(style: str) -> List[str]:
+    identity = [
         "group_key",
         "stig_collection_id",
         "collection_name",
@@ -1393,39 +1520,49 @@ def metrics_export_to_csv(rows: List[Dict[str, Any]]) -> str:
         "label_id",
         "label_name",
         "checklist_id",
-        "review_count",
-        "oldest_review_at",
-        "newest_review_at",
-        "oldest_review_age_seconds",
-        "newest_review_age_seconds",
-    ] + [f"result_{k}" for k in METRICS_RESULT_KEYS] + [
-        "workflow_saved",
-        "workflow_submitted",
-        "workflow_accepted",
-        "workflow_rejected",
     ]
+    sm_core = [
+        "assessments",
+        "assessmentsHigh",
+        "assessmentsMedium",
+        "assessmentsLow",
+        "assessed",
+        "assessedHigh",
+        "assessedMedium",
+        "assessedLow",
+        "minTs",
+        "maxTs",
+        "maxTouch",
+        "high",
+        "medium",
+        "low",
+        "saved",
+        "submitted",
+        "accepted",
+        "rejected",
+        "other",
+    ] + list(METRICS_RESULT_KEYS)
+    if style == "detail":
+        detail = []
+        for wf_key in ("saved", "submitted", "accepted", "rejected"):
+            detail.append(f"{wf_key}ResultEngine")
+        for result_key in METRICS_RESULT_KEYS:
+            detail.append(f"{result_key}ResultEngine")
+        sm_core.extend(detail)
+    return identity + sm_core
+
+
+def metrics_export_to_csv(rows: List[Dict[str, Any]], *, style: str = "summary") -> str:
+    headers = _metrics_export_csv_headers(style)
     lines = [",".join(headers)]
     for row in rows:
-        results = row.get("results") or {}
-        workflow = row.get("workflow") or {}
         values = []
         for col in headers:
-            if col.startswith("result_"):
-                values.append(str(results.get(col[len("result_") :], 0)))
-            elif col == "workflow_saved":
-                values.append(str(workflow.get("saved", 0)))
-            elif col == "workflow_submitted":
-                values.append(str(workflow.get("submitted", 0)))
-            elif col == "workflow_accepted":
-                values.append(str(workflow.get("accepted", 0)))
-            elif col == "workflow_rejected":
-                values.append(str(workflow.get("rejected", 0)))
-            else:
-                val = row.get(col, "")
-                text = "" if val is None else str(val)
-                if any(ch in text for ch in '",\n\r'):
-                    text = '"' + text.replace('"', '""') + '"'
-                values.append(text)
+            val = row.get(col, "")
+            text = "" if val is None else str(val)
+            if any(ch in text for ch in '",\n\r'):
+                text = '"' + text.replace('"', '""') + '"'
+            values.append(text)
         lines.append(",".join(values))
     return "\n".join(lines) + "\n"
 
@@ -1442,9 +1579,21 @@ def collection_metrics_export(
         raise ValueError(
             f"grouping must be one of: {', '.join(sorted(METRICS_EXPORT_GROUPINGS))}"
         )
+    style = (query.get("style") or "summary").strip().lower()
+    if style not in METRICS_EXPORT_STYLES:
+        raise ValueError(
+            f"style must be one of: {', '.join(sorted(METRICS_EXPORT_STYLES))}"
+        )
     fmt = (query.get("format") or "json").strip().lower()
     collection = _require_read_collection(service, collection_id, session)
     reviews, _ctx = _collect_collection_reviews(service, collection_id, session, query)
+    baseline_ids = {
+        str(review.get("baseline_id") or "")
+        or str((review.get("_checklist") or {}).get("baseline_id") or "")
+        for review in reviews
+    }
+    baseline_ids.discard("")
+    severity_index = _severity_index_from_meta(_rule_meta_index(service, baseline_ids))
     governance_enabled = settings_svc.is_governance_enabled(
         settings_svc.get_settings(service)
     )
@@ -1455,18 +1604,21 @@ def collection_metrics_export(
         collection_name=collection.get("name") or "",
         governance_enabled=governance_enabled,
         service=service,
+        severity_index=severity_index,
+        style=style,
     )
     payload: Dict[str, Any] = {
         "stig_collection_id": collection_id,
         "collection_name": collection.get("name") or "",
         "grouping": grouping,
+        "style": style,
         "generated_at": now_epoch(),
         "row_count": len(rows),
         "rows": rows,
     }
     if fmt == "csv":
         payload["format"] = "csv"
-        payload["csv"] = metrics_export_to_csv(rows)
+        payload["csv"] = metrics_export_to_csv(rows, style=style)
     elif fmt not in ("json", ""):
         raise ValueError("format must be json or csv")
     return payload
