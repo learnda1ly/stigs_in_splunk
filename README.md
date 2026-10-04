@@ -275,7 +275,8 @@ SplunkUI **Collection dashboard** (`stig_collection_dashboard_ui`) shows workspa
 
 REST (requires `stig_read` and workspace access):
 
-- `GET /stig_collections/{id}/metrics` — counts by review status and severity, plus completion summary.
+- `GET /stig_collections/{id}/metrics` — counts by review status and severity, plus completion summary, oldest/newest review ages (`minTs` / `maxTs`), and last workflow change (`maxTouch`).
+- `GET /stig_collections/{id}/metrics/export` — grouped metrics CSV/JSON (collection, asset, STIG, label, ungrouped; summary or detail with automated-tool splits). See STIG Manager user guide §2.4.1.2.
 - `GET /stig_collections/{id}/findings` — paginated findings (default `status=open`; optional `severity`, `host_id`, `limit`, `offset`).
 - `GET /stig_collections/{id}/findings/aggregate` — governance-open finding counts by `group_id`, `rule_id`, and CCI (from baseline rules).
 - `GET /stig_collections/{id}/unreviewed/assets` — per-host unreviewed (`status=not_reviewed`) counts with per-baseline breakdown. Ignores findings `status` query params.
