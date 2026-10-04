@@ -47,7 +47,7 @@ Grant-based workspace ACLs further restrict which collections, hosts, and review
 | `/stig_collections/{id}/assets/csv` | Asset CSV export (`GET`) and validate/import (`POST` JSON `{csv, submit?}`) |
 | `/stig_baselines` | STIG library; `/import`, `/jobs`, `/gc_orphan_rules`, `/hierarchy`, `/by_stig/{stigId}`, cross-catalog `/rules`, `/ccis`, `/groups`, `/rule/{key}`, `/{id}/rules`, `/{id}/rules/{ruleRef}` |
 | `/stig_checklists` | Checklists; export, upgrade, validate, `export_bulk` |
-| `/stig_reviews` | Reviews; workflow actions; `/batch`; `/{id}/history` timeline; `/{id}/peers` and `/{id}/copy_from/{peerReviewId}` |
+| `/stig_reviews` | Reviews; workflow actions; `/batch`; `/gc_unmapped` (admin dry-run/delete); `/{id}/history` timeline; `/{id}/peers` and `/{id}/copy_from/{peerReviewId}` |
 | `/stig_imports` | File ingest and `/reconcile` |
 | `/stig_findings` | Workspace findings (`stig_collection_id` query) |
 | `/stig_settings` | Editor / ingest settings (no HEC token in responses) |

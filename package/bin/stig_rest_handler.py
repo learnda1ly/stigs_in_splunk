@@ -48,6 +48,7 @@ from services import reporting as reporting_svc
 from services import review_history as review_history_svc
 from services import review_peers as review_peers_svc
 from services import reviews as reviews_svc
+from services import unmapped_reviews as unmapped_reviews_svc
 from services import revision_upgrade as revision_upgrade_svc
 from services import settings as settings_svc
 from services import rmf_packages as rmf_packages_svc
@@ -1757,6 +1758,28 @@ class StigRestHandler(PersistentServerConnectionApplication):
         session: Dict[str, Any],
         username: str,
     ) -> Dict[str, Any]:
+        if parts == ["gc_unmapped"]:
+            if method not in ("GET", "POST"):
+                return _error("method not allowed", status=405)
+            if not access.user_has_stig_admin(session):
+                return _error("stig_admin required", status=403)
+            body = _body_json(payload)
+            execute = False
+            if method == "POST":
+                execute = baselines_svc.parse_orphan_gc_execute_flag(query, body)
+            scope = (
+                query.get("stig_collection_id")
+                or body.get("stig_collection_id")
+                or ""
+            )
+            report = unmapped_reviews_svc.gc_unmapped_reviews(
+                service,
+                username,
+                execute=execute,
+                stig_collection_id=str(scope or "").strip(),
+            )
+            return _json_response(report)
+
         if not parts:
             if method == "GET":
                 return _json_response(

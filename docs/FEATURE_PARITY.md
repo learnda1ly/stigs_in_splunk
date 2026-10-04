@@ -29,9 +29,9 @@ Priorities and sizes match the existing legend: **P0** blocks single-collection 
 
 | Status | Count | Notes |
 |--------|------:|-------|
-| done | 20 | Core assessor/admin path; see “Still done” table |
+| done | 21 | Core assessor/admin path; see “Still done” table |
 | partial | 8 | Material doc gaps on existing paths |
-| missing | 10 | No implementation found |
+| missing | 9 | No implementation found |
 | n/a | 8 | Platform-owned or **intentionally out of scope** |
 | unverified | 3 | Listed at end of doc |
 
@@ -58,7 +58,7 @@ P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide ali
 | Review history retention | done (append + GET) | **partial** | History is append-only. `limit` is a query page size (default 100, max 500), not a per-workspace cap (docs default 15) and history cannot be turned off. Docs: [§2.9.1.4.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | `.ckl` web/database asset identity | not a row | **partial** | `WEB_DB_SITE` / `WEB_DB_INSTANCE` are stored. Host match in `apply.py` is hostname only, not host + site + instance when `WEB_OR_DATABASE` is true. Docs: [§2.10](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Effective access preview | not a row | **missing** | Grants and ACL filters exist. No UI/API that expands a grant to every asset×STIG the user can actually touch. `GrantsApp.jsx` has no effective-access view. Docs: [§2.9.1.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Delete unmapped reviews | not a row | **missing** | Orphan **baseline rule** GC exists. No job deletes reviews whose rule or STIG assignment is gone. Docs: [admin §2.2.5](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html) (Delete Unmapped Reviews / Delete Unmapped Asset Reviews). |
+| Delete unmapped reviews | not a row | **done** | `GET/POST /stig_reviews/gc_unmapped` (dry-run default; `confirm` / `dry_run=false` to delete). Reports `missing_checklist`, `missing_baseline`, or `missing_rule`; optional `stig_collection_id` scope. Removes review history on delete. Docs: [admin §2.2.5](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
 | Replace existing STIG revision on import | not a row | **missing** | Fingerprint dedup keeps the existing revision. No “replace existing revisions” switch. Docs: [admin §2.2.4](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
 | Clone: pin every STIG + async status | done (sync clone flags) | **partial** | `POST /stig_collections/{id}/clone` copies hosts, checklists, reviews, grants, labels, metadata, baseline defaults, review requirements. It does not offer “pin all STIGs to the source defaults” as its own switch, and it is not a background job with a status bar. Docs: [§2.9.1.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 
@@ -90,6 +90,7 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | OpenAPI + settings | [docs/openapi.yaml](openapi.yaml), `services/settings.py` |
 | Splunk caps, audit index | `access.py`, [docs/audit-index.md](audit-index.md) |
 | RMF package labels (Splunk-only) | `services/rmf_packages.py` |
+| Delete unmapped reviews | `services/unmapped_reviews.py`, `GET/POST /stig_reviews/gc_unmapped` |
 
 ### Partial or missing
 
@@ -110,7 +111,6 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | History retention cap / off switch | partial | Page `limit` only |
 | Web/DB asset match | partial | Fields stored; match is hostname |
 | Effective access preview | missing | ACL enforced, not explained in UI |
-| Delete unmapped reviews | missing | Rule GC ≠ review GC |
 | Replace existing benchmark revision | missing | Dedup keeps current |
 | Clone pin-all + async | partial | Sync clone with copy flags |
 
@@ -163,7 +163,6 @@ The wide end is import options plus aging actions. Those two touch ingest and ca
 | Copy results to another collection (not a move) | M | 4–7 |
 | Asset CSV import/export | M | 3–5 |
 | Multi-STIG CKL in the zip | S | 2–4 |
-| Unmapped-review cleanup job | S | 2–4 |
 | Web/DB site+instance asset identity | S | 2–3 |
 | Effective-access preview | S | 2–3 |
 | Clone: pin-all switch + async status | S | 2–4 |
