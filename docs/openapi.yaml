@@ -1477,6 +1477,15 @@ paths:
           schema:
             type: string
           description: Optional workspace scope for imported rows (requires workspace write). Omit for global catalog.
+        - name: replace_existing_revisions
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: >-
+            When true, overwrite an existing catalog revision (same content fingerprint or
+            same STIG ID and version) instead of deduplicating. Default false retains the
+            existing row (STIG Manager admin guide §2.2.4).
       requestBody:
         required: true
         content:
@@ -1495,6 +1504,10 @@ paths:
                 stig_collection_id:
                   type: string
                   description: Workspace scope when body carries metadata alongside binary (import handler).
+                replace_existing_revisions:
+                  type: boolean
+                  default: false
+                  description: Same as the query parameter; may be set on zip job create/import actions.
       responses:
         "200":
           description: Import succeeded; baseline deduplicated (no new KV row)

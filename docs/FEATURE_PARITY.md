@@ -29,9 +29,9 @@ Priorities and sizes match the existing legend: **P0** blocks single-collection 
 
 | Status | Count | Notes |
 |--------|------:|-------|
-| done | 25 | Core assessor/admin path; see “Still done” table |
+| done | 26 | Core assessor/admin path; see “Still done” table |
 | partial | 5 | Material doc gaps on existing paths |
-| missing | 8 | No implementation found |
+| missing | 7 | No implementation found |
 | n/a | 8 | Platform-owned or **intentionally out of scope** |
 | unverified | 3 | Listed at end of doc |
 
@@ -63,7 +63,7 @@ Unpinned catalog resolution now matches STIG Manager [§2.9.3.2](https://stig-ma
 | `.ckl` web/database asset identity | not a row | **partial** | `WEB_DB_SITE` / `WEB_DB_INSTANCE` are stored. Host match in `apply.py` is hostname only, not host + site + instance when `WEB_OR_DATABASE` is true. Docs: [§2.10](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Effective access preview | not a row | **missing** | Grants and ACL filters exist. No UI/API that expands a grant to every asset×STIG the user can actually touch. `GrantsApp.jsx` has no effective-access view. Docs: [§2.9.1.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Delete unmapped reviews | not a row | **missing** | Orphan **baseline rule** GC exists. No job deletes reviews whose rule or STIG assignment is gone. Docs: [admin §2.2.5](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html) (Delete Unmapped Reviews / Delete Unmapped Asset Reviews). |
-| Replace existing STIG revision on import | not a row | **missing** | Fingerprint dedup keeps the existing revision. No “replace existing revisions” switch. Docs: [admin §2.2.4](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
+| Replace existing STIG revision on import | not a row | **done** | Import page **Replace existing revisions** switch and `replace_existing_revisions` on `POST /stig_baselines/import` (query/JSON) and zip jobs. Default off: fingerprint dedup keeps the row; on: overwrite in place (same `_key`) by fingerprint or STIG ID + version. Docs: [admin §2.2.4](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
 | Clone: pin every STIG + async status | done (sync clone flags) | **partial** | `POST /stig_collections/{id}/clone` copies hosts, checklists, reviews, grants, labels, metadata, baseline defaults, review requirements. It does not offer “pin all STIGs to the source defaults” as its own switch, and it is not a background job with a status bar. Docs: [§2.9.1.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 
 Rows left **done** were re-checked against code, not just the old table: collections, grants and ACL (host, baseline, label), labels, host transfer, asset CRUD and metadata, assign/remove STIG, checklist import wizard (sync, not SM’s async job), STIG library browse, XCCDF/CKL baseline import, revision **upgrade merge**, rule/CCI/group lookups, asset and collection review workspaces, status workflow submit/accept/reject, review requirements, peer copy, batch review PATCH, ingest lock, CKL/CKLB/XCCDF archive export, Watcher-shaped HEC, baseline chunk jobs and collection archive jobs, findings, aggregate findings, unreviewed reports, POA&M CSV/XLSX, OpenAPI file, settings adapter, cascade delete, orphan rule GC, workspace-scoped baselines, vim editor, `stig:finding` index, reconcile saved search, RMF **package** labels (`services/rmf_packages.py`, commit message “Implement RMF packages”). Those RMF packages are a Splunk ingest-routing feature. They are **not** STIG Manager rule exceptions.
@@ -114,7 +114,7 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | Web/DB asset match | partial | Fields stored; match is hostname |
 | Effective access preview | missing | ACL enforced, not explained in UI |
 | Delete unmapped reviews | missing | Rule GC ≠ review GC |
-| Replace existing benchmark revision | missing | Dedup keeps current |
+| Replace existing benchmark revision | done | Import switch + `replace_existing_revisions` on library import |
 | Clone pin-all + async | partial | Sync clone with copy flags |
 
 ### Not applicable (intentionally out of scope unless product reverses)
@@ -169,7 +169,7 @@ The wide end is aging actions. That path can corrupt reviews if wrong.
 | Effective-access preview | S | 2–3 |
 | Clone: pin-all switch + async status | S | 2–4 |
 | History cap and disable | S | 1–2 |
-| Replace-existing revision on library import | S | 1–2 |
+| Replace-existing revision on library import | — | — | **Done** — Import UI + REST |
 **P2 total: about 24–43 engineer-days.**
 
 Attachments and cross-collection copy dominate that range (KV size, ACL, partial failure).

@@ -79,7 +79,13 @@ def _public(meta: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def create_job(filename: str, size: int, username: str) -> Dict[str, Any]:
+def create_job(
+    filename: str,
+    size: int,
+    username: str,
+    *,
+    replace_existing_revisions: bool = False,
+) -> Dict[str, Any]:
     size = int(size or 0)
     if size <= 0 or size > MAX_ZIP_BYTES:
         raise ValueError(f"zip size must be between 1 and {MAX_ZIP_BYTES} bytes")
@@ -95,6 +101,7 @@ def create_job(filename: str, size: int, username: str) -> Dict[str, Any]:
         "created_at": time.time(),
         "found": [],
         "skipped": {"srg": 0, "scap": 0, "other": 0},
+        "replace_existing_revisions": bool(replace_existing_revisions),
     }
     _save_meta(meta)
     open(_zip_path(job_id), "wb").close()
@@ -103,6 +110,10 @@ def create_job(filename: str, size: int, username: str) -> Dict[str, Any]:
 
 def get_job(job_id: str, username: str) -> Dict[str, Any]:
     return _public(_load_meta(job_id, username))
+
+
+def job_replace_existing_revisions(job_id: str, username: str) -> bool:
+    return bool(_load_meta(job_id, username).get("replace_existing_revisions"))
 
 
 def append_chunk(
@@ -154,7 +165,12 @@ def finalize_job(job_id: str, username: str) -> Dict[str, Any]:
 
 
 def import_member(
-    service, job_id: str, username: str, member_path: str
+    service,
+    job_id: str,
+    username: str,
+    member_path: str,
+    *,
+    replace_existing_revisions: bool = False,
 ) -> Dict[str, Any]:
     meta = _load_meta(job_id, username)
     if meta.get("status") != "ready":
@@ -166,6 +182,7 @@ def import_member(
         "xccdf",
         username,
         source_uri=member_path,
+        replace_existing_revisions=replace_existing_revisions,
     )
     return {"record": rec, "created": created, "path": member_path}
 
