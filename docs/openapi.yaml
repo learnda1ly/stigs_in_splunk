@@ -640,6 +640,51 @@ paths:
             application/json:
               schema:
                 type: object
+                description: >
+                  Includes totals, completion, by_status, review_ages (minTs/maxTs),
+                  and maxTouch (last workflow status change).
+
+  /stig_collections/{collectionId}/metrics/export:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collection reporting]
+      summary: STIG Manager-style metrics export (grouped CSV/JSON)
+      operationId: exportCollectionMetrics
+      parameters:
+        - name: grouping
+          in: query
+          schema:
+            type: string
+            enum: [collection, asset, stig, label, ungrouped]
+            default: collection
+        - name: style
+          in: query
+          schema:
+            type: string
+            enum: [summary, detail]
+            default: summary
+          description: >
+            Summary omits automated-tool subcounts; detail adds *ResultEngine columns.
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+        - name: rmf_package_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: JSON rows; when format=csv the response JSON includes a csv field
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid grouping, style, or format
 
   /stig_collections/{collectionId}/findings:
     parameters:
@@ -705,6 +750,52 @@ paths:
             application/json:
               schema:
                 type: object
+
+  /stig_collections/{collectionId}/assets/csv:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Hosts]
+      summary: Export workspace assets as CSV (STIG Manager column layout)
+      operationId: exportAssetsCsv
+      parameters:
+        - name: host_ids
+          in: query
+          description: Optional comma-separated host `_key` values (default all visible hosts)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CSV attachment
+          content:
+            text/csv:
+              schema:
+                type: string
+    post:
+      tags: [Hosts]
+      summary: Validate or import assets from CSV
+      operationId: importAssetsCsv
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [csv]
+              properties:
+                csv:
+                  type: string
+                submit:
+                  type: boolean
+                  description: When false (default), validate only; when true, create/update hosts
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+        "201":
+          description: Import created at least one new host
 
   /stig_collections/{collectionId}/poam:
     parameters:
@@ -1417,6 +1508,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BaselineImportResult"
+
+  /stig_baselines/compare:
+    get:
+      tags: [Baselines]
+      summary: Compare two baseline revisions (read-only)
+      operationId: compareBaselineRevisions
+      parameters:
+        - name: from_baseline_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: to_baseline_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Rule add/remove/change report with per-field from/to values on changed rows
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /stig_baselines/hierarchy:
     get:

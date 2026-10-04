@@ -262,6 +262,7 @@ ul.stig-rule-list > li.stig-rule-row,
 .stig-badge-open { background: #f8d7da; color: #721c24; }
 .stig-badge-not_a_finding { background: #d4edda; color: #155724; }
 .stig-badge-not_applicable { background: #cce5ff; color: #004085; }
+.stig-badge-informational { background: #e2d5f5; color: #4a2c6a; }
 
 .stig-rule-id {
   font-family: ui-monospace, monospace;

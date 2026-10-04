@@ -44,6 +44,7 @@ Grant-based workspace ACLs further restrict which collections, hosts, and review
 |--------|---------|
 | `/stig_collections` | Workspaces; **`/meta/metrics`** (+ `/summary`) for grant-filtered cross-workspace rollups; subpaths for grants, labels, metrics, findings, POA&M, imports, clone, transfer, metadata, **`/review-history`**, **`/review_aging`** (+ `/stale`), **`/jobs`** (async archive export), `archive/ckl\|cklb\|xccdf`, … |
 | `/stig_hosts` | Assets; `/metadata`, `/checklists`, `/stigs` |
+| `/stig_collections/{id}/assets/csv` | Asset CSV export (`GET`) and validate/import (`POST` JSON `{csv, submit?}`) |
 | `/stig_baselines` | STIG library; `/import`, `/jobs`, `/gc_orphan_rules`, `/hierarchy`, `/by_stig/{stigId}`, cross-catalog `/rules`, `/ccis`, `/groups`, `/rule/{key}`, `/{id}/rules`, `/{id}/rules/{ruleRef}` |
 | `/stig_checklists` | Checklists; export, upgrade, validate, `export_bulk` |
 | `/stig_reviews` | Reviews; workflow actions; `/batch`; `/{id}/history` timeline; `/{id}/peers` and `/{id}/copy_from/{peerReviewId}` |
@@ -59,7 +60,9 @@ Implementation source of truth: `package/bin/stig_rest_handler.py` and `package/
 
 Baseline rules live in KV `stig_baseline_rules`. Catalog list/hierarchy/import and cross-baseline reference endpoints (`/rules`, `/ccis`, `/groups`) only include baselines **visible** to the caller: global rows (empty `stig_collection_id`) plus workspace-scoped rows for workspaces the session can read. Optional query `stig_collection_id` on list/hierarchy narrows to globals + that workspace. `POST /stig_baselines/import` accepts `stig_collection_id` (query or JSON) to attach a workspace-scoped catalog entry (requires workspace **write**). CCI coverage depends on DISA XCCDF / CKL / CKLB import: only CCIs present on imported rule rows are searchable.
 
-**Reserved segments:** `rules`, `ccis`, `groups`, and `rule` are catalog path literals (not baseline `_key` values) for `GET /stig_baselines/{id}` — see [spec.md](../spec.md) §11.3.
+**Reserved segments:** `compare`, `rules`, `ccis`, `groups`, and `rule` are catalog path literals (not baseline `_key` values) for `GET /stig_baselines/{id}` — see [spec.md](../spec.md) §11.3.
+
+| GET | `/stig_baselines/compare` | Query `from_baseline_id` + `to_baseline_id` (same `stig_id`). Read-only add/remove/changed rule report; changed rows include per-field `from`/`to` values. |
 
 | Method | Path | Notes |
 |--------|------|--------|

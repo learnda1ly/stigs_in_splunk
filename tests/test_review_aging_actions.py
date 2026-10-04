@@ -248,6 +248,32 @@ class ReviewAgingApplyTests(unittest.TestCase):
             )
         self.assertFalse(out["job_enabled"])
 
+    def test_set_result_informational_action(self):
+        review = {
+            "_key": "r1",
+            "status": "open",
+            "workflow_state": "accepted",
+        }
+        with self._patch_kv():
+            stored = actions_svc._apply_update_action(
+                MagicMock(),
+                review,
+                actions_svc.ACTION_SET_RESULT_INFORMATIONAL,
+                "admin",
+            )
+        self.assertEqual(stored["status"], "informational")
+        self.assertEqual(stored["workflow_state"], "draft")
+        self.assertTrue(
+            actions_svc.review_already_at_action_target(
+                stored, actions_svc.ACTION_SET_RESULT_INFORMATIONAL
+            )
+        )
+        self.assertFalse(
+            actions_svc.review_already_at_action_target(
+                stored, actions_svc.ACTION_SET_RESULT_NOT_CHECKED
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
