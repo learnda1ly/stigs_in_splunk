@@ -49,7 +49,7 @@ P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide ali
 | Result engine (automated / manual / override) | not a row | **partial** | Parsers emit `resultEngine` (`importers/ingest.py`). `review_seed_payload` does **not** write it onto the KV review. Editor has no automated/manual/override badge. Docs: [§2.7.1 and §2.7.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Informational result | folded into status enum | **partial** | `STATUSES` / `STATUS_TO_RESULT` are `not_reviewed`, `open`, `not_a_finding`, `not_applicable`. `informational` XCCDF maps to `not_reviewed` (`models.py`). Docs treat Informational as its own result. |
 | Collection import options | not a row | **missing** | No per-workspace policy for status-per-result, include-unreviewed, empty detail/comment, or locking those options for Watcher. Docs: [§2.9.1.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Compare STIG revisions | not a row | **missing** | Library browses revisions (`LibraryApp.jsx`). No field-level diff of two revisions. Upgrade merge is a different feature and remains **done**. Docs: [§2.3.2.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [review handling](https://stig-manager.readthedocs.io/en/latest/user-guide/review-handling.html). |
+| Compare STIG revisions | not a row | **done** | `GET /stig_baselines/compare` + library UI compare panel (`LibraryApp.jsx`). Read-only add/remove/changed report with per-field from/to on changed rules; upgrade merge remains separate. Docs: [§2.3.2.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [review handling](https://stig-manager.readthedocs.io/en/latest/user-guide/review-handling.html). |
 | Review attachments | not a row | **missing** | No review image store. The word “attachment” in the REST handler is not this feature. Docs: [§2.6.5.2 and §2.7.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Asset CSV import/export | not a row | **missing** | Host CRUD is JSON REST, not the documented CSV columns (name, description, IP, FQDN, MAC, non-computing, STIGs, labels, metadata). Docs: [§2.9.2.2–2.9.2.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Copy results to another collection | not a row | **missing** | `POST .../export-to/{dst}` **moves** hosts (`collection_transfer.py`). It does not copy results onto a same-named asset in the destination (100-asset cap in the docs). Docs: [§2.9.2.5.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
@@ -101,7 +101,7 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | Result engine on the review | partial | Parsed, dropped in `review_seed_payload` |
 | Informational result | partial | Collapsed to `not_reviewed` |
 | Import options | missing | No workspace import policy module |
-| Compare revisions | missing | No diff UI or API |
+| Compare revisions | done | Library compare panel + `GET /stig_baselines/compare` |
 | Review image attachments | missing | Not in review model |
 | Asset CSV | missing | No CSV importer |
 | Copy results across collections | missing | export-to moves the host |
@@ -146,7 +146,7 @@ No new **P0**. Day-to-day assess (open a workspace, assign a STIG, save, submit,
 | Persist result engine and show manual / automated / override | M | 3–5 | Seed, export, metrics detail, editor sprite |
 | Collection import options, including Watcher/HEC | M | 5–8 | Touches every ingest path |
 | Informational as its own status | S | 2–3 | Enum, CKL/XCCDF round-trip, metrics, UI |
-| Revision compare (rule/field diff) | M | 4–6 | Read-only report; do not copy ExtJS |
+| Revision compare (rule/field diff) | — | — | **Done** — library compare + `GET /stig_baselines/compare` |
 | “Latest” revision = version/release, skip draft | S | 1–2 | `find_baseline_by_stig` |
 | Review aging **actions** + saved search that mutates | M | 6–10 | Audit every change; do not silent-delete without a dry run |
 | Metrics export groupings + review ages (not CORA) | M | 3–5 | CSV/JSON from existing metrics service |

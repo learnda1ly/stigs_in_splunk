@@ -756,6 +756,7 @@ DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 |--------|------|--------|
 | GET | `/stig_baselines` | List baseline headers visible to the caller (globals + readable workspace catalogs). Query `stig_collection_id?` → globals + that workspace only. |
 | GET | `/stig_baselines/hierarchy` | Benchmark-centric library (same visibility + optional `stig_collection_id` filter). Revisions include `stig_collection_id` / `scope`. |
+| GET | `/stig_baselines/compare` | Read-only revision diff. Query `from_baseline_id` + `to_baseline_id` (same `stig_id`). Returns summary counts plus `added`, `removed`, and `changed` rule rows; `changed` entries list `changed_fields` and per-field `from`/`to` text (library browse only). **404** when either baseline is not visible. |
 | GET | `/stig_baselines/by_stig/{stigId}` | One benchmark entry from hierarchy (404 when unknown) |
 | GET | `/stig_baselines/rule/{ruleKey}` | Stable rule detail by KV `_key` on `stig_baseline_rules` (includes parent baseline summary) |
 | GET | `/stig_baselines/{id}/rules/{ruleRef}` | Rule in baseline context. `ruleRef` may be the rule KV `_key`, composite `group_id\|rule_id` (V-id\|SV-id), or SV-id via `rule_id` / `rule_id_src`. A bare V-id is not accepted (avoids first-row scans). Optional query `group_id` disambiguates duplicate SV-ids in one baseline. Ambiguous matches return **404**. |
@@ -766,7 +767,7 @@ DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 | GET | `/stig_baselines/{id}/rules` | All rules for baseline |
 | GET/POST | `/stig_baselines/gc_orphan_rules` | Admin orphan rule GC. **GET** and default **POST** are dry-run reports (`orphan_count`, `orphans[]`, `skipped_no_key_count`). Destructive delete when **POST** with `dry_run=false` or `confirm=true` (query or JSON). Removes only deletable `stig_baseline_rules` rows (requires KV `_key`); orphans without `_key` are listed but skipped. Does **not** cascade to checklists or reviews. Audits only when `deleted_count > 0`. Requires **stig_admin** in handler (`restmap` admits GET/POST with read/write capabilities). |
 
-**Reserved path literals:** The first segment after `/stig_baselines/` cannot be used as a baseline KV `_key` for `GET /stig_baselines/{id}` when it equals `import`, `jobs`, `gc_orphan_rules`, `hierarchy`, `by_stig`, `rules`, `ccis`, `groups`, or `rule` (those paths are routed to catalog/import handlers). UCC `ucc_name` values should avoid these tokens.
+**Reserved path literals:** The first segment after `/stig_baselines/` cannot be used as a baseline KV `_key` for `GET /stig_baselines/{id}` when it equals `import`, `jobs`, `gc_orphan_rules`, `hierarchy`, `compare`, `by_stig`, `rules`, `ccis`, `groups`, or `rule` (those paths are routed to catalog/import handlers). UCC `ucc_name` values should avoid these tokens.
 | DELETE | `/stig_baselines/{id}` | Remove baseline + rules (UCC Configuration table or persist REST). |
 
 UCC Configuration **Baselines** tab is the management UI: list, import (including zip-of-zips), delete.
