@@ -1797,7 +1797,7 @@ class StigRestHandler(PersistentServerConnectionApplication):
             body = _body_json(payload)
             action = (body.get("action") or "").strip().lower()
             has_field_batch = body.get("reviews") is not None or body.get("updates") is not None
-            if action in ("submit", "accept", "reject"):
+            if action in ("submit", "unsubmit", "accept", "reject"):
                 if has_field_batch:
                     return _error(
                         "batch body cannot combine action with reviews/updates; "
@@ -1861,13 +1861,15 @@ class StigRestHandler(PersistentServerConnectionApplication):
             except ValueError as exc:
                 return _error(str(exc), status=400)
 
-        if len(parts) == 2 and parts[1] in ("submit", "accept", "reject"):
+        if len(parts) == 2 and parts[1] in ("submit", "unsubmit", "accept", "reject"):
             action = parts[1]
             if method not in ("POST", "PATCH", "PUT"):
                 return _error("method not allowed", status=405)
             body = _body_json(payload)
             if action == "submit":
                 updated = reviews_svc.submit_review(service, key, username, session)
+            elif action == "unsubmit":
+                updated = reviews_svc.unsubmit_review(service, key, username, session)
             elif action == "accept":
                 updated = reviews_svc.accept_review(service, key, username, session)
             else:

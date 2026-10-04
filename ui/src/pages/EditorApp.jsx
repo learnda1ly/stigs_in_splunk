@@ -65,18 +65,11 @@ import { loadVimSetting, persistVimSetting } from "../vim/settings";
 import { useGovernanceEnabled } from "../governance/settings";
 import { VimGlobalStyle } from "../vim/styles";
 import { useEditorKeys } from "../vim/useEditorKeys";
-
-function formatResultEngine(raw) {
-    if (raw == null || raw === "") {
-        return "—";
-    }
-    try {
-        const obj = typeof raw === "string" ? JSON.parse(raw) : raw;
-        return JSON.stringify(obj, null, 2);
-    } catch (err) {
-        return String(raw);
-    }
-}
+import {
+    ResultEngineOriginChip,
+    ResultEngineIcon,
+    formatResultEngineDetail,
+} from "../resultEngine";
 
 function parseDisVersion(version) {
     const text = String(version || "").trim().replace(/\s+/g, "");
@@ -804,7 +797,7 @@ export default function EditorApp() {
                 if (action === "submit") {
                     return wf === "draft" && reviewIsValid(item.review, reviewRequirements);
                 }
-                if (action === "accept" || action === "reject") {
+                if (action === "unsubmit" || action === "accept" || action === "reject") {
                     return wf === "submitted";
                 }
                 return false;
@@ -1592,6 +1585,12 @@ export default function EditorApp() {
                             <Button
                                 appearance="secondary"
                                 disabled={busy || !filtered.length}
+                                onClick={() => onBatchWorkflow("unsubmit")}
+                                label="Unsubmit visible"
+                            />
+                            <Button
+                                appearance="secondary"
+                                disabled={busy || !filtered.length}
                                 onClick={() => onBatchWorkflow("accept")}
                                 label="Accept visible"
                             />
@@ -1676,6 +1675,10 @@ export default function EditorApp() {
                                                   : ""}
                                         </span>
                                         <StatusChip status={rev.status} />
+                                        <ResultEngineIcon
+                                            raw={rev.result_engine}
+                                            origin={rev.result_engine_origin}
+                                        />
                                         {governanceEnabled ? (
                                             <WorkflowChip workflowState={rev.workflow_state} />
                                         ) : null}
@@ -1778,6 +1781,12 @@ export default function EditorApp() {
                                     </Message>
                                 ) : null}
                             </div>
+                            <ControlGroup label="Result origin">
+                                <ResultEngineOriginChip
+                                    raw={selected.review.result_engine}
+                                    origin={selected.review.result_engine_origin}
+                                />
+                            </ControlGroup>
                             <ControlGroup label="Status (saves immediately)">
                                 <Select
                                     value={status}
@@ -1807,7 +1816,7 @@ export default function EditorApp() {
                             </ControlGroup>
                             <ControlGroup label="Result engine (scan / override provenance)">
                                 <PreBlock>
-                                    {formatResultEngine(selected.review.result_engine)}
+                                    {formatResultEngineDetail(selected.review.result_engine)}
                                 </PreBlock>
                             </ControlGroup>
                             <ControlGroup label="Check content">
@@ -1872,7 +1881,7 @@ export default function EditorApp() {
                                 />
                             </ControlGroup>
                             {governanceEnabled ? (
-                                <ControlGroup label="Governance (submit / accept / reject)">
+                                <ControlGroup label="Governance (submit / unsubmit / accept / reject)">
                                     <Actions>
                                         <Button
                                             appearance="primary"
@@ -1890,6 +1899,16 @@ export default function EditorApp() {
                                             }
                                             onClick={() => onWorkflow("submit")}
                                             label="Submit"
+                                        />
+                                        <Button
+                                            appearance="secondary"
+                                            disabled={
+                                                busy ||
+                                                reviewWorkflowState(selected.review) !==
+                                                    "submitted"
+                                            }
+                                            onClick={() => onWorkflow("unsubmit")}
+                                            label="Unsubmit"
                                         />
                                         <Button
                                             appearance="secondary"
