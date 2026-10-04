@@ -10,6 +10,7 @@ require([
         open: "Open",
         not_a_finding: "Not a Finding",
         not_applicable: "Not Applicable",
+        informational: "Informational",
     };
 
     var STATUS_KEYS = {
@@ -17,6 +18,7 @@ require([
         "2": "open",
         "3": "not_a_finding",
         "4": "not_applicable",
+        "5": "informational",
     };
 
     var service = mvc.createService({ owner: "nobody", app: "stigs_in_splunk" });
@@ -796,6 +798,7 @@ require([
                 n: "not_reviewed",
                 f: "not_a_finding",
                 a: "not_applicable",
+                i: "informational",
             };
             if (quick[e.key] && !e.ctrlKey && !e.metaKey && !e.altKey) {
                 e.preventDefault();

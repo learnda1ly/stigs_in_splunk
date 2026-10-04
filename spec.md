@@ -360,7 +360,7 @@ fields_list = _key, baseline_id, group_id, rule_id, rule_id_src, rule_version, s
 [stig_baselines]
 external_type = kvstore
 collection = stig_baselines
-fields_list = _key, stig_id, title, version, rule_count, content_fingerprint, source_uri, imported_at
+fields_list = _key, stig_id, title, version, benchmark_status, rule_count, content_fingerprint, source_uri, imported_at
 ```
 
 (Add other collections if reporting needs them.)
@@ -404,7 +404,7 @@ Foreign keys are string `_key` values unless noted. Timestamps are **epoch secon
 |-------|------|--------|
 | `_key` | string | |
 | `stig_collection_id` | string | FK → workspace |
-| `hostname`, `ip_address`, `fqdn`, `mac_address` | string | CKL/CKLB target |
+| `hostname`, `description`, `ip_address`, `fqdn`, `mac_address` | string | CKL/CKLB target; `description` optional (255 chars) |
 | `role`, `asset_type`, `tech_area` | string | Defaults: `role=None`, `asset_type=Computing` |
 | `web_or_database` | bool | Default false |
 | `metadata` | string | JSON object string |
@@ -431,6 +431,7 @@ REST: `GET/POST /stig_collections/{id}/labels`, `GET/PATCH/DELETE .../labels/{la
 | `stig_id` | string | e.g. `STIG`, `RHEL_8_STIG` |
 | `title`, `stig_name` | string | |
 | `version`, `release_info`, `benchmark_date` | string | Revision metadata |
+| `benchmark_status` | string | XCCDF Benchmark status (`accepted`, `draft`, `interim`, …). Unpinned “latest” catalog resolution skips `draft` / `interim`. |
 | `xccdf_benchmark_id` | string | XCCDF Benchmark `@id` |
 | `rule_count` | number | Count at import |
 | `source_type` | string | `xccdf` \| `cklb` \| `ckl` |
@@ -443,7 +444,7 @@ REST: `GET/POST /stig_collections/{id}/labels`, `GET/PATCH/DELETE .../labels/{la
 
 **Catalog scope:** Global baselines remain shared. Workspace-scoped rows are private to the owning workspace (plus **stig_admin**). `GET /stig_baselines` returns globals plus baselines for workspaces the caller can read. Query `stig_collection_id` narrows to globals + that workspace (requires workspace read). Import without scope creates globals; `stig_collection_id` on `POST /stig_baselines/import` (query or JSON) requires workspace **write**. Dedup (`content_fingerprint`, optional `stig_id`+`version`) is per scope. Existing checklist `baseline_id` references are unchanged.
 
-**Default / assign resolution** (when `baseline_id` omitted): explicit id → workspace `default_baseline_map` → latest matching revision in **workspace-scoped** catalog → latest **global** catalog match.
+**Default / assign resolution** (when `baseline_id` omitted): explicit id → workspace `default_baseline_map` (pinned revision per STIG; unchanged by this rule) → latest matching revision in **workspace-scoped** catalog → latest **global** catalog match. Unpinned “latest” picks the highest DISA-style `VxRy` version/release among catalog rows for that `stig_id` (tie-break: newest `imported_at`), and **excludes** benchmark revisions whose `benchmark_status` is `draft` or `interim`. An explicit `version` query/body field may still resolve a draft row. Aligns with STIG Manager [user guide §2.9.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html); implementation: `find_baseline_by_stig` in `services/baselines.py` and `resolve_baseline_id` in `services/baseline_defaults.py`.
 
 ### 7.4 `stig_baseline_rules`
 
@@ -702,7 +703,8 @@ Baseline import does **not** set review status (checklist create sets `not_revie
 | GET | `/stig_collections/{id}` | — | Record or **404** |
 | PATCH/PUT | `/stig_collections/{id}` | Partial JSON | Updated record. Setting `is_default` true unsets the previous default. |
 | DELETE | `/stig_collections/{id}` | Query `cascade=true` or JSON `{"cascade": true}` when the workspace has dependent rows | `{deleted, cascade, removed}`; requires **stig_admin**. Cannot delete the default workspace. Without `cascade`, **409** when hosts, checklists, reviews, grants, or assignment rows remain (audit `delete_blocked`). Response `children` is **per-type** counts (reviews may overlap checklists; do not sum all keys for a deduplicated total). With `cascade=true`, removes workspace-scoped hosts, checklists, reviews, grants, and assignment rules/overrides; **global baselines are untouched**. Empty workspaces delete without `cascade`. |
-| GET | `/stig_collections/{id}/metrics` | — | Workspace metrics: `totals`, `completion`, `by_status`, `by_severity`, `open_by_severity`. Requires **stig_read** and workspace access (**404** if hidden). |
+| GET | `/stig_collections/{id}/metrics` | — | Workspace metrics: `totals`, `completion`, `by_status`, `by_severity`, `open_by_severity`, `review_ages` / `minTs` / `maxTs` (evaluation content), `maxTouch` (last workflow status change). Requires **stig_read** and workspace access (**404** if hidden). |
+| GET | `/stig_collections/{id}/metrics/export` | Query `grouping?`, `style?`, `format?`, `rmf_package_id?` | Grouped metrics export (STIG Manager §2.4.1.2): `grouping` = `collection` \| `asset` \| `stig` \| `label` \| `ungrouped`; `style` = `summary` \| `detail` (detail adds automated `*ResultEngine` splits); `format` = `json` \| `csv`. JSON includes `rows[]` with SM field names (`assessments`, `minTs`, `maxTs`, `maxTouch`, result/workflow counts). **404** if hidden; **400** on invalid params. |
 | GET | `/stig_collections/{id}/findings` | Query filters (see §11.6) | Paginated findings report for assessors. Default filter: `status=open`. |
 | GET | `/stig_collections/{id}/findings/aggregate` | `group_by?`, filters (see §11.6) | Governance-open counts by group, rule, and/or CCI. |
 | GET | `/stig_collections/{id}/unreviewed/assets` | Filters (see §11.6) | Per-host unreviewed counts (`status=not_reviewed`). |
@@ -747,6 +749,8 @@ Default `access_principals` on create: `["user:<creator>"]` if omitted. The Defa
 | DELETE | `/stig_hosts/{id}/stigs/{baselineIdOrStigId}` | — | Removes **one** checklist: path segment is baseline KV `_key` **or** logical `stig_id` resolved like POST assign (workspace default → catalog). Does **not** delete other revision checklists for the same `stig_id`; pass each revision’s baseline `_key` to remove multiples. Requires workspace **write**. |
 | GET/PATCH | `/stig_hosts/{id}/metadata` | Optional asset metadata (`metadata` JSON on host). **GET** returns `{stig_host_id, metadata}` (empty object when unset). Respects workspace read and restricted grant `acl_host_ids` / `acl_labels` (same as host GET — out-of-scope host → **404**). **PATCH** requires workspace **write**; body `{metadata: {...}}` shallow-merges keys (set a key to JSON `null` to remove). `{replace: true, metadata: {...}}` replaces the entire object. `{clear: true}` removes all keys. Top-level `"metadata": null` returns **400** (use `clear: true` to wipe). Values must be JSON-serializable; non-object `metadata` returns **400**. Audit event `stig_host_metadata` on successful PATCH. |
 | PATCH/DELETE | `/stig_hosts/{id}` | — | PATCH fields optional; DELETE requires **stig_admin** |
+| GET | `/stig_collections/{id}/assets/csv` | `host_ids?` (comma-separated) | STIG Manager–style CSV export (`Name`, `Description`, `IP`, `FQDN`, `MAC`, `Non-Computing`, `STIGs`, `Labels`, `Metadata`). **200** `text/csv` with `Content-Disposition` and `X-Stig-Row-Count`. |
+| POST | `/stig_collections/{id}/assets/csv` | — | JSON `{csv, submit?}`. `submit=false` (default) validates rows; `submit=true` creates/updates hosts, assigns STIGs, creates missing labels. **200** report; **201** when `submit=true` and at least one host created. |
 
 DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 
@@ -756,6 +760,7 @@ DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 |--------|------|--------|
 | GET | `/stig_baselines` | List baseline headers visible to the caller (globals + readable workspace catalogs). Query `stig_collection_id?` → globals + that workspace only. |
 | GET | `/stig_baselines/hierarchy` | Benchmark-centric library (same visibility + optional `stig_collection_id` filter). Revisions include `stig_collection_id` / `scope`. |
+| GET | `/stig_baselines/compare` | Read-only revision diff. Query `from_baseline_id` + `to_baseline_id` (same `stig_id`). Returns summary counts plus `added`, `removed`, and `changed` rule rows; `changed` entries list `changed_fields` and per-field `from`/`to` text (library browse only). **404** when either baseline is not visible. |
 | GET | `/stig_baselines/by_stig/{stigId}` | One benchmark entry from hierarchy (404 when unknown) |
 | GET | `/stig_baselines/rule/{ruleKey}` | Stable rule detail by KV `_key` on `stig_baseline_rules` (includes parent baseline summary) |
 | GET | `/stig_baselines/{id}/rules/{ruleRef}` | Rule in baseline context. `ruleRef` may be the rule KV `_key`, composite `group_id\|rule_id` (V-id\|SV-id), or SV-id via `rule_id` / `rule_id_src`. A bare V-id is not accepted (avoids first-row scans). Optional query `group_id` disambiguates duplicate SV-ids in one baseline. Ambiguous matches return **404**. |
@@ -766,7 +771,7 @@ DELETE requires **stig_admin**. Writes require workspace **stig_write** access.
 | GET | `/stig_baselines/{id}/rules` | All rules for baseline |
 | GET/POST | `/stig_baselines/gc_orphan_rules` | Admin orphan rule GC. **GET** and default **POST** are dry-run reports (`orphan_count`, `orphans[]`, `skipped_no_key_count`). Destructive delete when **POST** with `dry_run=false` or `confirm=true` (query or JSON). Removes only deletable `stig_baseline_rules` rows (requires KV `_key`); orphans without `_key` are listed but skipped. Does **not** cascade to checklists or reviews. Audits only when `deleted_count > 0`. Requires **stig_admin** in handler (`restmap` admits GET/POST with read/write capabilities). |
 
-**Reserved path literals:** The first segment after `/stig_baselines/` cannot be used as a baseline KV `_key` for `GET /stig_baselines/{id}` when it equals `import`, `jobs`, `gc_orphan_rules`, `hierarchy`, `by_stig`, `rules`, `ccis`, `groups`, or `rule` (those paths are routed to catalog/import handlers). UCC `ucc_name` values should avoid these tokens.
+**Reserved path literals:** The first segment after `/stig_baselines/` cannot be used as a baseline KV `_key` for `GET /stig_baselines/{id}` when it equals `import`, `jobs`, `gc_orphan_rules`, `hierarchy`, `compare`, `by_stig`, `rules`, `ccis`, `groups`, or `rule` (those paths are routed to catalog/import handlers). UCC `ucc_name` values should avoid these tokens.
 | DELETE | `/stig_baselines/{id}` | Remove baseline + rules (UCC Configuration table or persist REST). |
 
 UCC Configuration **Baselines** tab is the management UI: list, import (including zip-of-zips), delete.

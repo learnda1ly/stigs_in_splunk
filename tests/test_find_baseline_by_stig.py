@@ -79,6 +79,21 @@ class TestFindBaselineByStig(unittest.TestCase):
         )
         self.assertEqual(found["_key"], "draft_rev")
 
+    @patch.object(baselines_svc, "list_baselines")
+    def test_latest_returns_none_when_only_drafts(self, mock_list):
+        mock_list.return_value = [
+            {
+                "_key": "draft_only",
+                "stig_id": "Example_STIG",
+                "version": "V9R9",
+                "benchmark_status": "draft",
+                "imported_at": 500.0,
+                "stig_collection_id": "",
+            },
+        ]
+        found = baselines_svc.find_baseline_by_stig(self.service, "Example_STIG")
+        self.assertIsNone(found)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,6 +23,7 @@ from stig_ucc_kv import _context_session, normalize_roles
 from importers.ingest import detect_format
 from services import baselines as baselines_svc
 from services import baseline_library as baseline_library_svc
+from services import baseline_revision_compare as baseline_revision_compare_svc
 from services import baseline_jobs as baseline_jobs_svc
 from services import checklists as checklists_svc
 from services import baseline_defaults as baseline_defaults_svc
@@ -39,6 +40,7 @@ from services import grants as grants_svc
 from services import labels as labels_svc
 from services import host_metadata as host_metadata_svc
 from services import hosts as hosts_svc
+from services import asset_csv as asset_csv_svc
 from services import assignment as assignment_svc
 from services import imports as imports_svc
 from services import reconcile as reconcile_svc
@@ -728,6 +730,64 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 return _error(str(exc), status=400)
             return _json_response(result)
 
+        if len(parts) == 3 and parts[1] == "assets" and parts[2] == "csv":
+            if method == "GET":
+                try:
+                    raw_ids = (query.get("host_ids") or "").strip()
+                    host_ids = (
+                        [x.strip() for x in raw_ids.split(",") if x.strip()]
+                        if raw_ids
+                        else None
+                    )
+                    result = asset_csv_svc.export_assets_csv(
+                        service, key, session, host_ids=host_ids
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+                filename = result.get("filename") or "stig_assets.csv"
+                headers = [
+                    ("Content-Type", "text/csv; charset=utf-8"),
+                    (
+                        "Content-Disposition",
+                        f'attachment; filename="{filename}"',
+                    ),
+                ]
+                row_count = result.get("row_count")
+                if row_count is not None:
+                    headers.append(("X-Stig-Row-Count", str(row_count)))
+                return {
+                    "payload": result.get("content") or "",
+                    "status": 200,
+                    "headers": headers,
+                }
+            if method in ("POST", "PUT"):
+                body = _body_json(payload)
+                csv_text = body.get("csv") or body.get("content") or ""
+                if not str(csv_text).strip():
+                    return _error("csv field is required in JSON body", status=400)
+                submit = bool(body.get("submit"))
+                try:
+                    result = asset_csv_svc.import_assets_csv(
+                        service,
+                        key,
+                        str(csv_text),
+                        username,
+                        session,
+                        submit=submit,
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+                except ValueError as exc:
+                    return _error(str(exc), status=400)
+                created = int((result.get("summary") or {}).get("created") or 0)
+                status = 201 if result.get("submitted") and created else 200
+                return _json_response(result, status=status)
+            return _error("method not allowed", status=405)
+
         if len(parts) == 2 and parts[1] == "poam":
             if method != "GET":
                 return _error("method not allowed", status=405)
@@ -1256,6 +1316,26 @@ class StigRestHandler(PersistentServerConnectionApplication):
                     stig_collection_id=scope_filter,
                 )
             )
+
+        if parts == ["compare"]:
+            if method != "GET":
+                return _error("method not allowed", status=405)
+            from_id = (query.get("from_baseline_id") or "").strip()
+            to_id = (query.get("to_baseline_id") or "").strip()
+            if not from_id or not to_id:
+                return _error(
+                    "from_baseline_id and to_baseline_id query parameters are required",
+                    status=400,
+                )
+            if from_id not in visible_ids or to_id not in visible_ids:
+                return _error("not found", status=404)
+            try:
+                report = baseline_revision_compare_svc.compare_baselines(
+                    service, from_id, to_id
+                )
+            except KeyError:
+                return _error("not found", status=404)
+            return _json_response(report)
 
         if len(parts) >= 2 and parts[0] == "by_stig":
             if method != "GET":

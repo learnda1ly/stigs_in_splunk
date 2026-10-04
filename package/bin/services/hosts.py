@@ -137,6 +137,7 @@ def create_host(service, body: Dict[str, Any], username: str, session: Dict[str,
             "_key": key,
             "stig_collection_id": collection_id,
             "hostname": body.get("hostname") or "",
+            "description": body.get("description") or "",
             "ip_address": body.get("ip_address") or "",
             "fqdn": body.get("fqdn") or "",
             "mac_address": body.get("mac_address") or "",
@@ -299,6 +300,7 @@ def update_host(
         patch["stig_collection_id"] = dest_collection
         for field in (
             "hostname",
+            "description",
             "ip_address",
             "fqdn",
             "mac_address",
@@ -325,6 +327,7 @@ def update_host(
             field in body
             for field in (
                 "hostname",
+                "description",
                 "ip_address",
                 "fqdn",
                 "mac_address",
@@ -347,6 +350,7 @@ def update_host(
     workspace_for_labels = existing.get("stig_collection_id") or ""
     for field in (
         "hostname",
+        "description",
         "ip_address",
         "fqdn",
         "mac_address",

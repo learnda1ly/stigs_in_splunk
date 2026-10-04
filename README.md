@@ -76,7 +76,7 @@ Default views are **SplunkUI** (React / `@splunk/react-ui`) pages:
 
 - **STIG Editor** — workspace + host filters, finding list, status, details, comments
 - **Collection review** — one baseline rule across all hosts in a workspace (batch save)
-- **STIG library** — browse imported benchmarks grouped by `stig_id`, revision metadata, and rule detail (`GET /stig_baselines/hierarchy` and related persist paths). The SplunkUI table shows the first **200** rules per revision; use `GET /stig_baselines/{id}/rules` for the full list.
+- **STIG library** — browse imported benchmarks grouped by `stig_id`, revision metadata, rule detail, and **compare two revisions** (`GET /stig_baselines/compare?from_baseline_id=&to_baseline_id=`). The SplunkUI table shows the first **200** rules per revision; use `GET /stig_baselines/{id}/rules` for the full list.
 - **Import** — checklists (`.ckl` / `.cklb` / `.zip` archive → HEC and KV; multi-file queue in UI) and STIG baselines (single XCCDF, CKL/CKLB, or a DISA product/quarterly zip via chunked persist REST `/stig_baselines/jobs`) on one page with **Checklists** and **Baselines** sections
 - **Export** — CKL / CKLB / XCCDF results download; bulk zip by selection or workspace archive (`POST /stig_collections/{id}/archive/ckl|cklb|xccdf`)
 - **Asset labels** — workspace label catalog (create/rename/delete) and host assignment (per-host toggles and bulk assign/remove); **Workspace grants** shows label names when picking ACL scope
@@ -275,7 +275,8 @@ SplunkUI **Collection dashboard** (`stig_collection_dashboard_ui`) shows workspa
 
 REST (requires `stig_read` and workspace access):
 
-- `GET /stig_collections/{id}/metrics` — counts by review status and severity, plus completion summary.
+- `GET /stig_collections/{id}/metrics` — counts by review status and severity, plus completion summary, oldest/newest review ages (`minTs` / `maxTs`), and last workflow change (`maxTouch`).
+- `GET /stig_collections/{id}/metrics/export` — grouped metrics CSV/JSON (collection, asset, STIG, label, ungrouped; summary or detail with automated-tool splits). See STIG Manager user guide §2.4.1.2.
 - `GET /stig_collections/{id}/findings` — paginated findings (default `status=open`; optional `severity`, `host_id`, `limit`, `offset`).
 - `GET /stig_collections/{id}/findings/aggregate` — governance-open finding counts by `group_id`, `rule_id`, and CCI (from baseline rules).
 - `GET /stig_collections/{id}/unreviewed/assets` — per-host unreviewed (`status=not_reviewed`) counts with per-baseline breakdown. Ignores findings `status` query params.
