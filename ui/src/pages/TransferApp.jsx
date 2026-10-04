@@ -34,6 +34,7 @@ export default function TransferApp() {
     const [cloneName, setCloneName] = useState("");
     const [cloneCopyReviews, setCloneCopyReviews] = useState(true);
     const [cloneCopyGrants, setCloneCopyGrants] = useState(false);
+    const [clonePinAllDefaults, setClonePinAllDefaults] = useState(false);
     // Clone UI always uses API defaults (full host/checklist copy).
     const cloneIncludesHostsAndLabels = true;
     const [showCloneForm, setShowCloneForm] = useState(false);
@@ -106,6 +107,24 @@ export default function TransferApp() {
         setSelectedHostIds(next);
     }
 
+    async function pollCloneJob(collectionId, jobId) {
+        const deadline = Date.now() + 15 * 60 * 1000;
+        while (Date.now() < deadline) {
+            const job = await apiGet(
+                "stig_collections/" + collectionId + "/jobs/" + jobId
+            );
+            const status = (job && job.status) || "";
+            if (status === "succeeded") {
+                return (job && job.result) || {};
+            }
+            if (status === "failed") {
+                throw new Error((job && job.error) || "Clone job failed");
+            }
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+        throw new Error("Clone job timed out");
+    }
+
     async function runClone() {
         setError("");
         setInfo("");
@@ -130,20 +149,28 @@ export default function TransferApp() {
             return;
         }
         setBusy(true);
+        setInfo("Cloning workspace…");
         try {
-            const result = await apiFetch(
+            const started = await apiFetch(
                 "stig_collections/" + sourceId + "/clone",
                 {
                     method: "POST",
                     body: {
                         name,
+                        async: true,
                         copy_hosts: true,
                         copy_labels: true,
                         copy_reviews: cloneCopyReviews,
                         copy_grants: cloneCopyGrants,
+                        pin_all_stigs_to_defaults: clonePinAllDefaults,
                     },
                 }
             );
+            const jobId = started && started.job_id;
+            if (!jobId) {
+                throw new Error("Server did not return a clone job id");
+            }
+            const result = await pollCloneJob(sourceId, jobId);
             const summary = (result && result.summary) || {};
             const colls = await apiGet("stig_collections");
             setWorkspaces(colls || []);
@@ -158,7 +185,13 @@ export default function TransferApp() {
                     Number(summary.checklists || 0) +
                     " checklists, " +
                     Number(summary.reviews || 0) +
-                    " reviews."
+                    " reviews" +
+                    (Number(summary.pinned_checklists || 0)
+                        ? ", " +
+                          Number(summary.pinned_checklists) +
+                          " checklists pinned to source defaults"
+                        : "") +
+                    "."
             );
             setCloneName("");
             setShowCloneForm(false);
@@ -317,6 +350,17 @@ export default function TransferApp() {
                                     selected={cloneCopyReviews}
                                     onClick={() =>
                                         setCloneCopyReviews((v) => !v)
+                                    }
+                                />
+                            </ControlGroup>
+                            <ControlGroup
+                                label="Pin STIGs to source defaults"
+                                help="Rewrites cloned checklists to the source workspace default baseline map."
+                            >
+                                <Switch
+                                    selected={clonePinAllDefaults}
+                                    onClick={() =>
+                                        setClonePinAllDefaults((v) => !v)
                                     }
                                 />
                             </ControlGroup>

@@ -20,6 +20,8 @@ from models import (
     now_epoch,
     parse_json_field,
 )
+from services import baseline_defaults as baseline_defaults_svc
+from services import baselines as baselines_svc
 from services import collection_metadata as collection_metadata_svc
 from services import collections as collections_svc
 from services import grants as grants_svc
@@ -35,6 +37,7 @@ DEFAULT_COPY_LABELS = True
 DEFAULT_COPY_METADATA = True
 DEFAULT_COPY_BASELINE_DEFAULTS = True
 DEFAULT_COPY_REVIEW_REQUIREMENTS = True
+DEFAULT_PIN_ALL_STIGS_TO_DEFAULTS = False
 
 _COLLECTION_SKIP_KEYS = frozenset(
     {"_key", "created_at", "updated_at", "created_by", "updated_by", "is_default"}
@@ -74,6 +77,9 @@ def _raw_flags(body: Dict[str, Any]) -> Dict[str, bool]:
         "copy_import_options": _flag(
             body, "copy_import_options", DEFAULT_COPY_REVIEW_REQUIREMENTS
         ),
+        "pin_all_stigs_to_defaults": _flag(
+            body, "pin_all_stigs_to_defaults", DEFAULT_PIN_ALL_STIGS_TO_DEFAULTS
+        ),
     }
 
 
@@ -102,6 +108,12 @@ def parse_clone_options(body: Dict[str, Any]) -> Tuple[Dict[str, bool], List[str
         copy_reviews = True
     if isinstance(body.get("options"), dict) and "grants" in body["options"]:
         copy_grants = collections_svc.parse_cascade_flag(body["options"].get("grants"))
+    pin_all_stigs_to_defaults = raw["pin_all_stigs_to_defaults"]
+    options = body.get("options")
+    if isinstance(options, dict) and "pinAllStigsToDefaults" in options:
+        pin_all_stigs_to_defaults = collections_svc.parse_cascade_flag(
+            options.get("pinAllStigsToDefaults")
+        )
 
     coerced: List[str] = []
     before_checklists = copy_checklists
@@ -117,6 +129,14 @@ def parse_clone_options(body: Dict[str, Any]) -> Tuple[Dict[str, bool], List[str
     if before_reviews and not copy_reviews:
         coerced.append("copy_reviews forced false because copy_checklists is false")
 
+    before_baseline_defaults = copy_baseline_defaults
+    if pin_all_stigs_to_defaults:
+        copy_baseline_defaults = True
+    if pin_all_stigs_to_defaults and not before_baseline_defaults:
+        coerced.append(
+            "copy_baseline_defaults forced true because pin_all_stigs_to_defaults is true"
+        )
+
     opts = {
         "copy_hosts": copy_hosts,
         "copy_checklists": copy_checklists,
@@ -127,6 +147,7 @@ def parse_clone_options(body: Dict[str, Any]) -> Tuple[Dict[str, bool], List[str
         "copy_baseline_defaults": copy_baseline_defaults,
         "copy_review_requirements": copy_review_requirements,
         "copy_import_options": copy_import_options,
+        "pin_all_stigs_to_defaults": pin_all_stigs_to_defaults,
     }
     return opts, coerced
 
@@ -144,6 +165,14 @@ def validate_clone_request(
         raise ValueError("copy_checklists requires copy_hosts true")
     if _flag_explicit(body, "copy_reviews") and raw["copy_reviews"] and not opts["copy_reviews"]:
         raise ValueError("copy_reviews requires copy_hosts and copy_checklists true")
+    if opts["pin_all_stigs_to_defaults"] and not opts["copy_checklists"]:
+        if _flag_explicit(body, "pin_all_stigs_to_defaults") or (
+            isinstance(body.get("options"), dict)
+            and "pinAllStigsToDefaults" in body["options"]
+        ):
+            raise ValueError(
+                "pin_all_stigs_to_defaults requires copy_checklists true"
+            )
 
     if not opts["copy_grants"]:
         return
@@ -196,6 +225,45 @@ def _unique_workspace_name(service, desired: str) -> str:
     raise ValueError("could not allocate unique workspace name")
 
 
+def _pin_cloned_checklists_to_source_defaults(
+    service,
+    source_collection_id: str,
+    checklist_map: Dict[str, str],
+    username: str,
+    ts: int,
+) -> int:
+    """Set each cloned checklist baseline to the source workspace default pin map."""
+    if not checklist_map:
+        return 0
+    cl_coll = kv_client.get_collection(service, KV_STIG_CHECKLISTS)
+    pinned = 0
+    for _old_cl, new_cl in checklist_map.items():
+        rec = kv_client.get_by_key(cl_coll, new_cl)
+        if not rec:
+            continue
+        baseline_id = (rec.get("baseline_id") or "").strip()
+        baseline = baselines_svc.get_baseline(service, baseline_id) if baseline_id else None
+        if not baseline:
+            continue
+        stig_id = str(baseline.get("stig_id") or "")
+        xccdf_id = str(baseline.get("xccdf_benchmark_id") or "")
+        default_bid = baseline_defaults_svc.lookup_default_baseline_id(
+            service, source_collection_id, stig_id, xccdf_id
+        )
+        if not default_bid:
+            continue
+        if default_bid == baseline_id:
+            pinned += 1
+            continue
+        patched = dict(rec)
+        patched["baseline_id"] = default_bid
+        patched["updated_at"] = ts
+        patched["updated_by"] = username
+        kv_client.update_record(cl_coll, new_cl, kv_record(patched))
+        pinned += 1
+    return pinned
+
+
 def _clone_row(
     rec: Dict[str, Any],
     *,
@@ -212,6 +280,27 @@ def _clone_row(
     row["created_by"] = username
     row["updated_by"] = username
     return kv_record(row)
+
+
+def validate_clone_job_request(
+    service,
+    source_collection_id: str,
+    body: Dict[str, Any],
+    session: Dict[str, Any],
+) -> None:
+    """ACL and flag validation for async clone jobs (no destination created)."""
+    src_id = (source_collection_id or "").strip()
+    if not src_id:
+        raise ValueError("source workspace id is required")
+    grants_svc.require_workspace_read(service, src_id, session)
+    if not access.user_has_stig_write(session):
+        raise PermissionError("stig_write required to clone a workspace")
+    source = collections_svc.get_collection(service, src_id)
+    if not source:
+        raise KeyError(src_id)
+    opts, _coerced = parse_clone_options(body or {})
+    source_grants = grants_svc.query_grants(service, src_id)
+    validate_clone_request(body or {}, opts, source_grants)
 
 
 def clone_collection(
@@ -231,10 +320,7 @@ def clone_collection(
     if not src_id:
         raise ValueError("source workspace id is required")
 
-    grants_svc.require_workspace_read(service, src_id, session)
-    if not access.user_has_stig_write(session):
-        raise PermissionError("stig_write required to clone a workspace")
-
+    validate_clone_job_request(service, src_id, body, session)
     source = collections_svc.get_collection(service, src_id)
     if not source:
         raise KeyError(src_id)
@@ -270,6 +356,7 @@ def clone_collection(
         "checklists": 0,
         "reviews": 0,
         "grants": 0,
+        "pinned_checklists": 0,
     }
     label_map: Dict[str, str] = {}
     host_map: Dict[str, str] = {}
@@ -384,6 +471,15 @@ def clone_collection(
                 )
                 checklist_map[rec["_key"]] = stored["_key"]
                 summary["checklists"] += 1
+
+        if opts["pin_all_stigs_to_defaults"] and checklist_map:
+            summary["pinned_checklists"] = _pin_cloned_checklists_to_source_defaults(
+                service,
+                src_id,
+                checklist_map,
+                username,
+                ts,
+            )
 
         if opts["copy_reviews"]:
             reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)

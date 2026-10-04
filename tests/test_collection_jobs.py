@@ -237,7 +237,66 @@ class TestCollectionJobsAsync(unittest.TestCase):
         )
 
 
+    @patch("services.collection_jobs.kv_client.connect")
+    @patch("services.collection_jobs.collection_clone_svc.clone_collection")
+    @patch("services.collection_jobs.collection_clone_svc.validate_clone_job_request")
+    def test_create_clone_job_succeeds(
+        self, mock_validate, mock_clone, mock_connect
+    ):
+        mock_connect.return_value = self.service
+        mock_clone.return_value = {
+            "stig_collection_id": "ws9",
+            "summary": {"hosts": 2},
+            "options": {"pin_all_stigs_to_defaults": True},
+        }
+        created = jobs.create_clone_job(
+            self.service,
+            "ws1",
+            {"name": "Clone", "pin_all_stigs_to_defaults": True},
+            self.session,
+            "alice",
+        )
+        self.assertEqual(created["operation"], "clone")
+        self.assertIn(created["status"], ("pending", "running", "succeeded"))
+        job_id = created["job_id"]
+
+        deadline = time.time() + 3.0
+        polled = created
+        while time.time() < deadline:
+            polled = jobs.get_job(job_id, "ws1", "alice")
+            if polled["status"] in ("succeeded", "failed"):
+                break
+            time.sleep(0.05)
+
+        self.assertEqual(polled["status"], "succeeded")
+        self.assertEqual(polled["result"]["stig_collection_id"], "ws9")
+        mock_validate.assert_called_once()
+        mock_clone.assert_called_once()
+
+
 class TestCollectionJobsRest(unittest.TestCase):
+    @patch.object(stig_rest_handler.collection_jobs_svc, "create_clone_job")
+    def test_rest_create_clone_job(self, mock_create):
+        mock_create.return_value = {
+            "job_id": "abc",
+            "status": "pending",
+            "operation": "clone",
+            "result": None,
+        }
+        handler = stig_rest_handler.StigRestHandler("", "")
+        payload = {
+            "method": "POST",
+            "session": _session(),
+            "rest_path": "stig_collections/ws1/jobs",
+            "payload": json.dumps(
+                {"operation": "clone", "name": "Copy", "async": True}
+            ),
+        }
+        with patch.object(stig_rest_handler.kv_client, "connect", return_value=MagicMock()):
+            resp = handler.handle(json.dumps(payload))
+        self.assertEqual(resp["status"], 201)
+        mock_create.assert_called_once()
+
     @patch.object(stig_rest_handler.collection_jobs_svc, "create_archive_export_job")
     def test_rest_create_job(self, mock_create):
         mock_create.return_value = {
