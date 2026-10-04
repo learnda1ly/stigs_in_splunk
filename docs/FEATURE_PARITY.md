@@ -29,9 +29,9 @@ Priorities and sizes match the existing legend: **P0** blocks single-collection 
 
 | Status | Count | Notes |
 |--------|------:|-------|
-| done | 28 | Core assessor/admin path; see “Still done” table |
+| done | 29 | Core assessor/admin path; see “Still done” table |
 | partial | 5 | Material doc gaps on existing paths |
-| missing | 5 | No implementation found |
+| missing | 4 | No implementation found |
 | n/a | 8 | Platform-owned or **intentionally out of scope** |
 | unverified | 3 | Listed at end of doc |
 
@@ -57,7 +57,7 @@ Unpinned catalog resolution now matches STIG Manager [§2.9.3.2](https://stig-ma
 | Review attachments | not a row | **missing** | No review image store. The word “attachment” in the REST handler is not this feature. Docs: [§2.6.5.2 and §2.7.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Asset CSV import/export | not a row | **done** | `GET/POST /stig_collections/{id}/assets/csv` and SplunkUI **Hosts** import/export (STIG Manager columns). Docs: [§2.9.2.2–2.9.2.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Copy results to another collection | not a row | **missing** | `POST .../export-to/{dst}` **moves** hosts (`collection_transfer.py`). It does not copy results onto a same-named asset in the destination (100-asset cap in the docs). Docs: [§2.9.2.5.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Multi-STIG `.ckl` in an archive | not a row | **missing** | Export is one checklist file per host+baseline (`exporters/ckl.py`). Docs offer single-STIG vs multi-STIG `.ckl` vs XCCDF. Docs: [§2.9.2.5.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Multi-STIG `.ckl` in an archive | not a row | **done** | `POST .../archive/ckl-multi` (and bulk `format=ckl-multi`) emit one `.ckl` per host with multiple `iSTIG` blocks; single-STIG `archive/ckl` unchanged. Docs: [§2.9.2.5.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Unsubmit | not a row | **done** | `submitted` → `draft` via `unsubmit` (`review_workflow.py`, `POST .../unsubmit`, batch `action: unsubmit`); requires `stig_write` like submit. Accept/reject unchanged. Editor and collection review expose Unsubmit. Docs: [§2.6.3.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Review history retention | done (append + GET) | **done** | Append-only KV history. Per-workspace `review_history_config` on `stig_collections` (`enabled`, `max_records_per_review` default **15**, max **15**); REST `GET/PATCH .../review_history_config`. Write-time trim per review on insert; read-time cap when listing. `limit` on history GET remains query page size only (default 100, max 500). Docs: [§2.9.1.4.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | `.ckl` web/database asset identity | not a row | **done** | `WEB_DB_SITE` / `WEB_DB_INSTANCE` stored on hosts/checklists. Ingest host match in `apply.py` / `hosts.py` uses hostname + site + instance when `WEB_OR_DATABASE` / `is_web_database` is true; ordinary hosts still match on hostname only. Docs: [§2.10](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
@@ -110,7 +110,7 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | Review image attachments | missing | Not in review model |
 | Asset CSV | done | `services/asset_csv.py`, `exporters/asset_csv.py`, Hosts UI |
 | Copy results across collections | missing | export-to moves the host |
-| Multi-STIG CKL | missing | One file per checklist |
+| Multi-STIG CKL | done | `ckl-multi` archive groups by host (`exporters/ckl.py` `export_ckl_multi_stig`) |
 | History retention cap / off switch | done | `review_history_config` on workspace; trim on write |
 | Web/DB asset match | done | Hostname + site + instance when web/DB |
 | Effective access preview | done | `effective_access_for_grant` / principal query; Grants UI preview panel |
@@ -163,11 +163,11 @@ The wide end is aging actions. That path can corrupt reviews if wrong.
 | Review image attachments | M | 4–8 |
 | Copy results to another collection (not a move) | M | 4–7 |
 | Asset CSV import/export | — | **Done** |
-| Multi-STIG CKL in the zip | S | 2–4 |
+| Multi-STIG CKL in the zip | — | **Done** — `archive/ckl-multi`, `export_ckl_multi_stig` |
 | Unmapped-review cleanup job | — | **Done** — `GET/POST /stig_reviews/gc_unmapped` |
 | Clone: pin-all switch + async status | — | **Done** — `pin_all_stigs_to_defaults`, async clone jobs |
-| History cap and disable | S | 1–2 |
-| Replace-existing revision on library import | — | — | **Done** — Import UI + REST |
+| History cap and disable | — | **Done** — `review_history_config` |
+| Replace-existing revision on library import | — | **Done** — Import UI + REST |
 **P2 total: about 24–43 engineer-days.**
 
 Attachments and cross-collection copy dominate that range (KV size, ACL, partial failure).

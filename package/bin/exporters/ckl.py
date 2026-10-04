@@ -212,36 +212,27 @@ def dumps_ckl(root: ET.Element) -> str:
     )
 
 
-def export_ckl(
-    checklist: Dict[str, Any],
-    baseline: Dict[str, Any],
-    rules: List[Dict[str, Any]],
-    reviews_by_group: Any,
-    host: Dict[str, Any],
+def _asset_target_key(
+    checklist: Dict[str, Any], baseline: Dict[str, Any]
 ) -> str:
     raw_target = parse_json_field(checklist.get("target_data"), default={}) or {}
-    target = viewer_target_data(checklist, host)
-    target_key = _text(
+    return _text(
         raw_target.get("target_key")
         or raw_target.get("TARGET_KEY")
         or baseline.get("target_key")
         or ""
     )
-    stig_id = resolve_stig_id(baseline)
-    title = _text(baseline.get("title") or baseline.get("stig_name") or "")
-    version = _text(baseline.get("version") or "")
-    releaseinfo = _text(baseline.get("release_info") or "")
-    stig_uuid = _text(baseline.get("uuid") or "") or stable_uuid(
-        "stig", baseline.get("_key") or stig_id
-    )
-    istig_uuid = stable_uuid(
-        "istig",
-        checklist.get("_key") or checklist.get("id"),
-        baseline.get("_key") or stig_id,
-    )
-    stigref = _stig_ref(baseline)
 
-    checklist_el = ET.Element("CHECKLIST")
+
+def _append_asset(
+    checklist_el: ET.Element,
+    checklist: Dict[str, Any],
+    baseline: Dict[str, Any],
+    host: Dict[str, Any],
+) -> str:
+    raw_target = parse_json_field(checklist.get("target_data"), default={}) or {}
+    target = viewer_target_data(checklist, host)
+    target_key = _asset_target_key(checklist, baseline)
     asset = ET.SubElement(checklist_el, "ASSET")
     asset_values = {
         "ROLE": target.get("role") or "None",
@@ -260,9 +251,33 @@ def export_ckl(
     }
     for tag in ASSET_TAGS:
         _add(asset, tag, asset_values[tag])
+    return target_key
 
-    stigs = ET.SubElement(checklist_el, "STIGS")
-    istig = ET.SubElement(stigs, "iSTIG")
+
+def _append_istig(
+    stigs_el: ET.Element,
+    checklist: Dict[str, Any],
+    baseline: Dict[str, Any],
+    rules: List[Dict[str, Any]],
+    reviews_by_group: Any,
+    target_key: str,
+) -> None:
+    raw_target = parse_json_field(checklist.get("target_data"), default={}) or {}
+    stig_id = resolve_stig_id(baseline)
+    title = _text(baseline.get("title") or baseline.get("stig_name") or "")
+    version = _text(baseline.get("version") or "")
+    releaseinfo = _text(baseline.get("release_info") or "")
+    stig_uuid = _text(baseline.get("uuid") or "") or stable_uuid(
+        "stig", baseline.get("_key") or stig_id
+    )
+    istig_uuid = stable_uuid(
+        "istig",
+        checklist.get("_key") or checklist.get("id"),
+        baseline.get("_key") or stig_id,
+    )
+    stigref = _stig_ref(baseline)
+
+    istig = ET.SubElement(stigs_el, "iSTIG")
     stig_info = ET.SubElement(istig, "STIG_INFO")
     info_values = {
         "version": version,
@@ -340,4 +355,44 @@ def export_ckl(
         for tag in VULN_TRAILING:
             _add(vuln, tag, trailing[tag])
 
+
+def export_ckl(
+    checklist: Dict[str, Any],
+    baseline: Dict[str, Any],
+    rules: List[Dict[str, Any]],
+    reviews_by_group: Any,
+    host: Dict[str, Any],
+) -> str:
+    checklist_el = ET.Element("CHECKLIST")
+    target_key = _append_asset(checklist_el, checklist, baseline, host)
+    stigs = ET.SubElement(checklist_el, "STIGS")
+    _append_istig(stigs, checklist, baseline, rules, reviews_by_group, target_key)
+    return dumps_ckl(checklist_el)
+
+
+def export_ckl_multi_stig(
+    bundles: List[Dict[str, Any]],
+    host: Dict[str, Any],
+) -> str:
+    """One CHECKLIST with multiple iSTIG blocks (STIG Manager multi-STIG .ckl)."""
+    if not bundles:
+        raise ValueError("at least one checklist is required for multi-STIG CKL export")
+    checklist_el = ET.Element("CHECKLIST")
+    first = bundles[0]
+    target_key = _append_asset(
+        checklist_el,
+        first["checklist"],
+        first["baseline"],
+        host,
+    )
+    stigs = ET.SubElement(checklist_el, "STIGS")
+    for bundle in bundles:
+        _append_istig(
+            stigs,
+            bundle["checklist"],
+            bundle["baseline"],
+            bundle["rules"],
+            bundle["reviews"],
+            target_key,
+        )
     return dumps_ckl(checklist_el)

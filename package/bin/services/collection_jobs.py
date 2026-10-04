@@ -114,8 +114,10 @@ def _normalize_format(fmt: str) -> str:
     text = (fmt or "").strip().lower().replace("_", "-")
     if text in ("xccdfresults", "xccdf-results"):
         return "xccdf"
+    if text in ("ckl-multi", "cklmulti", "multi-ckl", "multickl"):
+        return "ckl-multi"
     if text not in ("ckl", "cklb", "xccdf"):
-        raise ValueError("format must be ckl, cklb, or xccdf")
+        raise ValueError("format must be ckl, ckl-multi, cklb, or xccdf")
     return text
 
 

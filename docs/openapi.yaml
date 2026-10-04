@@ -871,10 +871,10 @@ paths:
         required: true
         schema:
           type: string
-          enum: [ckl, cklb, xccdf]
+          enum: [ckl, ckl-multi, cklb, xccdf]
     post:
       tags: [Checklists]
-      summary: Export workspace checklists as zip archive (CKL, CKLB, or XCCDF results XML)
+      summary: Export workspace checklists as zip archive (CKL, multi-STIG CKL, CKLB, or XCCDF results XML)
       operationId: exportCollectionArchive
       x-splunk-capability: stig_write
       requestBody:
@@ -921,7 +921,7 @@ paths:
                       default: archive_export
                     format:
                       type: string
-                      enum: [ckl, cklb, xccdf]
+                      enum: [ckl, ckl-multi, cklb, xccdf]
                     host_id:
                       type: string
                     baseline_id:
