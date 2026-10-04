@@ -9,9 +9,9 @@ import {
 import { useGovernanceEnabled } from "../../governance/settings";
 
 export default function CapabilityGrantBanner() {
-    const capabilities = useSessionCapabilities();
+    const { canStigWrite } = useSessionCapabilities();
     const governanceEnabled = useGovernanceEnabled();
-    if (!sessionMissingGrantCapabilities(capabilities)) {
+    if (!sessionMissingGrantCapabilities(canStigWrite)) {
         return null;
     }
     return (

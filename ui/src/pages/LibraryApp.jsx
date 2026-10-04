@@ -16,6 +16,8 @@ import {
 } from "../api";
 import WorkspaceSelect from "../components/WorkspaceSelect";
 import CreateChecklistModal from "../components/CreateChecklistModal";
+import BaselineImportPanel from "./BaselineImportPanel";
+import { useCanStigAdmin } from "../components/onboarding/useSessionCapabilities";
 import { Brand, BrandKicker, Header, PagePad, Shell } from "../layout";
 
 const textBlockStyle = {
@@ -228,6 +230,7 @@ function RuleDetailPanel({ detail }) {
 }
 
 export default function LibraryApp() {
+    const canStigAdmin = useCanStigAdmin();
     const [hierarchy, setHierarchy] = useState(null);
     const [selectedStig, setSelectedStig] = useState("");
     const [selectedBaseline, setSelectedBaseline] = useState("");
@@ -407,6 +410,18 @@ export default function LibraryApp() {
                 <Button label="Refresh" onClick={loadHierarchy} />
             </Header>
             <PagePad>
+                {canStigAdmin ? (
+                    <div style={{ marginBottom: 24 }} id="add-revisions">
+                        <Heading level={3} style={{ marginTop: 0 }}>
+                            Add revisions
+                        </Heading>
+                        <p style={{ maxWidth: 820, fontSize: 13 }}>
+                            Import XCCDF, CKL, CKLB, or DISA zip files to extend the STIG catalog.
+                            Requires <code>stig_admin</code>.
+                        </p>
+                        <BaselineImportPanel />
+                    </div>
+                ) : null}
                 {error ? <Message appearance="error">{error}</Message> : null}
                 {loading ? (
                     <WaitSpinner size="large" />
@@ -416,13 +431,22 @@ export default function LibraryApp() {
                             No STIG baselines are in the catalog yet. Import XCCDF, CKL, or CKLB
                             files to browse rules and create checklists.
                         </p>
-                        <Button
-                            appearance="primary"
-                            label="Import baselines"
-                            onClick={() => {
-                                window.location.assign(viewUrl("stig_import_ui") + "#baselines");
-                            }}
-                        />
+                        {canStigAdmin ? (
+                            <Button
+                                appearance="primary"
+                                label="Add revisions"
+                                onClick={() => {
+                                    document
+                                        .getElementById("add-revisions")
+                                        ?.scrollIntoView({ behavior: "smooth" });
+                                }}
+                            />
+                        ) : (
+                            <Message appearance="info" style={{ marginTop: 8 }}>
+                                Ask a <code>stig_admin</code> to import baseline revisions using
+                                Add revisions above.
+                            </Message>
+                        )}
                         <p style={{ marginBottom: 0, fontSize: 13 }}>
                             Baselines are global; workspace filters only affect checklist scope.
                         </p>

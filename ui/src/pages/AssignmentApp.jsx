@@ -222,7 +222,8 @@ export default function AssignmentApp() {
                     <p>
                         HEC and scan ingest need a workspace before findings land in the
                         editor. Unless <code>collectionId</code> on the event is trusted
-                        (Configuration → Editor &amp; ingest), routing uses this order:
+                        (Admin → Workspaces and settings → Editor &amp; ingest), routing uses
+                        this order:
                     </p>
                     <ol>
                         <li>
@@ -241,7 +242,7 @@ export default function AssignmentApp() {
                     <p>
                         Use <strong>Preview</strong> below with a sample finding JSON to
                         verify routing before changing production senders. Create or edit
-                        workspaces under <strong>Administration → Workspaces</strong> (first
+                        workspaces under <strong>Admin → Workspaces and settings</strong> (first
                         tab); editor and HEC settings are on the <strong>Editor &amp; ingest</strong>
                         tab on the same page.
                     </p>

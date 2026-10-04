@@ -10,6 +10,7 @@ const SELECTORS = {
   workspaceFilterCombobox: 'role=combobox (library workspace filter; option "All visible catalogs")',
   benchmarksTable: 'role=table with columnheader "STIG / benchmark"',
   benchmarkStigCell: 'benchmarks table strong text (stig_id)',
+  benchmarkFileInput: '#add-revisions input[type="file"] >> nth=1',
 };
 
 class LibraryPage {
@@ -66,6 +67,34 @@ class LibraryPage {
     });
     if (title) {
       await expect(table.getByText(title)).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
+    }
+  }
+
+  benchmarkImportInput() {
+    return this.page.locator(SELECTORS.benchmarkFileInput);
+  }
+
+  /**
+   * @param {string} absolutePath
+   */
+  async uploadBenchmarkFile(absolutePath) {
+    await expect(this.page.getByRole('heading', { name: 'Add revisions' })).toBeVisible({
+      timeout: CONTROL_TIMEOUT_MS,
+    });
+    await this.benchmarkImportInput().setInputFiles(absolutePath);
+  }
+
+  /**
+   * @param {string} [label] STIG title or id expected in the success banner
+   */
+  async expectImportSucceeded(label) {
+    await expect(this.page.getByText(/Import failed/i)).toHaveCount(0);
+    const banner = this.page
+      .getByText(/^Imported baseline .+\.$|^Matched existing baseline \(.+\)\.$/)
+      .first();
+    await expect(banner).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });
+    if (label) {
+      await expect(banner).toContainText(label, { timeout: CONTROL_TIMEOUT_MS });
     }
   }
 }

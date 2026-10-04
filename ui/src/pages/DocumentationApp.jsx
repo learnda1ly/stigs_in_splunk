@@ -67,7 +67,7 @@ export default function DocumentationApp() {
                 <DocSection id="overview" title="1. Overview">
                     <p>
                         Use STIG in Splunk to import Manual STIG baselines, register hosts per
-                        workspace, assign baselines to hosts, record findings in the STIG Editor,
+                        workspace, assign baselines to hosts, record findings in Assess,
                         and report from collection dashboards or export CKL/CKLB/XCCDF. Automation
                         can push scan results via REST or HEC; scheduled reconcile keeps search
                         indexes aligned with KV.
@@ -204,7 +204,7 @@ export default function DocumentationApp() {
                         </li>
                         <li>
                             <strong>Assign STIG</strong> —{" "}
-                            <Link to={viewUrl("stig_editor_ui")}>STIG Editor</Link>: select workspace
+                            <Link to={viewUrl("stig_editor_ui")}>Assess</Link>: select workspace
                             and host, then use <strong>Assign STIG</strong> (shown when the host has
                             no checklist yet). Alternate: create a checklist from{" "}
                             <Link to={viewUrl("stig_library_ui")}>STIG library</Link>.
@@ -215,9 +215,9 @@ export default function DocumentationApp() {
                             <strong>Submit</strong> when your workflow requires review).
                         </li>
                         <li>
-                            <strong>Collection dashboard</strong> — Open{" "}
+                            <strong>Reports</strong> — Open{" "}
                             <Link to={viewUrl("stig_collection_dashboard_ui")}>
-                                Collection dashboard
+                                Reports
                             </Link>{" "}
                             for metrics, findings report, and POA&amp;M export after data exists.
                         </li>

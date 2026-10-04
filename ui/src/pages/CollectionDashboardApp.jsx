@@ -19,6 +19,10 @@ import {
 } from "../api";
 import WorkspaceSelect from "../components/WorkspaceSelect";
 import {
+    persistWorkspaceSelection,
+    resolveSharedWorkspaceId,
+} from "../sharedWorkspace";
+import {
     Actions,
     Brand,
     BrandKicker,
@@ -221,14 +225,7 @@ export default function CollectionDashboardApp() {
                         return prev;
                     }
                     const params = new URLSearchParams(window.location.search || "");
-                    const fromQuery = params.get("stig_collection_id");
-                    if (
-                        fromQuery &&
-                        rows.some((c) => c && c._key === fromQuery)
-                    ) {
-                        return fromQuery;
-                    }
-                    return defaultWorkspaceId(rows);
+                    return resolveSharedWorkspaceId(rows, params.get("stig_collection_id"));
                 });
             })
             .catch((err) => setBanner({ type: "error", message: String(err.message || err) }));
@@ -735,14 +732,17 @@ export default function CollectionDashboardApp() {
             <Header>
                 <Brand>
                     <BrandKicker>STIG in Splunk</BrandKicker>
-                    <Heading level={2}>Collection dashboard</Heading>
+                    <Heading level={2}>Reports</Heading>
                 </Brand>
                 <Toolbar>
                     <ControlGroup label="Workspace" labelPosition="top">
                         <WorkspaceSelect
                             workspaces={collections}
                             value={collectionId}
-                            onChange={(e, { value }) => setCollectionId(value)}
+                            onChange={(e, { value }) => {
+                                setCollectionId(value);
+                                persistWorkspaceSelection(value);
+                            }}
                             filter
                         />
                     </ControlGroup>
@@ -920,7 +920,7 @@ export default function CollectionDashboardApp() {
                                                 }
                                             >
                                                 <Select.Option
-                                                    label="Collection"
+                                                    label="Workspace"
                                                     value="collection"
                                                 />
                                                 <Select.Option label="Asset" value="asset" />

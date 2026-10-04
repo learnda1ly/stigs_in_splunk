@@ -319,7 +319,7 @@ export default function ExportApp() {
                             </Table.HeadCell>
                             <Table.HeadCell>Host</Table.HeadCell>
                             <Table.HeadCell>Baseline</Table.HeadCell>
-                            <Table.HeadCell>Collection</Table.HeadCell>
+                            <Table.HeadCell>Workspace</Table.HeadCell>
                             <Table.HeadCell>Completed</Table.HeadCell>
                             <Table.HeadCell>Package IDs</Table.HeadCell>
                             <Table.HeadCell />

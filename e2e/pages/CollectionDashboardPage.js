@@ -23,7 +23,7 @@ class CollectionDashboardPage {
 
   async open() {
     await this.page.goto(appPath('stig_collection_dashboard_ui'), { timeout: NAV_TIMEOUT_MS });
-    await expect(this.page.getByRole('heading', { name: 'Collection dashboard' })).toBeVisible({
+    await expect(this.page.getByRole('heading', { name: 'Reports' })).toBeVisible({
       timeout: NAV_TIMEOUT_MS,
     });
     await expect(this.workspaceSelect()).toBeVisible({ timeout: CONTROL_TIMEOUT_MS });

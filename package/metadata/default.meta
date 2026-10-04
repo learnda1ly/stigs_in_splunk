@@ -31,7 +31,19 @@ access = read : [ * ], write : [ admin, sc_admin ]
 export = system
 
 [view:setup]
-access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+access = read : [ admin, sc_admin, stig_admin ], write : [ admin, sc_admin ]
+export = none
+
+[view:configuration]
+access = read : [ admin, sc_admin, stig_admin ], write : [ admin, sc_admin ]
+export = none
+
+[view:stig_assignment_ui]
+access = read : [ admin, sc_admin, stig_admin ], write : [ admin, sc_admin ]
+export = none
+
+[view:stig_audit_dashboard]
+access = read : [ admin, sc_admin, stig_admin ], write : [ admin, sc_admin ]
 export = none
 
 [nav]

@@ -21,7 +21,7 @@ const DOC_SECTION_TITLES = [
 test.describe('Documentation navigation', () => {
   test.setTimeout(180_000);
 
-  test('Get started nav includes Documentation and Workspaces labels', async ({ page }) => {
+  test('Help nav and Workspaces settings remain reachable', async ({ page }) => {
     const reachableViews = [
       { path: 'stig_documentation_ui', probe: () => page.locator('#stig-ui-root') },
       {
@@ -69,9 +69,7 @@ test.describe('Documentation navigation', () => {
     await expect(page.getByRole('heading', { name: '6. Quick start (about 15 minutes)' })).toBeVisible();
     const quickStart = page.locator('#quick-start');
     await expect(quickStart.getByText('Import baselines')).toBeVisible();
-    await expect(
-      quickStart.getByRole('link', { name: 'Collection dashboard' }),
-    ).toBeVisible();
+    await expect(quickStart.getByRole('link', { name: /Reports|Collection dashboard/i })).toBeVisible();
   });
 
   test('static onboarding.html is served under the app', async ({ page, request }) => {
