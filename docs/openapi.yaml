@@ -640,6 +640,51 @@ paths:
             application/json:
               schema:
                 type: object
+                description: >
+                  Includes totals, completion, by_status, review_ages (minTs/maxTs),
+                  and maxTouch (last workflow status change).
+
+  /stig_collections/{collectionId}/metrics/export:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Collection reporting]
+      summary: STIG Manager-style metrics export (grouped CSV/JSON)
+      operationId: exportCollectionMetrics
+      parameters:
+        - name: grouping
+          in: query
+          schema:
+            type: string
+            enum: [collection, asset, stig, label, ungrouped]
+            default: collection
+        - name: style
+          in: query
+          schema:
+            type: string
+            enum: [summary, detail]
+            default: summary
+          description: >
+            Summary omits automated-tool subcounts; detail adds *ResultEngine columns.
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+        - name: rmf_package_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: JSON rows; when format=csv the response JSON includes a csv field
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid grouping, style, or format
 
   /stig_collections/{collectionId}/findings:
     parameters:
