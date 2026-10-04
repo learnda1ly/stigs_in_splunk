@@ -130,6 +130,9 @@ def _apply_workflow_patch(
         patch["rejected_by"] = username
         if reject_feedback is not None:
             patch["reject_feedback"] = str(reject_feedback)
+    elif action == "unsubmit":
+        patch["unsubmitted_at"] = ts
+        patch["unsubmitted_by"] = username
     patch["updated_at"] = ts
     patch["updated_by"] = username
 
@@ -152,14 +155,16 @@ def _workflow_action(
     checklist_id = existing.get("checklist_id")
     if not checklist_id:
         raise ValueError("review missing checklist_id")
-    need_write = action == "submit"
+    need_write = action in ("submit", "unsubmit")
     workspace, grants = _workspace_for_checklist(
         service, checklist_id, session, write=need_write
     )
 
-    if action == "submit":
+    if action in ("submit", "unsubmit"):
         if not access.user_can_write_collection(workspace, session, grants):
-            raise PermissionError("stig_write required to submit reviews")
+            if action == "submit":
+                raise PermissionError("stig_write required to submit reviews")
+            raise PermissionError("stig_write required to unsubmit reviews")
     elif action in ("accept", "reject"):
         if not access.user_can_accept_reviews(workspace, session, grants):
             raise PermissionError("stig_review_accept or review owner required")
@@ -216,6 +221,12 @@ def reject_review(
     )
 
 
+def unsubmit_review(
+    service, key: str, username: str, session: Dict[str, Any]
+) -> Dict[str, Any]:
+    return _workflow_action(service, key, "unsubmit", username, session)
+
+
 def batch_workflow(
     service,
     action: str,
@@ -243,6 +254,8 @@ def batch_workflow(
                         service, rid, username, session, reject_feedback=reject_feedback
                     )
                 )
+            elif action == "unsubmit":
+                updated.append(unsubmit_review(service, rid, username, session))
             else:
                 raise ValueError(f"unknown workflow action: {action}")
         except PermissionError as exc:

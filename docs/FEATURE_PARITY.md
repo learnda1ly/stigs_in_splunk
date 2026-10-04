@@ -54,7 +54,7 @@ P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide ali
 | Asset CSV import/export | not a row | **done** | `GET/POST /stig_collections/{id}/assets/csv` and SplunkUI **Hosts** import/export (STIG Manager columns). Docs: [§2.9.2.2–2.9.2.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Copy results to another collection | not a row | **missing** | `POST .../export-to/{dst}` **moves** hosts (`collection_transfer.py`). It does not copy results onto a same-named asset in the destination (100-asset cap in the docs). Docs: [§2.9.2.5.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Multi-STIG `.ckl` in an archive | not a row | **missing** | Export is one checklist file per host+baseline (`exporters/ckl.py`). Docs offer single-STIG vs multi-STIG `.ckl` vs XCCDF. Docs: [§2.9.2.5.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Unsubmit | not a row | **missing** | States are `draft` / `submitted` / `accepted` / `rejected` (`review_workflow.py`). Reject returns to draft. There is no unsubmit of a submitted review. Docs: [§2.6.3.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
+| Unsubmit | not a row | **done** | `submitted` → `draft` via `unsubmit` (`review_workflow.py`, `POST .../unsubmit`, batch `action: unsubmit`); requires `stig_write` like submit. Accept/reject unchanged. Editor and collection review expose Unsubmit. Docs: [§2.6.3.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Review history retention | done (append + GET) | **partial** | History is append-only. `limit` is a query page size (default 100, max 500), not a per-workspace cap (docs default 15) and history cannot be turned off. Docs: [§2.9.1.4.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | `.ckl` web/database asset identity | not a row | **partial** | `WEB_DB_SITE` / `WEB_DB_INSTANCE` are stored. Host match in `apply.py` is hostname only, not host + site + instance when `WEB_OR_DATABASE` is true. Docs: [§2.10](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Effective access preview | not a row | **missing** | Grants and ACL filters exist. No UI/API that expands a grant to every asset×STIG the user can actually touch. `GrantsApp.jsx` has no effective-access view. Docs: [§2.9.1.3](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
@@ -79,7 +79,7 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | STIG library, baseline import, rule/CCI/group GET | `services/baseline_library.py`, `services/baselines.py` |
 | Revision upgrade / hash merge | `services/revision_upgrade.py` |
 | Asset review + collection review + batch | `ui/src/pages/EditorApp.jsx`, `CollectionReviewApp.jsx`, `POST /stig_reviews/batch` |
-| Submit / accept / reject, requirements, ingest lock | `review_workflow.py`, editor + collection review UI |
+| Submit / unsubmit / accept / reject, requirements, ingest lock | `review_workflow.py`, editor + collection review UI |
 | Peer copy | `services/review_peers.py` |
 | CKL/CKLB/XCCDF results import and archive export | `services/imports.py`, `exporters/ckl.py`, `cklb.py`, `xccdf_results.py` |
 | Watcher-shaped HEC | [docs/watcher-hec.md](watcher-hec.md), `importers/events.py` |
@@ -106,7 +106,6 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | Asset CSV | done | `services/asset_csv.py`, `exporters/asset_csv.py`, Hosts UI |
 | Copy results across collections | missing | export-to moves the host |
 | Multi-STIG CKL | missing | One file per checklist |
-| Unsubmit | missing | No transition |
 | History retention cap / off switch | partial | Page `limit` only |
 | Web/DB asset match | partial | Fields stored; match is hostname |
 | Effective access preview | missing | ACL enforced, not explained in UI |
@@ -169,8 +168,6 @@ The wide end is import options plus aging actions. Those two touch ingest and ca
 | Clone: pin-all switch + async status | S | 2–4 |
 | History cap and disable | S | 1–2 |
 | Replace-existing revision on library import | S | 1–2 |
-| Unsubmit | S | 1 |
-
 **P2 total: about 24–43 engineer-days.**
 
 Attachments and cross-collection copy dominate that range (KV size, ACL, partial failure).

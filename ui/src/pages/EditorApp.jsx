@@ -804,7 +804,7 @@ export default function EditorApp() {
                 if (action === "submit") {
                     return wf === "draft" && reviewIsValid(item.review, reviewRequirements);
                 }
-                if (action === "accept" || action === "reject") {
+                if (action === "unsubmit" || action === "accept" || action === "reject") {
                     return wf === "submitted";
                 }
                 return false;
@@ -1592,6 +1592,12 @@ export default function EditorApp() {
                             <Button
                                 appearance="secondary"
                                 disabled={busy || !filtered.length}
+                                onClick={() => onBatchWorkflow("unsubmit")}
+                                label="Unsubmit visible"
+                            />
+                            <Button
+                                appearance="secondary"
+                                disabled={busy || !filtered.length}
                                 onClick={() => onBatchWorkflow("accept")}
                                 label="Accept visible"
                             />
@@ -1872,7 +1878,7 @@ export default function EditorApp() {
                                 />
                             </ControlGroup>
                             {governanceEnabled ? (
-                                <ControlGroup label="Governance (submit / accept / reject)">
+                                <ControlGroup label="Governance (submit / unsubmit / accept / reject)">
                                     <Actions>
                                         <Button
                                             appearance="primary"
@@ -1890,6 +1896,16 @@ export default function EditorApp() {
                                             }
                                             onClick={() => onWorkflow("submit")}
                                             label="Submit"
+                                        />
+                                        <Button
+                                            appearance="secondary"
+                                            disabled={
+                                                busy ||
+                                                reviewWorkflowState(selected.review) !==
+                                                    "submitted"
+                                            }
+                                            onClick={() => onWorkflow("unsubmit")}
+                                            label="Unsubmit"
                                         />
                                         <Button
                                             appearance="secondary"
