@@ -751,6 +751,52 @@ paths:
               schema:
                 type: object
 
+  /stig_collections/{collectionId}/assets/csv:
+    parameters:
+      - $ref: "#/components/parameters/collectionId"
+    get:
+      tags: [Hosts]
+      summary: Export workspace assets as CSV (STIG Manager column layout)
+      operationId: exportAssetsCsv
+      parameters:
+        - name: host_ids
+          in: query
+          description: Optional comma-separated host `_key` values (default all visible hosts)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CSV attachment
+          content:
+            text/csv:
+              schema:
+                type: string
+    post:
+      tags: [Hosts]
+      summary: Validate or import assets from CSV
+      operationId: importAssetsCsv
+      x-splunk-capability: stig_write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [csv]
+              properties:
+                csv:
+                  type: string
+                submit:
+                  type: boolean
+                  description: When false (default), validate only; when true, create/update hosts
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+        "201":
+          description: Import created at least one new host
+
   /stig_collections/{collectionId}/poam:
     parameters:
       - $ref: "#/components/parameters/collectionId"

@@ -11,7 +11,10 @@ import WaitSpinner from "@splunk/react-ui/WaitSpinner";
 import {
     apiFetch,
     apiGet,
+    apiUrl,
     defaultWorkspaceId,
+    downloadText,
+    formatErr,
     isAllWorkspaces,
     viewUrl,
     viewUrlWithQuery,
@@ -50,6 +53,8 @@ export default function HostsApp() {
     const [editId, setEditId] = useState("");
     const [editDraft, setEditDraft] = useState(emptyDraft());
     const [showAddForm, setShowAddForm] = useState(false);
+    const [pendingCsv, setPendingCsv] = useState("");
+    const [importReport, setImportReport] = useState(null);
 
     const loadWorkspaces = useCallback(() =>
         apiGet("stig_collections")
@@ -181,6 +186,127 @@ export default function HostsApp() {
             .finally(() => setBusy(false));
     };
 
+    const exportAssetsCsv = () => {
+        if (!collectionId || isAllWorkspaces(collectionId)) {
+            setBanner({
+                type: "warning",
+                text: "Select a single workspace to export assets.",
+            });
+            return;
+        }
+        setBusy(true);
+        const url = apiUrl(
+            "stig_collections/" + encodeURIComponent(collectionId) + "/assets/csv"
+        );
+        fetch(url, {
+            method: "GET",
+            credentials: "same-origin",
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+        })
+            .then((res) =>
+                res.text().then((text) => {
+                    if (!res.ok) {
+                        throw new Error(formatErr(text) || "HTTP " + res.status);
+                    }
+                    const disp = res.headers.get("Content-Disposition") || "";
+                    const match = disp.match(/filename="([^"]+)"/);
+                    const filename = match ? match[1] : "stig_assets.csv";
+                    downloadText(filename, text, "text/csv");
+                    setBanner({
+                        type: "success",
+                        text: "Exported assets CSV (" + (res.headers.get("X-Stig-Row-Count") || "?") + " rows).",
+                    });
+                })
+            )
+            .catch((err) =>
+                setBanner({ type: "error", text: "Export failed: " + err.message })
+            )
+            .finally(() => setBusy(false));
+    };
+
+    const validateCsvImport = (csvText) => {
+        if (!collectionId || isAllWorkspaces(collectionId)) {
+            setBanner({
+                type: "warning",
+                text: "Select a single workspace to import assets.",
+            });
+            return;
+        }
+        setBusy(true);
+        apiFetch("stig_collections/" + encodeURIComponent(collectionId) + "/assets/csv", {
+            method: "POST",
+            body: { csv: csvText, submit: false },
+        })
+            .then((report) => {
+                setPendingCsv(csvText);
+                setImportReport(report);
+                const valid = report && report.valid_count;
+                const invalid = report && report.invalid_count;
+                setBanner({
+                    type: invalid ? "warning" : "success",
+                    text:
+                        "CSV validated: " +
+                        valid +
+                        " valid row(s), " +
+                        invalid +
+                        " invalid. Review errors below, then apply import.",
+                });
+            })
+            .catch((err) =>
+                setBanner({ type: "error", text: "Validate failed: " + err.message })
+            )
+            .finally(() => setBusy(false));
+    };
+
+    const applyCsvImport = () => {
+        if (!pendingCsv) {
+            setBanner({ type: "warning", text: "Choose and validate a CSV file first." });
+            return;
+        }
+        setBusy(true);
+        apiFetch("stig_collections/" + encodeURIComponent(collectionId) + "/assets/csv", {
+            method: "POST",
+            body: { csv: pendingCsv, submit: true },
+        })
+            .then((report) => {
+                setImportReport(report);
+                setPendingCsv("");
+                const summary = (report && report.summary) || {};
+                setBanner({
+                    type: "success",
+                    text:
+                        "Import complete. Created " +
+                        (summary.created || 0) +
+                        ", updated " +
+                        (summary.updated || 0) +
+                        ", STIG assignments " +
+                        (summary.stigs_assigned || 0) +
+                        ".",
+                });
+                return loadHosts();
+            })
+            .catch((err) =>
+                setBanner({ type: "error", text: "Import failed: " + err.message })
+            )
+            .finally(() => setBusy(false));
+    };
+
+    const onCsvFileChange = (event) => {
+        const file = event.target.files && event.target.files[0];
+        event.target.value = "";
+        if (!file) {
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            validateCsvImport(String(reader.result || ""));
+        };
+        reader.onerror = () => {
+            setBanner({ type: "error", text: "Could not read CSV file." });
+        };
+        reader.readAsText(file);
+    };
+
     const deleteHost = (host) => {
         const label = host.hostname || host._key;
         if (!window.confirm("Delete host " + label + "? Requires stig_admin.")) {
@@ -254,13 +380,67 @@ export default function HostsApp() {
                     <Heading level={3} style={{ margin: 0 }}>
                         Hosts in workspace
                     </Heading>
-                    <Button
-                        appearance="primary"
-                        disabled={busy || !collectionId}
-                        onClick={() => setShowAddForm((open) => !open)}
-                        label={showAddForm ? "Cancel add" : "Add host"}
-                    />
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        <Button
+                            appearance="secondary"
+                            disabled={busy || !collectionId}
+                            onClick={exportAssetsCsv}
+                            label="Export assets CSV"
+                        />
+                        <Button
+                            appearance="secondary"
+                            disabled={busy || !collectionId}
+                            onClick={() =>
+                                document.getElementById("stig-hosts-csv-input")?.click()
+                            }
+                            label="Import assets CSV"
+                        />
+                        <input
+                            id="stig-hosts-csv-input"
+                            type="file"
+                            accept=".csv,text/csv"
+                            style={{ display: "none" }}
+                            onChange={onCsvFileChange}
+                        />
+                        {pendingCsv ? (
+                            <Button
+                                appearance="primary"
+                                disabled={busy || !collectionId}
+                                onClick={applyCsvImport}
+                                label="Apply validated import"
+                            />
+                        ) : null}
+                        <Button
+                            appearance="primary"
+                            disabled={busy || !collectionId}
+                            onClick={() => setShowAddForm((open) => !open)}
+                            label={showAddForm ? "Cancel add" : "Add host"}
+                        />
+                    </div>
                 </div>
+                {importReport && importReport.rows && importReport.rows.length ? (
+                    <Message
+                        appearance={importReport.invalid_count ? "warning" : "info"}
+                        style={{ marginBottom: 16 }}
+                    >
+                        <div>
+                            {importReport.rows
+                                .filter((row) => row.errors && row.errors.length)
+                                .slice(0, 8)
+                                .map((row) => (
+                                    <div key={row.row}>
+                                        Row {row.row} ({row.name || "—"}):{" "}
+                                        {row.errors.join("; ")}
+                                    </div>
+                                ))}
+                            {importReport.rows.filter(
+                                (row) => row.errors && row.errors.length
+                            ).length > 8
+                                ? "…more row errors omitted"
+                                : null}
+                        </div>
+                    </Message>
+                ) : null}
                 {showAddForm ? (
                     <div
                         style={{
