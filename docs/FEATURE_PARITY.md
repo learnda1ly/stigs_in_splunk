@@ -47,7 +47,7 @@ P0 assessor workflows remain **done** in code; remaining P1/P2 work is guide ali
 | Collection dashboard metrics | done | **partial** | `GET /stig_collections/{id}/metrics` and the dashboard exist. Missing grouped export (collection / asset / STIG / label / ungrouped), summary vs detail fields, result-engine splits, and oldest/newest review ages. Docs: [§2.4.1](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). CORA stays **n/a** (see below). |
 | Review aging | done | **partial** | Stale **report** only (`review_aging.py`: threshold + status/severity filters; saved search `stigkvreviewaging`). Docs now specify **action rules** (delete, set Saved/Submitted, set result to Not Checked or Informational), ordinal, enable/disable, and targets (collection, asset, STIG, label). App Manager job **Update Aged Reviews**. Docs: [§2.9.1.7](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [admin §2.2.5](https://stig-manager.readthedocs.io/en/latest/admin-guide/admin-guide.html). |
 | Result engine (automated / manual / override) | not a row | **partial** | Parsers emit `resultEngine` (`importers/ingest.py`). `review_seed_payload` does **not** write it onto the KV review. Editor has no automated/manual/override badge. Docs: [§2.7.1 and §2.7.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
-| Informational result | folded into status enum | **partial** | `STATUSES` / `STATUS_TO_RESULT` are `not_reviewed`, `open`, `not_a_finding`, `not_applicable`. `informational` XCCDF maps to `not_reviewed` (`models.py`). Docs treat Informational as its own result. |
+| Informational result | folded into status enum | **done** | Fifth assessor status `informational` in `models.py` (`STATUSES`, CKL/CKLB/XCCDF mappings). Import/export, metrics `by_status`, React editor, legacy `stig_editor`, review-aging `set_result_informational`, and import-options unreviewed-with-comment default. |
 | Collection import options | not a row | **done** | Per-workspace `import_options` on `stig_collections`; REST `GET/PATCH .../import_options`; applied on file import, batch/zip, HEC apply, and reconcile via `import_policy.py`. Admin UI **Import options**. Docs: [§2.9.1.4.4](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
 | Compare STIG revisions | not a row | **missing** | Library browses revisions (`LibraryApp.jsx`). No field-level diff of two revisions. Upgrade merge is a different feature and remains **done**. Docs: [§2.3.2.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html), [review handling](https://stig-manager.readthedocs.io/en/latest/user-guide/review-handling.html). |
 | Review attachments | not a row | **missing** | No review image store. The word “attachment” in the REST handler is not this feature. Docs: [§2.6.5.2 and §2.7.3.2](https://stig-manager.readthedocs.io/en/latest/user-guide/user-guide.html). |
@@ -99,7 +99,7 @@ Rows left **done** were re-checked against code, not just the old table: collect
 | Dashboard metrics export + ages | partial | Counts only; no group-by export, no min/max timestamps |
 | Review aging actions | partial | Report/config only; no mutating rules |
 | Result engine on the review | partial | Parsed, dropped in `review_seed_payload` |
-| Informational result | partial | Collapsed to `not_reviewed` |
+| Informational result | done | Distinct status; XCCDF `result="informational"` round-trips |
 | Import options | done | `services/import_options.py`, `import_policy.py`, ingest in `apply.py` / `checklists.py` |
 | Compare revisions | missing | No diff UI or API |
 | Review image attachments | missing | Not in review model |
@@ -145,7 +145,7 @@ No new **P0**. Day-to-day assess (open a workspace, assign a STIG, save, submit,
 |------|------|----------------|-------|
 | Persist result engine and show manual / automated / override | M | 3–5 | Seed, export, metrics detail, editor sprite |
 | Collection import options, including Watcher/HEC | M | 5–8 | Touches every ingest path |
-| Informational as its own status | S | 2–3 | Enum, CKL/XCCDF round-trip, metrics, UI |
+| Informational as its own status | — | — | **Done** (see status table) |
 | Revision compare (rule/field diff) | M | 4–6 | Read-only report; do not copy ExtJS |
 | “Latest” revision = version/release, skip draft | S | 1–2 | `find_baseline_by_stig` |
 | Review aging **actions** + saved search that mutates | M | 6–10 | Audit every change; do not silent-delete without a dry run |

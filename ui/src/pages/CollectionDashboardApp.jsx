@@ -645,7 +645,7 @@ export default function CollectionDashboardApp() {
                     />
                     <Select.Option
                         label="All statuses"
-                        value="not_reviewed,open,not_a_finding,not_applicable"
+                        value="not_reviewed,open,not_a_finding,not_applicable,informational"
                     />
                 </Select>
             </ControlGroup>

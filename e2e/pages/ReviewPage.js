@@ -101,7 +101,7 @@ class ReviewPage {
   }
 
   /**
-   * @param {string} statusKey not_reviewed | open | not_a_finding | not_applicable
+   * @param {string} statusKey not_reviewed | open | not_a_finding | not_applicable | informational
    */
   async selectStatus(statusKey) {
     const select = this.page.getByRole('combobox', { name: /Status/i });
@@ -111,6 +111,7 @@ class ReviewPage {
       open: 'Open',
       not_a_finding: 'Not a Finding',
       not_applicable: 'Not Applicable',
+      informational: 'Informational',
     };
     const label = labels[statusKey] || statusKey;
     await this.page.getByRole('option', { name: label, exact: true }).click();

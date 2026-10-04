@@ -81,8 +81,10 @@ def review_already_at_action_target(review: Dict[str, Any], action: str) -> bool
         return wf == "draft"
     if action == ACTION_SET_STATUS_SUBMITTED:
         return wf == "submitted"
-    if action in (ACTION_SET_RESULT_NOT_CHECKED, ACTION_SET_RESULT_INFORMATIONAL):
+    if action == ACTION_SET_RESULT_NOT_CHECKED:
         return status == "not_reviewed" and wf == "draft"
+    if action == ACTION_SET_RESULT_INFORMATIONAL:
+        return status == "informational" and wf == "draft"
     return False
 
 
@@ -238,8 +240,11 @@ def _apply_update_action(
         patch["workflow_state"] = "submitted"
         patch["submitted_at"] = ts
         patch["submitted_by"] = username
-    elif action in (ACTION_SET_RESULT_NOT_CHECKED, ACTION_SET_RESULT_INFORMATIONAL):
+    elif action == ACTION_SET_RESULT_NOT_CHECKED:
         patch["status"] = "not_reviewed"
+        patch["workflow_state"] = "draft"
+    elif action == ACTION_SET_RESULT_INFORMATIONAL:
+        patch["status"] = "informational"
         patch["workflow_state"] = "draft"
     else:
         raise ValueError(f"unsupported update action: {action}")

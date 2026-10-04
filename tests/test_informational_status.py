@@ -8,6 +8,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "package", 
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+from exporters import ckl as ckl_export  # noqa: E402
 from exporters import xccdf_results as xccdf_export  # noqa: E402
 from importers import ingest as ingest_lib  # noqa: E402
 from importers import xccdf_results as xccdf_results_import  # noqa: E402
@@ -63,6 +64,31 @@ class TestInformationalStatus(unittest.TestCase):
             {"hostname": "host01"},
         )
         self.assertIn('result="informational"', xml)
+
+    def test_ckl_export_informational_status(self):
+        xml = ckl_export.export_ckl(
+            {"_key": "cl1", "title": "host"},
+            {"stig_id": "Example_STIG", "title": "Example"},
+            [
+                {
+                    "group_id": "V-000001",
+                    "rule_id": "SV-000001",
+                    "rule_version": "1.0",
+                    "rule_title": "Rule",
+                    "severity": "medium",
+                }
+            ],
+            [
+                {
+                    "status": "informational",
+                    "finding_details": "note",
+                    "group_id": "V-000001",
+                    "rule_id": "SV-000001",
+                }
+            ],
+            {"hostname": "host01"},
+        )
+        self.assertIn("<STATUS>Informational</STATUS>", xml)
 
 
 if __name__ == "__main__":
