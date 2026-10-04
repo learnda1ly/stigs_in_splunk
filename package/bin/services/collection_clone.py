@@ -288,6 +288,8 @@ def clone_collection(
                 patch["review_requirements"] = source.get("review_requirements")
             if source.get("review_accept_principals"):
                 patch["review_accept_principals"] = source.get("review_accept_principals")
+            if source.get("review_history_config"):
+                patch["review_history_config"] = source.get("review_history_config")
         if opts["copy_import_options"] and source.get("import_options"):
             patch["import_options"] = source.get("import_options")
         if patch:

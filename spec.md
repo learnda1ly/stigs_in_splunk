@@ -516,7 +516,7 @@ Append-only audit of **assessor-visible** review changes (not a full document sn
 
 **Workspace list:** `GET /stig_collections/{id}/review-history` loads all KV rows for the workspace then filters and paginates in the handler (acceptable for P2; very large histories may be slow—use per-review history or query filters).
 
-**Retention:** cascade workspace delete removes history rows for that `stig_collection_id`.
+**Retention:** Per-workspace `review_history_config` JSON on `stig_collections`: `enabled` (default true) and `max_records_per_review` (default **15**, max **15** per STIG Manager). When disabled, new rows are not written and history GET endpoints return no rows. When enabled, each insert trims oldest rows for that `review_id` beyond the cap; list endpoints also apply the cap before pagination. Reducing the cap does not delete existing KV rows until the next review update. REST `GET/PATCH /stig_collections/{id}/review_history_config`. Cascade workspace delete removes all history rows for that `stig_collection_id`.
 
 ### 7.8 `stig_assignment_rules`
 

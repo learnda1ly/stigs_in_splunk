@@ -46,6 +46,7 @@ from services import imports as imports_svc
 from services import reconcile as reconcile_svc
 from services import reporting as reporting_svc
 from services import review_history as review_history_svc
+from services import review_history_config as review_history_config_svc
 from services import review_peers as review_peers_svc
 from services import reviews as reviews_svc
 from services import revision_upgrade as revision_upgrade_svc
@@ -395,6 +396,35 @@ class StigRestHandler(PersistentServerConnectionApplication):
                 try:
                     return _json_response(
                         import_options_svc.patch_options(
+                            service, key, body, username, session
+                        )
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+                except ValueError as exc:
+                    return _error(str(exc), status=400)
+            return _error("method not allowed", status=405)
+
+        if len(parts) >= 2 and parts[1] in (
+            "review_history_config",
+            "review-history-config",
+        ):
+            if method == "GET" and len(parts) == 2:
+                try:
+                    return _json_response(
+                        review_history_config_svc.get_config(service, key, session)
+                    )
+                except KeyError:
+                    return _error("not found", status=404)
+                except PermissionError as exc:
+                    return _error(str(exc), status=403)
+            if method in ("POST", "PUT", "PATCH") and len(parts) == 2:
+                body = _body_json(payload)
+                try:
+                    return _json_response(
+                        review_history_config_svc.patch_config(
                             service, key, body, username, session
                         )
                     )
