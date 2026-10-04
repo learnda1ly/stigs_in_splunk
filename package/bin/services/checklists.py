@@ -692,9 +692,47 @@ def _normalize_bulk_export_format(fmt: str) -> str:
     export_fmt = (fmt or "cklb").lower().replace("_", "-")
     if export_fmt in {"xccdf", "xccdf-results", "xccdfresults"}:
         return "xccdf"
+    if export_fmt in {"ckl-multi", "cklmulti", "multi-ckl", "multickl"}:
+        return "ckl-multi"
     if export_fmt in {"ckl", "cklb"}:
         return export_fmt
-    raise ValueError("format must be ckl, cklb, or xccdf")
+    raise ValueError("format must be ckl, ckl-multi, cklb, or xccdf")
+
+
+def export_multi_ckl_filename(host: Dict[str, Any], checklist: Dict[str, Any]) -> str:
+    host_part = _safe_filename_part(host.get("hostname") or checklist.get("_key"))
+    return f"{host_part}.ckl"
+
+
+def _checklist_export_bundle(
+    service,
+    key: str,
+    session: Dict[str, Any],
+    rmf_package_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    checklist = get_checklist(service, key, session)
+    if not checklist:
+        raise KeyError(key)
+    baseline = baselines_svc.get_baseline(service, checklist["baseline_id"])
+    if not baseline:
+        raise KeyError(checklist["baseline_id"])
+    host = hosts_svc.get_host(service, checklist["host_id"], session)
+    if not host:
+        raise KeyError(checklist["host_id"])
+    if not rmf_packages_svc.checklist_matches_rmf_package_filter(
+        service, checklist, host, baseline, rmf_package_id
+    ):
+        raise KeyError(key)
+    rules = baselines_svc.list_baseline_rules(service, checklist["baseline_id"])
+    reviews_coll = kv_client.get_collection(service, KV_STIG_REVIEWS)
+    reviews = kv_client.query_all(reviews_coll, {"checklist_id": key})
+    return {
+        "checklist": checklist,
+        "baseline": baseline,
+        "host": host,
+        "rules": rules,
+        "reviews": reviews,
+    }
 
 
 def export_filename(
@@ -830,24 +868,63 @@ def export_checklists_bulk(
     files: List[str] = []
     used: Dict[str, int] = {}
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
-        for key in ids:
-            try:
-                content, filename = export_checklist_file(
-                    service,
-                    key,
-                    export_fmt,
-                    session,
-                    rmf_package_id=rmf_package_id,
+        if export_fmt == "ckl-multi":
+            by_host: Dict[str, List[str]] = {}
+            for key in ids:
+                checklist = get_checklist(service, key, session)
+                if not checklist:
+                    raise KeyError(key) from None
+                host_id = str(checklist.get("host_id") or "")
+                by_host.setdefault(host_id, []).append(key)
+            for host_id in sorted(by_host):
+                host_keys = sorted(by_host[host_id])
+                bundles = []
+                host: Optional[Dict[str, Any]] = None
+                for key in host_keys:
+                    try:
+                        bundle = _checklist_export_bundle(
+                            service, key, session, rmf_package_id=rmf_package_id
+                        )
+                    except KeyError:
+                        raise KeyError(key) from None
+                    host = bundle["host"]
+                    bundles.append(bundle)
+                bundles.sort(
+                    key=lambda b: (
+                        str(b["baseline"].get("stig_id") or ""),
+                        str(b["baseline"].get("_key") or ""),
+                    )
                 )
-            except KeyError:
-                raise KeyError(key) from None
-            count = used.get(filename, 0)
-            used[filename] = count + 1
-            if count:
-                stem, ext = filename.rsplit(".", 1)
-                filename = f"{stem}_{count + 1}.{ext}"
-            archive.writestr(filename, content)
-            files.append(filename)
+                content = ckl_export.export_ckl_multi_stig(bundles, host or {})
+                filename = export_multi_ckl_filename(
+                    host or {}, bundles[0]["checklist"]
+                )
+                count = used.get(filename, 0)
+                used[filename] = count + 1
+                if count:
+                    stem, ext = filename.rsplit(".", 1)
+                    filename = f"{stem}_{count + 1}.{ext}"
+                archive.writestr(filename, content)
+                files.append(filename)
+        else:
+            for key in ids:
+                try:
+                    content, filename = export_checklist_file(
+                        service,
+                        key,
+                        export_fmt,
+                        session,
+                        rmf_package_id=rmf_package_id,
+                    )
+                except KeyError:
+                    raise KeyError(key) from None
+                count = used.get(filename, 0)
+                used[filename] = count + 1
+                if count:
+                    stem, ext = filename.rsplit(".", 1)
+                    filename = f"{stem}_{count + 1}.{ext}"
+                archive.writestr(filename, content)
+                files.append(filename)
 
     zip_name = f"stig-checklists-{export_fmt}.zip"
     if export_fmt == "xccdf":

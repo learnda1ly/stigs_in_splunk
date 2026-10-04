@@ -150,6 +150,107 @@ class ReviewWorkflowServiceTests(unittest.TestCase):
                 MagicMock(), "submit", ids, "u", {}, reject_feedback=None
             )
 
+    @patch.object(reviews_svc, "kv_client")
+    @patch.object(reviews_svc, "grants_svc")
+    @patch.object(reviews_svc, "checklists_svc")
+    def test_unsubmit_without_write_forbidden(
+        self, mock_checklists, mock_grants, mock_kv
+    ):
+        existing = {
+            "_key": "rev1",
+            "checklist_id": "cl1",
+            "workflow_state": "submitted",
+            "finding_details": "x",
+        }
+        coll = MagicMock()
+        mock_kv.get_collection.return_value = coll
+        mock_kv.get_by_key.return_value = existing
+        mock_checklists.get_checklist.return_value = {
+            "_key": "cl1",
+            "stig_collection_id": "ws1",
+        }
+        mock_grants.workspace_context.return_value = (
+            {"_key": "ws1", "access_principals": "[]"},
+            MagicMock(can_write=False, grant_role="member"),
+            [],
+        )
+
+        with self.assertRaises(PermissionError):
+            reviews_svc.unsubmit_review(
+                MagicMock(), "rev1", "reviewer", self._session_reviewer()
+            )
+
+    @patch.object(reviews_svc, "kv_client")
+    @patch.object(reviews_svc, "grants_svc")
+    @patch.object(reviews_svc, "checklists_svc")
+    def test_writer_can_unsubmit_submitted(
+        self, mock_checklists, mock_grants, mock_kv
+    ):
+        existing = {
+            "_key": "rev1",
+            "checklist_id": "cl1",
+            "status": "open",
+            "finding_details": "x",
+            "workflow_state": "submitted",
+        }
+        coll = MagicMock()
+        mock_kv.get_collection.return_value = coll
+        mock_kv.get_by_key.return_value = dict(existing)
+        mock_kv.update_record.return_value = {
+            **existing,
+            "workflow_state": "draft",
+            "unsubmitted_by": "writer",
+        }
+        mock_kv.kv_record.side_effect = lambda r: r
+
+        mock_checklists.get_checklist.return_value = {
+            "_key": "cl1",
+            "stig_collection_id": "ws1",
+        }
+        mock_grants.workspace_context.return_value = (
+            {"_key": "ws1", "access_principals": "[]"},
+            MagicMock(can_write=True, grant_role="member"),
+            [],
+        )
+
+        with patch.object(reviews_svc, "audit") as mock_audit:
+            mock_audit.log_event = MagicMock()
+            result = reviews_svc.unsubmit_review(
+                MagicMock(), "rev1", "writer", self._session_writer()
+            )
+
+        self.assertEqual(result["workflow_state"], "draft")
+
+    @patch.object(reviews_svc, "kv_client")
+    @patch.object(reviews_svc, "grants_svc")
+    @patch.object(reviews_svc, "checklists_svc")
+    def test_unsubmit_accepted_raises(
+        self, mock_checklists, mock_grants, mock_kv
+    ):
+        existing = {
+            "_key": "rev1",
+            "checklist_id": "cl1",
+            "workflow_state": "accepted",
+            "finding_details": "x",
+        }
+        coll = MagicMock()
+        mock_kv.get_collection.return_value = coll
+        mock_kv.get_by_key.return_value = existing
+        mock_checklists.get_checklist.return_value = {
+            "_key": "cl1",
+            "stig_collection_id": "ws1",
+        }
+        mock_grants.workspace_context.return_value = (
+            {"_key": "ws1"},
+            MagicMock(can_write=True),
+            [],
+        )
+
+        with self.assertRaises(ValueError):
+            reviews_svc.unsubmit_review(
+                MagicMock(), "rev1", "writer", self._session_writer()
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -199,6 +199,22 @@ def serialize_result_engine(value: Any) -> str:
     return dumps_json(engine)
 
 
+def result_engine_origin(value: Any) -> str:
+    """STIG Manager–style origin for UI: manual, automated, or override.
+
+    See user guide §2.7.1 and §2.7.4.4 (gear / user / answer-file overrides).
+    """
+    engine = normalize_result_engine(value)
+    if not engine:
+        return "manual"
+    overrides = engine.get("overrides")
+    if isinstance(overrides, list) and len(overrides) > 0:
+        return "override"
+    if str(engine.get("product") or "").strip():
+        return "automated"
+    return "manual"
+
+
 def normalize_status(value: Optional[str], source: str = "internal") -> Optional[str]:
     if value is None:
         return None

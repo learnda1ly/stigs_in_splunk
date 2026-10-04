@@ -294,6 +294,21 @@ class ReviewImagesRestTests(unittest.TestCase):
         resp = self._dispatch("/stig_reviews/r1/images", method="POST", body=body)
         self.assertEqual(resp["status"], 403)
 
+    @patch.object(stig_rest_handler.review_images_svc, "delete_review_image")
+    def test_delete_image_route(self, mock_delete):
+        mock_delete.return_value = {"deleted": True, "_key": "i1", "review_id": "r1"}
+        handler = stig_rest_handler.StigRestHandler("", "")
+        payload = {
+            "method": "DELETE",
+            "session": self._session(),
+            "rest_path": "/stig_reviews/r1/images/i1",
+            "query": {},
+        }
+        with patch.object(stig_rest_handler.kv_client, "connect", return_value=MagicMock()):
+            resp = handler.handle(json.dumps(payload))
+        self.assertEqual(resp["status"], 200)
+        mock_delete.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

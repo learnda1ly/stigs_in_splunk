@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Button from "@splunk/react-ui/Button";
+import Switch from "@splunk/react-ui/Switch";
 import ControlGroup from "@splunk/react-ui/ControlGroup";
 import Link from "@splunk/react-ui/Link";
 import Message from "@splunk/react-ui/Message";
@@ -93,6 +94,7 @@ export default function BaselineImportPanel() {
     const [skipped, setSkipped] = useState(null);
     const [zipName, setZipName] = useState("");
     const [singleImport, setSingleImport] = useState(null);
+    const [replaceExistingRevisions, setReplaceExistingRevisions] = useState(false);
 
     const loadBaselines = () => {
         setLoading(true);
@@ -125,8 +127,12 @@ export default function BaselineImportPanel() {
                     throw new Error("use zip import path");
                 }
                 setSingleImport({ name: file.name, phase: "server" });
+                const query = { format: fmt, source_uri: file.name };
+                if (replaceExistingRevisions) {
+                    query.replace_existing_revisions = "true";
+                }
                 return apiUpload("stig_baselines/import", {
-                    query: { format: fmt, source_uri: file.name },
+                    query,
                     contentType: contentTypeFor(fmt),
                     body: text,
                 }).then((doc) => {
@@ -170,6 +176,7 @@ export default function BaselineImportPanel() {
             onRowPatch: (key, fields) => {
                 setZipRows((prev) => patchImportRow(prev, key, fields));
             },
+            replaceExistingRevisions,
         })
             .then((summary) => {
                 loadBaselines();
@@ -299,6 +306,7 @@ export default function BaselineImportPanel() {
             onRow: (key, fields) => {
                 setZipRows((prev) => patchImportRow(prev, key, fields));
             },
+            replaceExistingRevisions,
         })
             .then(() => {
                 loadBaselines();
@@ -320,8 +328,9 @@ export default function BaselineImportPanel() {
             <p style={{ maxWidth: 760, marginTop: 0 }}>
                 Upload Manual-xccdf <code>.xml</code>, a DISA product or library{" "}
                 <code>.zip</code> (nested zips; only <code>*Manual-xccdf.xml</code>), or
-                baseline content from <code>.ckl</code> / <code>.cklb</code>. Duplicate
-                content is deduplicated. Checklist imports are on the{" "}
+                baseline content from <code>.ckl</code> / <code>.cklb</code>. Matching
+                content is kept unless you enable replace below. Checklist imports are on
+                the{" "}
                 <Link
                     onClick={() => {
                         window.location.hash = "checklists";
@@ -391,6 +400,19 @@ export default function BaselineImportPanel() {
                         <Select.Option label="CKLB" value="cklb" />
                         <Select.Option label="CKL" value="ckl" />
                     </Select>
+                </ControlGroup>
+                <ControlGroup
+                    label="Replace existing revisions"
+                    labelPosition="left"
+                    help="When enabled, re-importing a STIG revision overwrites the catalog row (same content fingerprint or same STIG ID and version). Off by default."
+                >
+                    <Switch
+                        selected={replaceExistingRevisions}
+                        disabled={busy}
+                        onClick={() =>
+                            setReplaceExistingRevisions(!replaceExistingRevisions)
+                        }
+                    />
                 </ControlGroup>
                 <Button
                     appearance="primary"
