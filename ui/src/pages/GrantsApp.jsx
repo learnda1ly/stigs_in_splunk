@@ -70,6 +70,9 @@ export default function GrantsApp() {
     const [error, setError] = useState("");
     const [info, setInfo] = useState("");
     const [showAddGrant, setShowAddGrant] = useState(false);
+    const [previewGrantId, setPreviewGrantId] = useState("");
+    const [previewLoading, setPreviewLoading] = useState(false);
+    const [previewData, setPreviewData] = useState(null);
 
     const hostOptions = useMemo(
         () =>
@@ -214,10 +217,44 @@ export default function GrantsApp() {
                 "stig_collections/" + wsId + "/grants/" + grantId,
                 { method: "DELETE" }
             );
+            if (previewGrantId === grantId) {
+                setPreviewGrantId("");
+                setPreviewData(null);
+            }
             await loadGrants(collectionId, workspaces);
         } catch (err) {
             setError(String(err.message || err));
         }
+    }
+
+    async function loadEffectiveAccess(grantId, workspaceId) {
+        const wsId = workspaceId || collectionId;
+        if (!wsId || isAllWorkspaces(wsId) || !grantId) {
+            return;
+        }
+        setPreviewLoading(true);
+        setError("");
+        try {
+            const data = await apiGet(
+                "stig_collections/" +
+                    wsId +
+                    "/grants/" +
+                    grantId +
+                    "/effective_access"
+            );
+            setPreviewGrantId(grantId);
+            setPreviewData(data);
+        } catch (err) {
+            setPreviewData(null);
+            setError(String(err.message || err));
+        } finally {
+            setPreviewLoading(false);
+        }
+    }
+
+    function closeEffectiveAccessPreview() {
+        setPreviewGrantId("");
+        setPreviewData(null);
     }
 
     return (
@@ -290,6 +327,26 @@ export default function GrantsApp() {
                                         </Table.Cell>
                                         <Table.Cell>
                                             <Button
+                                                label={
+                                                    previewGrantId === row._key
+                                                        ? "Hide access"
+                                                        : "Preview access"
+                                                }
+                                                appearance="secondary"
+                                                disabled={
+                                                    isAllWorkspaces(collectionId) ||
+                                                    previewLoading
+                                                }
+                                                onClick={() =>
+                                                    previewGrantId === row._key
+                                                        ? closeEffectiveAccessPreview()
+                                                        : loadEffectiveAccess(
+                                                              row._key,
+                                                              row.stig_collection_id
+                                                          )
+                                                }
+                                            />
+                                            <Button
                                                 label="Remove"
                                                 appearance="secondary"
                                                 onClick={() =>
@@ -304,6 +361,75 @@ export default function GrantsApp() {
                                 ))}
                             </Table.Body>
                         </Table>
+                        {previewData ? (
+                            <div
+                                style={{
+                                    marginTop: 16,
+                                    padding: 16,
+                                    border: "1px solid var(--splunk-color-border, #ccc)",
+                                    borderRadius: 8,
+                                }}
+                            >
+                                <Heading level={4} style={{ marginTop: 0 }}>
+                                    Effective access — {previewData.principal}
+                                </Heading>
+                                <Text as="p">
+                                    Role: {previewData.grant_role || "—"} ·{" "}
+                                    {previewData.summary?.host_count ?? 0} asset(s) ·{" "}
+                                    {previewData.summary?.checklist_count ?? 0} STIG checklist(s)
+                                </Text>
+                                {previewLoading ? <WaitSpinner /> : null}
+                                <Table>
+                                    <Table.Head>
+                                        <Table.HeadCell>Asset</Table.HeadCell>
+                                        <Table.HeadCell>STIG</Table.HeadCell>
+                                        <Table.HeadCell>Baseline</Table.HeadCell>
+                                    </Table.Head>
+                                    <Table.Body>
+                                        {(previewData.hosts || []).flatMap((hostRow) =>
+                                            (hostRow.checklists || []).length
+                                                ? hostRow.checklists.map((cl) => (
+                                                      <Table.Row
+                                                          key={
+                                                              hostRow.host_id +
+                                                              ":" +
+                                                              (cl.checklist_id || cl.baseline_id)
+                                                          }
+                                                      >
+                                                          <Table.Cell>
+                                                              {(hostRow.hostname || hostRow.host_id) +
+                                                                  " (" +
+                                                                  hostRow.host_id +
+                                                                  ")"}
+                                                          </Table.Cell>
+                                                          <Table.Cell>
+                                                              {cl.stig_id || "—"}
+                                                          </Table.Cell>
+                                                          <Table.Cell>
+                                                              {(cl.baseline_title || cl.baseline_id) +
+                                                                  (cl.baseline_version
+                                                                      ? " " + cl.baseline_version
+                                                                      : "")}
+                                                          </Table.Cell>
+                                                      </Table.Row>
+                                                  ))
+                                                : [
+                                                      <Table.Row key={hostRow.host_id + ":empty"}>
+                                                          <Table.Cell>
+                                                              {(hostRow.hostname || hostRow.host_id) +
+                                                                  " (" +
+                                                                  hostRow.host_id +
+                                                                  ")"}
+                                                          </Table.Cell>
+                                                          <Table.Cell>—</Table.Cell>
+                                                          <Table.Cell>—</Table.Cell>
+                                                      </Table.Row>,
+                                                  ]
+                                        )}
+                                    </Table.Body>
+                                </Table>
+                            </div>
+                        ) : null}
                         {showAddGrant ? (
                             <div
                                 style={{

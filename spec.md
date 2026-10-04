@@ -734,6 +734,10 @@ Default `access_principals` on create: `["user:<creator>"]` if omitted. The Defa
 | PATCH/PUT | `/stig_collections/{id}/grants/{grantId}` | Partial grant JSON | Updated grant |
 | PUT/PATCH | `/stig_collections/{id}/grants/{grantId}/acl` | `{acl_host_ids?, acl_baseline_ids?, acl_labels?}` | Updated grant ACL fields only |
 | DELETE | `/stig_collections/{id}/grants/{grantId}` | — | `{deleted: grantId}` |
+| GET | `/stig_collections/{id}/grants/effective_access` | Query `principal=user:<name>` or `role:<name>` | Effective asset×STIG checklist access for that principal (grant row or legacy `access_principals`); requires **owner** or **manager** |
+| GET | `/stig_collections/{id}/grants/{grantId}/effective_access` | Query `assume_stig_write=false?` (default true for member/restricted write preview) | Same shape for one grant row |
+
+Effective-access response: `{stig_collection_id, grant_id?, principal, grant_role, capabilities, acl_*, assume_stig_write, summary: {host_count, checklist_count, baseline_count}, hosts: [{host_id, hostname, checklists: [{checklist_id, baseline_id, stig_id, baseline_title, baseline_version}]}]}`.
 
 `principal` must be `user:<name>` or `role:<name>`. `grant_role` is one of `owner`, `manager`, `member`, `restricted`.
 
