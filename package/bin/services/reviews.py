@@ -417,6 +417,8 @@ def update_review(
         if status not in STATUSES:
             raise ValueError(f"invalid status: {body['status']}")
         patch["status"] = status
+        if "result_engine" not in body and status != existing.get("status"):
+            patch["result_engine"] = ""
     if "finding_details" in body:
         patch["finding_details"] = body["finding_details"]
     if "comments" in body:
