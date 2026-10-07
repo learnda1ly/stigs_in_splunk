@@ -12,6 +12,11 @@ const UI_TIMEOUT_MS = 60_000;
 test.describe('UX3 app navigation', () => {
   test.setTimeout(180_000);
 
+  test('skip link is present on Assess', async ({ page }) => {
+    await page.goto(appPath('stig_editor_ui'), { timeout: NAV_TIMEOUT_MS });
+    await expect(page.locator('#stig-skip-link')).toHaveAttribute('href', '#stig-main-content');
+  });
+
   test('Assess default view shows primary nav labels', async ({ page }) => {
     await page.goto(appPath('stig_editor_ui'), { timeout: NAV_TIMEOUT_MS });
     await expect(page.locator('#stig-ui-root')).toBeVisible({ timeout: UI_TIMEOUT_MS });

@@ -61,6 +61,18 @@ export const Body = styled.div`
     overflow: hidden;
 `;
 
+/** Primary landmark for full-width layouts (e.g. Assess) without PagePad. */
+export const MainBody = styled.main.attrs({
+    id: "stig-main-content",
+    tabIndex: -1,
+    "aria-label": "Page content",
+})`
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    overflow: hidden;
+`;
+
 export const Pane = styled.div`
     min-height: 0;
     display: flex;
@@ -82,7 +94,11 @@ export const DetailPane = styled(Pane).attrs({ className: "stig-themed-detail" }
     padding: 20px 24px 32px;
 `;
 
-export const PagePad = styled.div`
+export const PagePad = styled.main.attrs({
+    id: "stig-main-content",
+    tabIndex: -1,
+    "aria-label": "Page content",
+})`
     flex: 1;
     min-height: 0;
     overflow: auto;

@@ -6,6 +6,7 @@
     "test:smoke": "playwright test smoke.spec.js"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.3",
     "@playwright/test": "^1.49.1"
   }
 }
