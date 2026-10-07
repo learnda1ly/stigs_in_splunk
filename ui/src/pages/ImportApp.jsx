@@ -19,19 +19,7 @@ export default function ImportApp() {
                     </Heading>
                 </Brand>
             </Header>
-            <div
-                style={{
-                    flex: 1,
-                    minHeight: 0,
-                    overflow: "auto",
-                    display: "flex",
-                    flexDirection: "column",
-                }}
-            >
-                <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-                    <ChecklistImportPanel />
-                </div>
-            </div>
+            <ChecklistImportPanel />
         </Shell>
     );
 }
