@@ -61,6 +61,8 @@ tags:
   - name: Settings
   - name: Assignment
     description: HEC routing rules and preview
+  - name: RMF packages
+    description: Authorization-boundary catalog and host assignment (`stig_rmf_packages`, defaults, overrides)
   - name: UCC baselines
     description: Configuration table adapter (`stigs_in_splunk_baseline`)
 
@@ -2790,6 +2792,110 @@ paths:
             application/json:
               schema:
                 type: object
+
+  /stig_rmf_packages:
+    get:
+      tags: [RMF packages]
+      summary: List RMF packages (includes system unassigned -1)
+      operationId: listRmfPackages
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      tags: [RMF packages]
+      summary: Create RMF package
+      operationId: createRmfPackage
+      x-splunk-capability: stig_admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, name]
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_rmf_packages/{packageId}:
+    get:
+      tags: [RMF packages]
+      summary: Get RMF package
+      operationId: getRmfPackage
+      parameters:
+        - name: packageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      tags: [RMF packages]
+      summary: Update RMF package (rename id bulk-updates assignments and rmf_package_id)
+      operationId: patchRmfPackage
+      x-splunk-capability: stig_admin
+      parameters:
+        - name: packageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /stig_host_rmf_defaults:
+    get:
+      tags: [RMF packages]
+      summary: List global host RMF defaults
+      operationId: listRmfHostDefaults
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /stig_host_baseline_rmf_overrides:
+    get:
+      tags: [RMF packages]
+      summary: List host×baseline RMF overrides
+      operationId: listRmfBaselineOverrides
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
 
   /stig_assignment_rules:
     get:

@@ -1,0 +1,10 @@
+<dashboard version="1.1" theme="dark" isVisible="true" script="stig_splunk_ui_boot.js" stylesheet="stig_editor.css">
+  <label>Governance</label>
+  <row>
+    <panel>
+      <html>
+        <div id="stig-ui-root" data-ui-bundle="configuration"></div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

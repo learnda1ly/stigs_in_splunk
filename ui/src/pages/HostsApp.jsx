@@ -27,6 +27,10 @@ import {
     resolveSharedWorkspaceId,
 } from "../sharedWorkspace";
 import {
+    packageLabel,
+    resolveRmfPackage,
+} from "../types/rmf";
+import {
     Brand,
     BrandKicker,
     Header,
@@ -61,6 +65,8 @@ export default function HostsApp() {
     const [pendingCsv, setPendingCsv] = useState("");
     const [importReport, setImportReport] = useState(null);
     const [setupHost, setSetupHost] = useState(null);
+    const [rmfPackages, setRmfPackages] = useState([]);
+    const [rmfDefaults, setRmfDefaults] = useState([]);
 
     const loadWorkspaces = useCallback(() =>
         apiGet("stig_collections")
@@ -99,6 +105,21 @@ export default function HostsApp() {
     }, [loadWorkspaces]);
 
     useEffect(() => {
+        Promise.all([
+            apiGet("stig_rmf_packages"),
+            apiGet("stig_host_rmf_defaults"),
+        ])
+            .then(([pkgRows, defRows]) => {
+                setRmfPackages(Array.isArray(pkgRows) ? pkgRows : []);
+                setRmfDefaults(Array.isArray(defRows) ? defRows : []);
+            })
+            .catch(() => {
+                setRmfPackages([]);
+                setRmfDefaults([]);
+            });
+    }, []);
+
+    useEffect(() => {
         if (!workspaces.length) {
             return;
         }
@@ -125,6 +146,14 @@ export default function HostsApp() {
                 .includes(q)
         );
     }, [hosts, filter]);
+
+    const hostRmfLabel = useCallback(
+        (hostname) => {
+            const resolved = resolveRmfPackage(hostname, "", rmfDefaults, []);
+            return packageLabel(rmfPackages, resolved.package_id);
+        },
+        [rmfDefaults, rmfPackages]
+    );
 
     const createHost = () => {
         const name = draft.hostname.trim();
@@ -532,6 +561,12 @@ export default function HostsApp() {
                             <Table.HeadCell>IP</Table.HeadCell>
                             <Table.HeadCell>FQDN</Table.HeadCell>
                             <Table.HeadCell>Type</Table.HeadCell>
+                            <Table.HeadCell>
+                                RMF package{" "}
+                                <Link to={viewUrl("stig_configuration_ui")} openInNewContext={false}>
+                                    (Governance)
+                                </Link>
+                            </Table.HeadCell>
                             <Table.HeadCell>Actions</Table.HeadCell>
                         </Table.Head>
                         <Table.Body>
@@ -542,6 +577,9 @@ export default function HostsApp() {
                                         <Table.Cell>{host.ip_address || "—"}</Table.Cell>
                                         <Table.Cell>{host.fqdn || "—"}</Table.Cell>
                                         <Table.Cell>{host.asset_type || "—"}</Table.Cell>
+                                        <Table.Cell>
+                                            {hostRmfLabel(host.hostname)}
+                                        </Table.Cell>
                                         <Table.Cell>
                                             <Button
                                                 appearance="secondary"
