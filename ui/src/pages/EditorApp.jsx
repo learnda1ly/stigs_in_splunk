@@ -25,7 +25,7 @@ import {
 } from "../sharedWorkspace";
 import {
     Actions,
-    Body,
+    MainBody,
     Brand,
     BrandKicker,
     DetailPane,
@@ -1206,6 +1206,7 @@ export default function EditorApp() {
                     <Message
                         appearance={banner.type}
                         onRequestRemove={() => setBanner(null)}
+                        role={banner.type === "error" ? "alert" : "status"}
                     >
                         {banner.text}
                     </Message>
@@ -1295,7 +1296,7 @@ export default function EditorApp() {
                     ) : null}
                 </FilterRow>
             ) : null}
-            <Body>
+            <MainBody>
                 <ListPane>
                     {loading ? (
                         <Empty>
@@ -1340,6 +1341,15 @@ export default function EditorApp() {
                                         $showHostname={showHostname}
                                         type="button"
                                         onClick={() => setSelectedKey(rev._key)}
+                                        aria-label={
+                                            (rule.rule_version || rev.rule_id || "Rule") +
+                                            ": " +
+                                            (rule.rule_title || "Untitled rule") +
+                                            (showHostname && host.hostname
+                                                ? " — " + host.hostname
+                                                : "")
+                                        }
+                                        aria-current={isSel ? "true" : undefined}
                                     >
                                         <span
                                             title={validationHint || undefined}
@@ -1735,7 +1745,7 @@ export default function EditorApp() {
                         </FieldStack>
                     )}
                 </DetailPane>
-            </Body>
+            </MainBody>
             {helpOpen ? (
                 <HelpOverlay vimEnabled={vimEnabled} onClose={() => setHelpOpen(false)} />
             ) : null}

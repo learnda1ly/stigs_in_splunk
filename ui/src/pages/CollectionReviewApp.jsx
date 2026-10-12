@@ -794,7 +794,7 @@ export default function CollectionReviewApp() {
             <PagePad>
                 {!ruleKey && collectionId && !isAllWorkspaces(collectionId) ? (
                     <div style={{ marginBottom: 20 }}>
-                        <Heading level={4} style={{ marginTop: 0 }}>
+                        <Heading level={3} style={{ marginTop: 0 }}>
                             Submitted queue
                         </Heading>
                         {queueLoading ? <WaitSpinner size="small" /> : null}
@@ -820,24 +820,27 @@ export default function CollectionReviewApp() {
                                             (row.rule_id || "") +
                                             "|" +
                                             (row.group_id || "");
+                                        const ruleLabel =
+                                            row.rule_version ||
+                                            row.rule_id ||
+                                            row.group_id ||
+                                            "Rule";
                                         return (
-                                            <Table.Row
-                                                key={rkey + row.baseline_id}
-                                                onClick={() => {
-                                                    if (row.baseline_id) {
-                                                        loadRulesForBaseline(
-                                                            row.baseline_id,
-                                                            rkey
-                                                        );
-                                                    }
-                                                }}
-                                                style={{ cursor: "pointer" }}
-                                            >
+                                            <Table.Row key={rkey + row.baseline_id}>
                                                 <Table.Cell>
-                                                    {row.rule_version ||
-                                                        row.rule_id ||
-                                                        row.group_id ||
-                                                        "—"}
+                                                    <Button
+                                                        appearance="flat"
+                                                        disabled={!row.baseline_id}
+                                                        label={ruleLabel}
+                                                        onClick={() => {
+                                                            if (row.baseline_id) {
+                                                                loadRulesForBaseline(
+                                                                    row.baseline_id,
+                                                                    rkey
+                                                                );
+                                                            }
+                                                        }}
+                                                    />
                                                 </Table.Cell>
                                                 <Table.Cell>
                                                     {bl.stig_id || bl.title || row.baseline_id}

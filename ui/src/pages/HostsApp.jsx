@@ -421,6 +421,7 @@ export default function HostsApp() {
                             type="file"
                             accept=".csv,text/csv"
                             style={{ display: "none" }}
+                            aria-label="Import hosts from CSV file"
                             onChange={onCsvFileChange}
                         />
                         {pendingCsv ? (

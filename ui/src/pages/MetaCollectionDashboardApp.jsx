@@ -48,7 +48,8 @@ const MetricLabel = styled.div`
 function checklistItem(label, done, href) {
     return (
         <li key={label} style={{ marginBottom: 6 }}>
-            {done ? "✓ " : "○ "}
+            <span aria-hidden="true">{done ? "✓ " : "○ "}</span>
+            <span className="sr-only">{done ? "Complete: " : "Incomplete: "}</span>
             {href && !done ? <Link to={href}>{label}</Link> : label}
         </li>
     );
@@ -157,7 +158,7 @@ export default function MetaCollectionDashboardApp() {
                     ) : null}
                     {showAdminChecklist ? (
                         <Message type="info" style={{ marginBottom: 16 }}>
-                            <Heading level={4} style={{ marginTop: 0 }}>
+                            <Heading level={3} style={{ marginTop: 0 }}>
                                 Getting started
                             </Heading>
                             <ul style={{ marginBottom: 0, paddingLeft: 20 }}>
@@ -194,7 +195,7 @@ export default function MetaCollectionDashboardApp() {
                     ) : null}
                     {!loading && data && data.workspace_count > 0 && totals ? (
                         <>
-                            <Heading level={4}>
+                            <Heading level={3}>
                                 Org totals ({data.workspace_count} workspace
                                 {data.workspace_count === 1 ? "" : "s"})
                             </Heading>
@@ -234,7 +235,7 @@ export default function MetaCollectionDashboardApp() {
                     ) : null}
                     {!loading && data && data.workspace_count > 0 && workspaces.length ? (
                         <>
-                            <Heading level={4} style={{ marginTop: 8 }}>
+                            <Heading level={3} style={{ marginTop: 8 }}>
                                 By workspace
                             </Heading>
                             <Table>
