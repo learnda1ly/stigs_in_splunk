@@ -157,7 +157,7 @@ export default function ReviewRequirementsApp() {
                     <Message appearance="info">
                         Review requirements apply only when governance is enabled. Turn it on
                         under{" "}
-                        <Link to={viewUrl("configuration")}>Workspaces → Editor &amp; ingest</Link>
+                        <Link to={viewUrl("stig_app_settings_ui")}>Editor &amp; ingest</Link>
                         .
                     </Message>
                 </PagePad>

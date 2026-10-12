@@ -118,8 +118,6 @@ def _restore_nav_and_views(app_root: str) -> None:
         for name in os.listdir(src_views):
             if not name.endswith(".xml"):
                 continue
-            if name == "configuration.xml" and has_ucc_bundle:
-                continue
             shutil.copy2(join(src_views, name), join(dst_views, name))
     _ensure_configuration_fallback(app_root, has_ucc_bundle)
 

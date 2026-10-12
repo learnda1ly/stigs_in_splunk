@@ -18,7 +18,8 @@
     <view name="stig_transfer_ui" label="Move and clone" icon="forward"/>
   </collection>
   <collection label="Admin" icon="cog">
-    <view name="configuration" label="Workspaces and settings" icon="settings"/>
+    <view name="stig_configuration_ui" label="Governance" icon="lock"/>
+    <view name="stig_app_settings_ui" label="Editor &amp; ingest" icon="settings"/>
     <view name="stig_assignment_ui" label="Ingest routing" icon="networkconnector"/>
     <view name="stig_audit_dashboard" label="Audit log" icon="pulse"/>
     <view name="setup" label="Setup checklist" icon="checkmark"/>

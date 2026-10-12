@@ -684,8 +684,8 @@ export default function CollectionReviewApp() {
                     <Message appearance="info">
                         Review governance is turned off in app configuration. Use the STIG Editor
                         to manage findings directly. Re-enable governance under{" "}
-                        <Link to={viewUrl("configuration")}>
-                            Admin → Workspaces and settings
+                        <Link to={viewUrl("stig_app_settings_ui")}>
+                            Admin → Editor &amp; ingest
                         </Link>
                         .
                     </Message>

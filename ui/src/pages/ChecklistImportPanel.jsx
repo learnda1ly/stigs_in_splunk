@@ -542,7 +542,7 @@ export default function ChecklistImportPanel() {
                         Baselines
                     </Link>{" "}
                     tab. Manage workspaces in{" "}
-                    <Link to={viewUrl("configuration")}>Workspaces</Link>.
+                    <Link to={viewUrl("stig_configuration_ui")}>Governance</Link>.
                 </p>
                 {baselineCatalogEmpty ? (
                     <Message appearance="warning" style={{ marginBottom: 12 }}>

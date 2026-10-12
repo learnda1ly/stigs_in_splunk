@@ -17,7 +17,7 @@ export default function WorkspaceSelectHint({ style }) {
             }}
         >
             No workspaces are available to you. Create one under{" "}
-            <Link to={viewUrl("configuration")}>Workspaces</Link> or ask an admin for access.
+            <Link to={viewUrl("stig_configuration_ui")}>Governance</Link> or ask an admin for access.
         </p>
     );
 }

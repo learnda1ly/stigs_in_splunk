@@ -14,7 +14,8 @@ This document is the **requirements and behavior spec** for the Splunk app **`st
 
 | Area | Requirement |
 |------|-------------|
-| Persistence | Twelve KV collections in `default/collections.conf` with `enforceTypes = true` (core entities, grants, labels, review history, editor-settings fallback, ingest assignment rules/overrides — see §6.1). |
+| Persistence | Fifteen KV collections in `default/collections.conf` with `enforceTypes = true` (core entities, grants, labels, review history, editor-settings fallback, ingest assignment rules/overrides, **RMF package catalog and assignments** — see §6.1). |
+| RMF packages | Authorization-boundary labels spanning workspaces; assignment on host (+ optional host×baseline override); denormalized `rmf_package_id` on reviews for reporting (§7.11–7.13). SplunkUI **Governance** wizard (`stig_configuration_ui`) for catalog; **Hosts** shows effective default. See [rmf-packages-rationale.md](docs/rmf-packages-rationale.md). |
 | API | Custom persist-conn REST handler; JSON for CRUD; raw XML/JSON for import/export bodies. |
 | Baselines | Import from **XCCDF** (primary), **CKLB**, **CKL**; **deduplicate** identical revisions; multiple **revisions** allowed. |
 | Checklists | Create checklist = one host + one baseline + workspace; spawn one **review** per baseline rule. |
@@ -33,7 +34,6 @@ This document is the **requirements and behavior spec** for the Splunk app **`st
 - Custom SplunkUI **settings** page beyond UCC **Configuration** (editor uses `/stig_settings` adapter only for selected fields).
 - Search macros, CIM Vulnerability datamodel, eventtypes for ingested STIG events.
 - Automatic XCCDF **results** `pass`/`fail` → assessor status mapping on import (Evaluate-STIG results import applies Watcher-shaped review fields instead).
-- **RMF packages** (authorization boundary labels) — proposed in §20; not in KV or REST today.
 - See also §19 for other deferred items.
 
 ---
@@ -49,6 +49,7 @@ This document is the **requirements and behavior spec** for the Splunk app **`st
 | **checklist** | Binding of **one host + one baseline** within a workspace, plus CKLB-shaped **target_data**. |
 | **review** | Per-rule **assessor state** for a checklist (`status`, `finding_details`, `comments`). Stored in `stig_reviews`. |
 | **finding** | Compliance sense: a review with **`status == open`**. Not a separate entity. |
+| **RMF package** | Authorization-boundary label with typed unique **id** and display **name**. Findings inherit via host assignment; stored on reviews as **`rmf_package_id`** (not `package_id`). |
 | **KV collection** | Stanza name in `collections.conf` (e.g. `stig_reviews`). |
 
 ---
@@ -62,7 +63,12 @@ stig_collection ──< stig_host
 stig_collection ──< stig_checklist >── stig_baseline (global, not FK to workspace)
 stig_baseline   ──< stig_baseline_rule
 stig_checklist  ──< stig_review
+stig_rmf_packages (catalog, global)
+stig_host_rmf_defaults (hostname → package_id, global)
+stig_host_baseline_rmf_overrides (hostname × baseline_ref → package_id)
 ```
+
+**RMF resolution (findings):** Override for host×baseline, else global host default, else system package `-1` (`unassigned`). Effective id is denormalized on `stig_reviews.rmf_package_id` when reviews are stamped (checklist create/apply, package rename).
 
 **Checklist create:** Insert one `stig_checklist` row, then batch-insert one `stig_review` per `stig_baseline_rule` for that baseline, each with `status = not_reviewed`.
 
@@ -190,6 +196,18 @@ STIG Manager’s `/op/configuration` maps to Splunk **UCC Configuration → Edit
 
 Do not upload a DISA library zip through the UCC file widget. Splunk wraps that file in EAI XML **before** the Python handler runs, so a 360MB–1GB zip fails with `Unable to xml-parse` (row id such as `July_2026`). Configuration Baselines is list/delete only. The Import page chunk-uploads the zip to persist `/stig_baselines/jobs` (4MB JSON chunks, staged under `$SPLUNK_HOME/var/run/stigs_in_splunk/baseline_jobs/`, max 2GB) and **imports every Manual-xccdf automatically**. Large collection archive exports may use `POST /stig_collections/{id}/jobs` (artifacts under `collection_jobs/`, same **6h TTL**). Never send the zip through an EAI/`admin_external` handler.
 
+### 4.4 Governance wizard (SplunkUI)
+
+SplunkUI page **`stig_configuration_ui`** (nav **Admin → Governance**) is the **authorization-boundary** setup surface. It is intentionally separate from UCC **Workspaces and settings** (`configuration`), which remains operational (workspaces, baselines, editor & ingest).
+
+| Step (shipped) | Purpose |
+|----------------|---------|
+| **RMF packages** | Catalog CRUD via `/stig_rmf_packages` (`stig_admin` / Splunk `admin` / `sc_admin` to mutate). System package `-1` always present. |
+
+Future steps (same wizard, same nav entry): host defaults, host×baseline overrides, bulk external assignment ingest. **Hosts** lists the effective **host-default** RMF package per asset and links here.
+
+Rationale and increment scope: [docs/rmf-packages-rationale.md](docs/rmf-packages-rationale.md).
+
 ### 4.2 Build commands
 
 ```bash
@@ -262,7 +280,7 @@ Authentication: Splunk session or Basic Auth (`-u user:pass`). TLS verify often 
 
 ### 6.1 `default/collections.conf`
 
-Twelve stanzas (all `enforceTypes = true`):
+Fifteen stanzas (all `enforceTypes = true`):
 
 | Stanza | Role |
 |--------|------|
@@ -278,6 +296,9 @@ Twelve stanzas (all `enforceTypes = true`):
 | `stig_editor_settings` | Legacy settings KV fallback (§7.10) |
 | `stig_assignment_rules` | Ingest workspace resolver rules (§7.8) |
 | `stig_host_baseline_assignments` | Host×STIG ingest overrides (§7.9) |
+| `stig_rmf_packages` | RMF package catalog (§7.11) |
+| `stig_host_rmf_defaults` | Global host → RMF package default (§7.12) |
+| `stig_host_baseline_rmf_overrides` | Host×baseline_ref → RMF package override (§7.13) |
 
 **Accelerated fields (for KV queries):**
 
@@ -305,6 +326,7 @@ Implement **one stanza per top-level persist path** (duplicate `match` keys in o
 - `/stig_collections`, `/stig_findings`, `/stig_hosts`, `/stig_baselines`, `/stig_checklists`, `/stig_reviews`
 - `/stig_imports`, `/stig_settings`, `/stig_readiness`
 - `/stig_assignment_rules`, `/stig_host_baseline_assignments`, `/stig_assignment/preview`
+- `/stig_rmf_packages`, `/stig_host_rmf_defaults`, `/stig_host_baseline_rmf_overrides` (§7.11–7.13)
 - `/stigs_in_splunk_baseline` — UCC Configuration baseline list/delete adapter (no zip upload on EAI)
 
 UCC **admin_external** handlers for Configuration workspaces/settings are merged at build time (see §4.1).
@@ -484,7 +506,8 @@ REST: `GET/POST /stig_collections/{id}/labels`, `GET/PATCH/DELETE .../labels/{la
 | `status` | string | See §10 |
 | `finding_details`, `comments` | string | |
 | `valid` | bool | Server-computed against workspace `review_requirements` (exposed on GET/findings; updated on PATCH/submit). |
-| `package_id` | string | Optional **Evaluate-STIG / CKLB package id** on the review (ingest, PATCH, export). **Not** the proposed RMF package entity (§20). |
+| `package_id` | string | Optional **Evaluate-STIG / CKLB package id** on the review (ingest, PATCH, export). **Not** the RMF package id — use `rmf_package_id`. |
+| `rmf_package_id` | string | Denormalized effective RMF package id for reporting (resolved from host assignment; rewritten on package id rename). |
 | `ingest_lock` | bool | When **true**, HEC/reconcile must **not** overwrite this review. Default false; incoming is authoritative. |
 | `workflow_state` | string | `draft` \| `submitted` \| `accepted` (reject returns to `draft`; see FEATURE_PARITY.md) |
 | `submitted_at`, `submitted_by` | time / string | Set on submit |
@@ -557,6 +580,39 @@ REST: `GET/POST /stig_host_baseline_assignments`, `GET/PATCH/DELETE /stig_host_b
 ### 7.10 `stig_editor_settings`
 
 Legacy KV fallback for editor/ingest settings when `stigs_in_splunk_settings.conf` `[general]` is absent (see §4.3.1). Fields mirror public `/stig_settings` keys (no `hec_token`).
+
+### 7.11 `stig_rmf_packages`
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `_key` | string | Package **id** (typed by admin; unique). System row `_key = -1`, `name = unassigned`, `is_system = true`. |
+| `name` | string | Display label (not required unique). |
+| `is_system` | bool | True only for `-1`. |
+| `created_at`, `updated_at`, `created_by`, `updated_by` | | Audit |
+
+**REST:** `GET|POST /stig_rmf_packages`, `GET|PATCH|PUT|DELETE /stig_rmf_packages/{id}`. Nested: `POST /stig_rmf_packages/assignments/ingest`, `POST /stig_rmf_packages/assignments/bulk`. **Create/assign:** `stig_admin` or Splunk `admin` / `sc_admin`. **List/get:** `stig_read` / `stig_write` holders.
+
+### 7.12 `stig_host_rmf_defaults`
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `_key` | string | Normalized hostname key |
+| `hostname` | string | Display hostname |
+| `package_id` | string | FK → `stig_rmf_packages._key` |
+
+**REST:** `GET|POST /stig_host_rmf_defaults`, `PUT|PATCH /stig_host_rmf_defaults/{hostname}`.
+
+### 7.13 `stig_host_baseline_rmf_overrides`
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `_key` | string | Hash of hostname + baseline_ref |
+| `hostname`, `baseline_ref` | string | Pair key |
+| `package_id` | string | FK → `stig_rmf_packages._key` |
+
+**REST:** `GET|POST /stig_host_baseline_rmf_overrides`, `DELETE /stig_host_baseline_rmf_overrides/{key}`.
+
+**External rows:** `{host, baseline?, package_id}` — `package_id` must exist; see §20.2.
 
 ---
 
@@ -1077,7 +1133,7 @@ curl $AUTH "$BASE/stig_checklists/CHECKLIST_ID/export?format=cklb"
 | Batch rule insert | Sequential inserts via `batch_save`; large STIGs (~366 rules) take seconds. |
 | Review history at scale | Workspace timeline loads all KV rows then filters in-process (§7.7). |
 | Search lookups | `inputlookup` on KV stanzas is not grant-filtered (§12). |
-| No RMF package entity | Governance grouping is workspace + labels today; `stig_reviews.package_id` is Evaluate-STIG/CKLB only (§7.6, §20). |
+| RMF assignment UI partial | Catalog + host-default column on **Hosts**; defaults/overrides bulk UI ships in later Governance wizard steps (§4.4). |
 
 ---
 
@@ -1100,16 +1156,16 @@ Use after releases or large changes (not a greenfield build checklist):
 ## 19. Phase 2 backlog (preserve intent)
 
 - Ingested findings → CIM / macros / dashboards.
-- RMF packages (authorization labels) — **proposed** requirements in §20.
+- Governance wizard steps for RMF host defaults, overrides, and external assignment ingest (§4.4).
 - KV cleanup jobs beyond orphan-rule GC; stronger cross-entity consistency transactions.
 
 ---
 
-## 20. Proposed: RMF packages (not implemented)
+## 20. RMF packages — decision log
 
-**Status:** Product request only — **no** RMF package collection, REST, or UI in the repo today. Do **not** reuse or overload `stig_reviews.package_id` (that field remains the **Evaluate-STIG / CKLB package id**, §7.6).
+**Status:** KV collections, REST, denormalized `rmf_package_id`, and SplunkUI **Governance** catalog step are **implemented** (§4.4, §7.11–7.13). Do **not** reuse or overload `stig_reviews.package_id` (that field remains the **Evaluate-STIG / CKLB package id**, §7.6).
 
-RMF packages are **labels** for now (organizational authorization boundary). Each has a **name** and an **id**. REST/KV shapes are out of scope here; the decisions below are product rules for a future implementation.
+RMF packages are **labels** (organizational authorization boundary). Each has a **name** and an **id**. Product rationale: [docs/rmf-packages-rationale.md](docs/rmf-packages-rationale.md).
 
 ### 20.1 Decisions
 

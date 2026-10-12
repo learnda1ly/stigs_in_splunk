@@ -9,7 +9,7 @@ export default function EditorEmptyState({ collectionId }) {
     const hostsUrl = collectionId
         ? viewUrlWithQuery("stig_hosts_ui", { stig_collection_id: collectionId })
         : viewUrl("stig_hosts_ui");
-    const workspacesUrl = viewUrl("configuration");
+    const workspacesUrl = viewUrl("stig_configuration_ui");
 
     return (
         <Empty style={{ textAlign: "center", padding: "32px 20px", maxWidth: 420, margin: "0 auto" }}>

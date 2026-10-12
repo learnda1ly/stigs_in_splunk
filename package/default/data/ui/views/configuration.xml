@@ -1,4 +1,16 @@
-<?xml version="1.0" ?>
-<view template="stigs_in_splunk:/templates/configuration_page.html" type="html" isDashboard="False">
-    <label>Configuration</label>
-</view>
+<dashboard version="1.1" theme="dark" script="stig_splunk_ui_boot.js" isDashboard="false" hideEdit="true" hideExport="true" hideTitle="true">
+  <label>Editor &amp; ingest</label>
+  <row>
+    <panel>
+      <html>
+        <script>
+          (function () {
+            var base = window.location.pathname.replace(/configuration\/?$/, "stig_app_settings_ui");
+            window.location.replace(base + window.location.search + window.location.hash);
+          })();
+        </script>
+        <p>Redirecting to <a href="stig_app_settings_ui">Editor &amp; ingest</a>…</p>
+      </html>
+    </panel>
+  </row>
+</dashboard>

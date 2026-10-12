@@ -130,16 +130,22 @@ class _RestKvCollectionData:
 
     def insert(self, record: Dict[str, Any], key: Optional[str] = None) -> str:
         payload = dict(record)
-        payload.pop("_key", None)
+        explicit = key if key is not None else payload.get("_key")
+        if explicit is not None:
+            payload["_key"] = str(explicit)
+        else:
+            payload.pop("_key", None)
         data = _simple_request(
             self._session_key,
             "POST",
             _collection_data_path(self._collection),
             body=payload,
         )
+        if explicit is not None:
+            return str(explicit)
         if isinstance(data, dict):
             if data.get("_key"):
-                return data["_key"]
+                return str(data["_key"])
             entries = data.get("entry") or []
             if entries:
                 return entries[0].get("name") or entries[0].get("content", {}).get("_key", "")
@@ -210,22 +216,49 @@ def query_all(collection, query: Optional[Dict[str, Any]] = None) -> List[Dict[s
     return list(collection.data.query(query=q))
 
 
+def _is_missing_key_error(err: Exception) -> bool:
+    status = getattr(err, "status", None)
+    if status == 404:
+        return True
+    text = str(err)
+    if "[HTTP 404]" in text or "Could not find object" in text:
+        return True
+    body = getattr(err, "body", b"")
+    if isinstance(body, bytes):
+        body = body.decode("utf-8", errors="ignore")
+    return "Could not find object" in str(body)
+
+
 def get_by_key(collection, key: str) -> Optional[Dict[str, Any]]:
     try:
         return collection.data.query_by_id(key)
-    except KvError:
+    except KvError as err:
+        if err.status == 404:
+            return None
         raise
     except Exception as err:
-        status = getattr(err, "status", None)
-        if status == 404:
+        if _is_missing_key_error(err):
             return None
         raise
 
 
 def insert_record(collection, record: Dict[str, Any]) -> Dict[str, Any]:
     data = dict(record)
-    data.pop("_key", None)
-    new_key = collection.data.insert(data)
+    explicit_key = data.get("_key")
+    if explicit_key is not None:
+        explicit_key = str(explicit_key)
+        insert_payload = dict(data)
+        insert_payload["_key"] = explicit_key
+    else:
+        insert_payload = dict(data)
+        insert_payload.pop("_key", None)
+    inserted = collection.data.insert(insert_payload)
+    if explicit_key is not None:
+        new_key = explicit_key
+    elif isinstance(inserted, dict) and inserted.get("_key"):
+        new_key = str(inserted["_key"])
+    else:
+        new_key = str(inserted)
     stored = collection.data.query_by_id(new_key)
     if not stored:
         raise KvError("insert succeeded but record could not be read back")
