@@ -22,9 +22,9 @@
             You can also click the <strong>VIM OFF</strong> / <strong>NORMAL</strong> badge in the editor toolbar.
           </p>
           <p class="stig-settings-help">
-            Workspaces, STIG baselines, and HEC ingest settings are on the
-            UCC <a href="configuration">Configuration</a> page. This classic
-            view only toggles vim shortcuts for the classic editor.
+            Workspaces and RMF setup are under <a href="stig_configuration_ui">Governance</a>.
+            Editor and ingest settings are under <a href="stig_app_settings_ui">Editor &amp; ingest</a>.
+            This classic view only toggles vim shortcuts for the classic editor.
           </p>
           <p>
             <button type="button" class="stig-btn" id="stig-settings-save">Save settings</button>

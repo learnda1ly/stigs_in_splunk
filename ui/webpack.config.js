@@ -29,6 +29,7 @@ module.exports = {
         transfer: path.join(__dirname, "src/transfer.jsx"),
         documentation: path.join(__dirname, "src/documentation.jsx"),
         configuration: path.join(__dirname, "src/configuration.jsx"),
+        app_settings: path.join(__dirname, "src/app_settings.jsx"),
     },
     output: {
         path: outDir,

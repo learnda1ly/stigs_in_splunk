@@ -175,7 +175,7 @@ export default function DocumentationApp() {
                         Splunk Web → <strong>Settings → Data inputs → HTTP Event Collector</strong>{" "}
                         → enable or edit the <code>stig_findings</code> input and assign a token.
                         The app stores collector URL and index names under{" "}
-                        <Link to={viewUrl("configuration")}>Workspaces</Link> →{" "}
+                        <Link to={viewUrl("stig_configuration_ui")}>Governance</Link> →{" "}
                         <strong>Editor &amp; ingest</strong> but never stores the token in app
                         settings.
                     </p>
@@ -186,7 +186,7 @@ export default function DocumentationApp() {
                     <ol style={listStyle}>
                         <li>
                             <strong>Workspaces</strong> — Open{" "}
-                            <Link to={viewUrl("configuration")}>Workspaces</Link> and create a
+                            <Link to={viewUrl("stig_configuration_ui")}>Governance</Link> and create a
                             workspace (or use the auto-created <strong>Default</strong> workspace).
                             Imports without a workspace id use Default until you mark another
                             workspace as the default import target in the Workspaces table.

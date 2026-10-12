@@ -120,7 +120,7 @@ export default function MetaCollectionDashboardApp() {
             {
                 label: "Create a workspace",
                 done: hasWorkspaces,
-                href: viewUrl("configuration"),
+                href: viewUrl("stig_configuration_ui"),
             },
             {
                 label: "Import STIG revisions (STIG library)",
@@ -135,7 +135,7 @@ export default function MetaCollectionDashboardApp() {
             {
                 label: "Configure HEC (optional)",
                 done: hecOk,
-                href: viewUrl("configuration"),
+                href: viewUrl("stig_app_settings_ui"),
             },
         ];
     }, [readiness, data, totals]);
@@ -181,9 +181,9 @@ export default function MetaCollectionDashboardApp() {
                             </p>
                             <Button
                                 appearance="primary"
-                                label="Workspaces and settings"
+                                label="Open Governance"
                                 onClick={() => {
-                                    window.location.assign(viewUrl("configuration"));
+                                    window.location.assign(viewUrl("stig_configuration_ui"));
                                 }}
                             />
                             <p style={{ marginBottom: 0, fontSize: 13 }}>
