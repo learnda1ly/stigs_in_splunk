@@ -3,8 +3,13 @@ import Button from "@splunk/react-ui/Button";
 import Heading from "@splunk/react-ui/Heading";
 import { apiGet } from "../api";
 import ConfigurationStepper from "../components/ConfigurationStepper";
+import BaselinesStep from "../components/configuration/BaselinesStep";
+import HostsStep from "../components/configuration/HostsStep";
 import RmfPackagesStep from "../components/configuration/RmfPackagesStep";
+import WorkspacesStep from "../components/configuration/WorkspacesStep";
+import WizardNav from "../components/configuration/WizardNav";
 import { CONFIGURATION_STEPS } from "../configurationSteps";
+import { useGovernanceStep } from "../hooks/useGovernanceStep";
 import {
     Brand,
     BrandKicker,
@@ -14,10 +19,10 @@ import {
     Toolbar,
 } from "../layout";
 
-const CURRENT_STEP_ID = CONFIGURATION_STEPS[0].id;
-
 export default function ConfigurationApp() {
     const [canAdmin, setCanAdmin] = useState(null);
+    const [canWrite, setCanWrite] = useState(null);
+    const { stepId, goToStep, goNext, goBack, isFirst, isLast } = useGovernanceStep();
 
     useEffect(() => {
         apiGet("stig_readiness")
@@ -27,16 +32,36 @@ export default function ConfigurationApp() {
                 } else {
                     setCanAdmin(false);
                 }
+                if (report && typeof report.can_stig_write === "boolean") {
+                    setCanWrite(report.can_stig_write);
+                } else {
+                    setCanWrite(false);
+                }
             })
-            .catch(() => setCanAdmin(false));
+            .catch(() => {
+                setCanAdmin(false);
+                setCanWrite(false);
+            });
     }, []);
 
     const stepContent = useMemo(() => {
-        if (CURRENT_STEP_ID === "rmf_packages") {
-            return <RmfPackagesStep canAdmin={canAdmin} />;
+        switch (stepId) {
+            case "rmf_packages":
+                return <RmfPackagesStep canAdmin={canAdmin} />;
+            case "workspaces":
+                return (
+                    <WorkspacesStep canWrite={canWrite} canAdmin={canAdmin} />
+                );
+            case "hosts":
+                return <HostsStep canWrite={canWrite} canAdmin={canAdmin} />;
+            case "stig_baselines":
+                return (
+                    <BaselinesStep canWrite={canWrite} canAdmin={canAdmin} />
+                );
+            default:
+                return null;
         }
-        return null;
-    }, [canAdmin]);
+    }, [stepId, canAdmin, canWrite]);
 
     return (
         <Shell>
@@ -55,9 +80,16 @@ export default function ConfigurationApp() {
             <PagePad>
                 <ConfigurationStepper
                     steps={CONFIGURATION_STEPS}
-                    currentStepId={CURRENT_STEP_ID}
+                    currentStepId={stepId}
+                    onStepSelect={goToStep}
                 />
                 {stepContent}
+                <WizardNav
+                    isFirst={isFirst}
+                    isLast={isLast}
+                    onBack={goBack}
+                    onNext={goNext}
+                />
             </PagePad>
         </Shell>
     );

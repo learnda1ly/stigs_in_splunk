@@ -140,6 +140,34 @@ export default function RmfPackagesStep({ canAdmin }) {
         }
     }
 
+    async function removePackage(pkgId) {
+        setError("");
+        setInfo("");
+        if (!canAdmin) {
+            setError("stig_admin is required to remove packages.");
+            return;
+        }
+        if (pkgId === RMF_SYSTEM_PACKAGE_ID) {
+            setError("The unassigned system package cannot be removed.");
+            return;
+        }
+        if (!window.confirm("Remove package " + pkgId + "? Assignments will be cleared.")) {
+            return;
+        }
+        setBusyKey(pkgId);
+        try {
+            await apiFetch("stig_rmf_packages/" + encodeURIComponent(pkgId), {
+                method: "DELETE",
+            });
+            setInfo("Package removed.");
+            await loadPackages();
+        } catch (err) {
+            setError(String(err.message || err));
+        } finally {
+            setBusyKey("");
+        }
+    }
+
     async function createPackage() {
         setError("");
         setInfo("");
@@ -196,7 +224,7 @@ export default function RmfPackagesStep({ canAdmin }) {
                 <Table.Head>
                     <Table.HeadCell>Package id</Table.HeadCell>
                     <Table.HeadCell>Name</Table.HeadCell>
-                    <Table.HeadCell width={140}>Actions</Table.HeadCell>
+                    <Table.HeadCell width={200}>Actions</Table.HeadCell>
                 </Table.Head>
                 <Table.Body>
                     {packages.map((row) => {
@@ -234,11 +262,21 @@ export default function RmfPackagesStep({ canAdmin }) {
                                 </Table.Cell>
                                 <Table.Cell>
                                     {canAdmin ? (
-                                        <Button
-                                            label="Save"
-                                            disabled={busyKey === pkgId}
-                                            onClick={() => saveExisting(pkgId)}
-                                        />
+                                        <>
+                                            <Button
+                                                label="Save"
+                                                disabled={busyKey === pkgId}
+                                                onClick={() => saveExisting(pkgId)}
+                                            />
+                                            {!isSystem ? (
+                                                <Button
+                                                    label="Remove"
+                                                    appearance="destructive"
+                                                    disabled={busyKey === pkgId}
+                                                    onClick={() => removePackage(pkgId)}
+                                                />
+                                            ) : null}
+                                        </>
                                     ) : (
                                         "—"
                                     )}

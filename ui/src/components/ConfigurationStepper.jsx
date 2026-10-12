@@ -72,7 +72,16 @@ const Connector = styled.div`
     opacity: ${(props) => (props.$dimmed ? 0.45 : 1)};
 `;
 
-export default function ConfigurationStepper({ steps, currentStepId }) {
+const StepButton = styled.button`
+    border: none;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+`;
+
+export default function ConfigurationStepper({ steps, currentStepId, onStepSelect }) {
     const currentIndex = steps.findIndex((s) => s.id === currentStepId);
     const safeIndex = currentIndex >= 0 ? currentIndex : 0;
 
@@ -84,12 +93,16 @@ export default function ConfigurationStepper({ steps, currentStepId }) {
                 return (
                     <React.Fragment key={step.id}>
                         <StepItem>
-                            <Node>
-                                <Dot $active={active} aria-current={active ? "step" : undefined}>
-                                    {index + 1}
-                                </Dot>
-                                <Label $active={active}>{step.title}</Label>
-                            </Node>
+                            <StepButton
+                                type="button"
+                                onClick={() => onStepSelect && onStepSelect(step.id)}
+                                aria-current={active ? "step" : undefined}
+                            >
+                                <Node>
+                                    <Dot $active={active}>{index + 1}</Dot>
+                                    <Label $active={active}>{step.title}</Label>
+                                </Node>
+                            </StepButton>
                         </StepItem>
                         {showConnector ? (
                             <StepItem $stretch>
